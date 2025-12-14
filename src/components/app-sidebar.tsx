@@ -1,5 +1,24 @@
-import * as React from 'react';
-import { Plus, Search, FileText, Clock, Check } from 'lucide-react';
+import * as React from "react";
+import {
+  ChevronRight,
+  ChevronDown,
+  Folder as FolderIcon,
+  FolderOpen,
+  Plus,
+  MoreVertical,
+  Star,
+  StarOff,
+  Link as LinkIcon,
+  X,
+  FileText,
+  Search,
+  Settings,
+  FolderPlus,
+  Check,
+  Clock,
+} from "lucide-react";
+
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -7,103 +26,432 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
   SidebarRail,
   SidebarHeader,
   SidebarFooter,
-} from '@/components/ui/sidebar';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useNotes } from '@/contexts/NotesContext';
-import { cn } from '@/lib/utils';
+} from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { useNotes, FolderWithChildren, Note } from "@/contexts/NotesContext";
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { 
-    state, 
-    selectedNote, 
-    filteredNotes, 
-    createNote, 
-    selectNote, 
-    setSearchQuery 
-  } = useNotes();
+// Color palette for folders
+const DEFAULT_COLORS = [
+  "#10b981", "#3b82f6", "#8b5cf6", "#ec4899",
+  "#f59e0b", "#ef4444", "#14b8a6", "#6366f1"
+];
 
-  const formatDate = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
+interface FolderItemProps {
+  folder: FolderWithChildren;
+  depth?: number;
+  parentColor?: string;
+}
 
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
+function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
+  const { selectNote, createNote, createFolder, updateFolder, deleteFolder, updateNote, deleteNote, state } = useNotes();
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const [isHovered, setIsHovered] = React.useState(false);
+
+  // Color inheritance: folder.color → parentColor → default palette
+  const folderColor = folder.color || parentColor || DEFAULT_COLORS[depth % DEFAULT_COLORS.length];
+  const hasContent = folder.subfolders.length > 0 || folder.notes.length > 0;
+
+  const handleCreateSubfolder = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    createFolder("New Folder", folder.id);
+    setIsExpanded(true);
+  };
+
+  const handleCreateNote = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    createNote(folder.id);
+    setIsExpanded(true);
+  };
+
+  const handleChangeColor = (e: React.MouseEvent, color: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    updateFolder(folder.id, { color });
+  };
+
+  const handleDeleteFolder = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    deleteFolder(folder.id);
   };
 
   return (
-    <Sidebar className="border-r border-sidebar-border" {...props}>
-      <SidebarHeader className="border-b border-sidebar-border p-3">
-        <div className="flex items-center justify-between mb-3">
-          <h1 className="text-lg font-semibold tracking-tight">Notes</h1>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8 hover:bg-sidebar-accent"
-            onClick={() => createNote()}
-            title="New Note"
+    <div className="relative w-full">
+      {/* Tree lines - matching folder color */}
+      {depth > 0 && (
+        <>
+          {/* Vertical line */}
+          <div
+            className="absolute top-0 bottom-0 w-[2px] opacity-40 pointer-events-none"
+            style={{
+              left: `${(depth - 1) * 20 + 10}px`,
+              borderLeft: `2px solid ${folderColor}`,
+            }}
+          />
+          {/* Horizontal connector */}
+          <div
+            className="absolute top-[18px] w-3 h-[2px] opacity-40 pointer-events-none"
+            style={{
+              left: `${(depth - 1) * 20 + 10}px`,
+              backgroundColor: folderColor,
+            }}
+          />
+        </>
+      )}
+
+      <SidebarMenuItem
+        className="relative z-10"
+        style={{ paddingLeft: `${depth * 20}px` }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <Collapsible open={isExpanded} onOpenChange={setIsExpanded} className="group/collapsible w-full">
+          <div className="flex items-center gap-1 w-full">
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("h-6 w-6 p-0 shrink-0", !hasContent && "invisible")}
+                disabled={!hasContent}
+              >
+                {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              </Button>
+            </CollapsibleTrigger>
+
+            <div className="flex-1 flex items-center gap-2 min-w-0">
+              {isExpanded ? (
+                <FolderOpen className="h-4 w-4 shrink-0" style={{ color: folderColor }} />
+              ) : (
+                <FolderIcon className="h-4 w-4 shrink-0" style={{ color: folderColor }} />
+              )}
+              <span className="truncate text-sm font-medium">{folder.name || "New Folder"}</span>
+            </div>
+
+            {/* Action buttons - visible on hover */}
+            <div className={cn("flex items-center shrink-0 gap-1 transition-opacity", !isHovered && "opacity-0")}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 p-0"
+                onClick={handleCreateNote}
+                title="Add note"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 bg-popover">
+                  <DropdownMenuItem onClick={handleCreateSubfolder}>
+                    <FolderPlus className="mr-2 h-4 w-4" />
+                    New subfolder
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem onClick={handleCreateNote}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    New note
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Color picker */}
+                  <div className="p-2">
+                    <div className="text-sm font-medium mb-2">Folder Color</div>
+                    <div className="flex flex-wrap gap-2">
+                      {DEFAULT_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          onClick={(e) => handleChangeColor(e, color)}
+                          className="w-6 h-6 rounded border-2 hover:scale-110 transition-transform cursor-pointer"
+                          style={{
+                            backgroundColor: color,
+                            borderColor: color === folderColor ? "hsl(var(--foreground))" : "transparent",
+                          }}
+                          aria-label={`Change color to ${color}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem onClick={handleDeleteFolder} className="text-destructive focus:text-destructive">
+                    <X className="mr-2 h-4 w-4" />
+                    Delete folder
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          <CollapsibleContent>
+            <SidebarMenuSub className="ml-0 pl-0 border-l-0">
+              {/* Render subfolders recursively - passing color down */}
+              {folder.subfolders.map((subfolder) => (
+                <FolderItem
+                  key={subfolder.id}
+                  folder={subfolder}
+                  depth={depth + 1}
+                  parentColor={folderColor}
+                />
+              ))}
+
+              {/* Render notes in this folder */}
+              {folder.notes.map((note) => (
+                <NoteItem
+                  key={note.id}
+                  note={note}
+                  depth={depth + 1}
+                  folderColor={folderColor}
+                />
+              ))}
+
+              {!hasContent && (
+                <div
+                  className="text-xs text-muted-foreground py-1 italic"
+                  style={{ paddingLeft: `${(depth + 1) * 20 + 16}px` }}
+                >
+                  Empty folder
+                </div>
+              )}
+            </SidebarMenuSub>
+          </CollapsibleContent>
+        </Collapsible>
+      </SidebarMenuItem>
+    </div>
+  );
+}
+
+interface NoteItemProps {
+  note: Note;
+  depth?: number;
+  folderColor?: string;
+}
+
+function NoteItem({ note, depth = 0, folderColor }: NoteItemProps) {
+  const { selectNote, updateNote, deleteNote, state } = useNotes();
+  const [isHovered, setIsHovered] = React.useState(false);
+  const isActive = state.selectedNoteId === note.id;
+
+  const handleCopyLink = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const url = `${window.location.origin}/note/${note.id}`;
+    navigator.clipboard.writeText(url);
+  };
+
+  const handleToggleFavorite = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    updateNote(note.id, { favorite: !note.favorite });
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    deleteNote(note.id);
+  };
+
+  return (
+    <div className="relative w-full">
+      {/* Tree line connector - inherits folder color */}
+      {depth > 0 && folderColor && (
+        <>
+          <div
+            className="absolute top-0 bottom-0 w-[2px] opacity-40 pointer-events-none"
+            style={{
+              left: `${(depth - 1) * 20 + 10}px`,
+              borderLeft: `2px solid ${folderColor}`,
+            }}
+          />
+          <div
+            className="absolute top-[18px] w-3 h-[2px] opacity-40 pointer-events-none"
+            style={{
+              left: `${(depth - 1) * 20 + 10}px`,
+              backgroundColor: folderColor,
+            }}
+          />
+        </>
+      )}
+
+      <SidebarMenuItem
+        className="relative z-10"
+        style={{ paddingLeft: `${depth * 20}px` }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <div className="flex items-center gap-1 w-full">
+          <div className="h-6 w-6" /> {/* Spacer for alignment with folders */}
+
+          <SidebarMenuButton
+            onClick={() => selectNote(note.id)}
+            isActive={isActive}
+            className={cn("flex-1 justify-start gap-2 h-8 min-w-0")}
           >
-            <Plus className="h-4 w-4" />
-          </Button>
+            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="truncate text-sm">{note.title || "Untitled Note"}</span>
+            {note.favorite && <Star className="h-3 w-3 shrink-0 fill-yellow-400 text-yellow-400 ml-auto" />}
+          </SidebarMenuButton>
+
+          {/* Action button - visible on hover */}
+          <div className={cn("flex items-center shrink-0 transition-opacity", !isHovered && "opacity-0")}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 bg-popover">
+                <DropdownMenuItem onClick={handleToggleFavorite}>
+                  {note.favorite ? (
+                    <>
+                      <StarOff className="mr-2 h-4 w-4" />
+                      Remove from favorites
+                    </>
+                  ) : (
+                    <>
+                      <Star className="mr-2 h-4 w-4" />
+                      Add to favorites
+                    </>
+                  )}
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={handleCopyLink}>
+                  <LinkIcon className="mr-2 h-4 w-4" />
+                  Copy link
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
+                  <X className="mr-2 h-4 w-4" />
+                  Delete note
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
+      </SidebarMenuItem>
+    </div>
+  );
+}
+
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const {
+    state,
+    folderTree,
+    globalNotes,
+    favoriteNotes,
+    createNote,
+    createFolder,
+    setSearchQuery,
+  } = useNotes();
+
+  return (
+    <Sidebar className="border-r border-sidebar-border" {...props}>
+      <SidebarHeader className="p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+            <FileText className="w-4 h-4 text-primary-foreground" />
+          </div>
+          <span className="font-serif font-semibold text-lg text-sidebar-foreground">Inklings</span>
+        </div>
+
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search notes..."
-            className="pl-9 h-9 bg-sidebar-accent border-none"
+            className="pl-9 bg-sidebar-accent border-0 focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             value={state.searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="custom-scrollbar">
+      <SidebarContent className="gap-0 px-2">
+        {/* Favorites */}
+        {favoriteNotes.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2">
+              Favorites
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {favoriteNotes.map((note) => (
+                  <NoteItem key={note.id} note={note} depth={0} />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* Quick Notes (global notes without folder) */}
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xs uppercase tracking-wider text-muted-foreground px-3">
-            All Notes ({filteredNotes.length})
-          </SidebarGroupLabel>
+          <div className="flex items-center justify-between px-2 mb-1">
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider p-0">
+              Quick Notes
+            </SidebarGroupLabel>
+            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={() => createNote()}>
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
           <SidebarGroupContent>
             <SidebarMenu>
-              {filteredNotes.length === 0 ? (
-                <div className="px-3 py-8 text-center text-muted-foreground">
-                  <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No notes yet</p>
-                  <p className="text-xs mt-1">Create your first note to get started</p>
+              {globalNotes.length === 0 ? (
+                <div className="px-3 py-4 text-center text-muted-foreground">
+                  <FileText className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                  <p className="text-xs">No notes yet</p>
                 </div>
               ) : (
-                filteredNotes.map((note) => (
-                  <SidebarMenuItem key={note.id}>
-                    <button
-                      onClick={() => selectNote(note.id)}
-                      className={cn(
-                        'note-item w-full text-left group',
-                        selectedNote?.id === note.id && 'note-item-active'
-                      )}
-                    >
-                      <div className="flex items-start gap-2">
-                        <FileText className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {note.title || 'Untitled Note'}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {formatDate(note.updatedAt)}
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  </SidebarMenuItem>
+                globalNotes.map((note) => (
+                  <NoteItem key={note.id} note={note} depth={0} />
+                ))
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Folders section with tree lines */}
+        <SidebarGroup>
+          <div className="flex items-center justify-between px-2 mb-1">
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider p-0">
+              Folders
+            </SidebarGroupLabel>
+            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={() => createFolder("New Folder")}>
+              <FolderPlus className="h-3 w-3" />
+            </Button>
+          </div>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {folderTree.length === 0 ? (
+                <div className="px-3 py-4 text-center text-muted-foreground">
+                  <FolderIcon className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                  <p className="text-xs">No folders yet</p>
+                </div>
+              ) : (
+                folderTree.map((folder) => (
+                  <FolderItem key={folder.id} folder={folder} depth={0} />
                 ))
               )}
             </SidebarMenu>
@@ -111,17 +459,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-3">
+      <SidebarFooter className="p-4 border-t border-sidebar-border">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{state.notes.length} notes</span>
           {state.isSaving ? (
-            <span className="flex items-center gap-1 animate-pulse-subtle">
-              <div className="h-2 w-2 rounded-full bg-warning" />
+            <span className="flex items-center gap-1 animate-pulse">
+              <Clock className="h-3 w-3" />
               Saving...
             </span>
           ) : state.lastSaved ? (
             <span className="flex items-center gap-1">
-              <Check className="h-3 w-3 text-success" />
+              <Check className="h-3 w-3 text-green-500" />
               Saved
             </span>
           ) : null}
@@ -132,3 +480,5 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     </Sidebar>
   );
 }
+
+export default AppSidebar;
