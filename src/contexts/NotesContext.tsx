@@ -238,7 +238,7 @@ interface NotesContextValue {
   deleteNote: (id: string) => void;
   selectNote: (id: string | null) => void;
   setSearchQuery: (query: string) => void;
-  createFolder: (name: string, parentId?: string) => Folder;
+  createFolder: (name: string, parentId?: string, options?: Partial<Folder>) => Folder;
   updateFolder: (id: string, updates: Partial<Folder>) => void;
   deleteFolder: (id: string) => void;
   undo: () => void;
@@ -452,7 +452,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_SEARCH', payload: query });
   }, []);
 
-  const createFolder = useCallback((name: string, parentId?: string): Folder => {
+  const createFolder = useCallback((name: string, parentId?: string, options?: Partial<Folder>): Folder => {
     dispatch({ type: 'PUSH_HISTORY' });
     
     // Parse folder name for entity properties
@@ -469,10 +469,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       name: name || 'New Folder',
       parentId,
       createdAt: new Date(),
-      entityKind: parsed?.kind,
-      entityLabel: parsed?.label,
-      isTypedRoot: parsed?.isTypedRoot ?? false,
+      entityKind: options?.entityKind ?? parsed?.kind,
+      entityLabel: options?.entityLabel ?? parsed?.label,
+      isTypedRoot: options?.isTypedRoot ?? parsed?.isTypedRoot ?? false,
       inheritedKind,
+      color: options?.color,
     };
     dispatch({ type: 'ADD_FOLDER', payload: newFolder });
     return newFolder;
