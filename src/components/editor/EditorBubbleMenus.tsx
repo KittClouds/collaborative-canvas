@@ -1,4 +1,4 @@
-// Import bubble menu components
+import { forwardRef } from 'react';
 import {
   RichTextBubbleText,
   RichTextBubbleMenuDragHandle,
@@ -15,49 +15,26 @@ import {
   RichTextBubbleTwitter,
 } from 'reactjs-tiptap-editor/bubble';
 
-const EditorBubbleMenus = () => {
+const EditorBubbleMenus = forwardRef<HTMLDivElement>((_, ref) => {
   return (
-    <>
-      {/* Drag handle for moving blocks */}
+    <div ref={ref}>
       <RichTextBubbleMenuDragHandle />
-      
-      {/* Text selection bubble menu */}
       <RichTextBubbleText />
-      
-      {/* Link bubble menu */}
       <RichTextBubbleLink />
-      
-      {/* Table bubble menu */}
       <RichTextBubbleTable />
-      
-      {/* Image bubble menu */}
       <RichTextBubbleImage />
-      
-      {/* Video bubble menu */}
       <RichTextBubbleVideo />
-      
-      {/* Columns bubble menu */}
       <RichTextBubbleColumns />
-      
-      {/* Iframe bubble menu */}
       <RichTextBubbleIframe />
-      
-      {/* Katex bubble menu */}
       <RichTextBubbleKatex />
-      
-      {/* Excalidraw bubble menu */}
       <RichTextBubbleExcalidraw />
-      
-      {/* Mermaid bubble menu */}
       <RichTextBubbleMermaid />
-      
-      {/* Drawer bubble menu */}
       <RichTextBubbleDrawer />
-      
-      {/* Twitter bubble menu */}
       <RichTextBubbleTwitter />
-    </>
+    </div>
   );
-};
+});
+
+EditorBubbleMenus.displayName = 'EditorBubbleMenus';
 
 export default EditorBubbleMenus;
