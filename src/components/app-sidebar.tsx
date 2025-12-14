@@ -53,8 +53,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useNotes, FolderWithChildren, Note } from "@/contexts/NotesContext";
-import { ENTITY_COLORS, EntityKind } from "@/lib/entities/entityTypes";
-import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName } from "@/lib/entities/titleParser";
+import { ENTITY_COLORS, ENTITY_SUBTYPES, EntityKind, getSubtypesForKind } from "@/lib/entities/entityTypes";
+import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName, formatSubtypeFolderName } from "@/lib/entities/titleParser";
 
 // Entity kind icons mapping
 const ENTITY_ICONS: Record<EntityKind, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
@@ -126,8 +126,8 @@ function RenameInput({
 
   const handleSubmit = () => {
     const trimmed = value.trim();
-    // Check if it's just a prefix like "[CHARACTER|" with no name
-    const isEmptyEntityPrefix = /^\[[A-Z_]+\|?\]?$/.test(trimmed) || trimmed.endsWith('|');
+    // Check if it's just a prefix like "[CHARACTER|" or "[CHARACTER:ALLY|" with no name
+    const isEmptyEntityPrefix = /^\[[A-Z_]+(?::[A-Z_]+)?\|?\]?$/.test(trimmed) || trimmed.endsWith('|');
     
     if (isEmptyEntityPrefix || !trimmed) {
       // Empty or just prefix - cancel or delete
@@ -139,9 +139,9 @@ function RenameInput({
       return;
     }
     
-    // Complete the entity syntax if needed (e.g., "[CHARACTER|Jon Snow" → "[CHARACTER|Jon Snow]")
+    // Complete the entity syntax if needed (e.g., "[CHARACTER:ALLY|Jon Snow" → "[CHARACTER:ALLY|Jon Snow]")
     let finalValue = trimmed;
-    if (trimmed.match(/^\[[A-Z_]+\|[^\]]+$/) && !trimmed.endsWith(']')) {
+    if (trimmed.match(/^\[[A-Z_]+(?::[A-Z_]+)?\|[^\]]+$/) && !trimmed.endsWith(']')) {
       finalValue = trimmed + ']';
     }
     
@@ -250,6 +250,78 @@ function EntityFolderCreationMenu() {
   );
 }
 
+// Subtype folder creation dropdown menu (shown inside typed folders)
+interface SubtypeFolderMenuProps {
+  parentId: string;
+  parentKind: EntityKind;
+  onComplete?: () => void;
+}
+
+function SubtypeFolderMenu({ parentId, parentKind, onComplete }: SubtypeFolderMenuProps) {
+  const { createFolder } = useNotes();
+  const [isOpen, setIsOpen] = React.useState(false);
+  
+  const subtypes = getSubtypesForKind(parentKind);
+  
+  const handleCreateSubtypeFolder = (subtype: string) => {
+    createFolder(formatSubtypeFolderName(parentKind, subtype), parentId, {
+      entityKind: parentKind,
+      entitySubtype: subtype,
+      isSubtypeRoot: true,
+      color: ENTITY_COLORS[parentKind],
+    });
+    setIsOpen(false);
+    onComplete?.();
+  };
+
+  const handleCreateRegularSubfolder = () => {
+    createFolder("New Folder", parentId);
+    setIsOpen(false);
+    onComplete?.();
+  };
+
+  return (
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+          <FolderPlus className="h-3 w-3" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56 bg-popover">
+        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+          {parentKind} Subtypes
+        </div>
+        {subtypes.map((subtype) => (
+          <DropdownMenuItem
+            key={subtype}
+            onClick={() => handleCreateSubtypeFolder(subtype)}
+            className="gap-2"
+          >
+            <FolderIcon className="h-4 w-4" style={{ color: ENTITY_COLORS[parentKind] }} />
+            <span>{subtype}</span>
+            <span
+              className="ml-auto text-[10px] px-1.5 py-0.5 rounded font-medium"
+              style={{
+                backgroundColor: `${ENTITY_COLORS[parentKind]}20`,
+                color: ENTITY_COLORS[parentKind],
+              }}
+            >
+              {parentKind}:{subtype}
+            </span>
+          </DropdownMenuItem>
+        ))}
+        
+        <DropdownMenuSeparator />
+        
+        <DropdownMenuItem onClick={handleCreateRegularSubfolder} className="gap-2">
+          <FolderIcon className="h-4 w-4" />
+          <span>Regular Subfolder</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 interface FolderItemProps {
   folder: FolderWithChildren;
   depth?: number;
@@ -267,6 +339,10 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
   const folderColor = folder.color || parentColor || DEFAULT_COLORS[depth % DEFAULT_COLORS.length];
   const hasContent = folder.subfolders.length > 0 || folder.notes.length > 0;
 
+  // Get effective kind for this folder (for subtype menu and note creation)
+  const effectiveKind = folder.entityKind || folder.inheritedKind;
+  const effectiveSubtype = folder.entitySubtype || folder.inheritedSubtype;
+
   const handleCreateSubfolder = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -278,12 +354,16 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
     e.stopPropagation();
     e.preventDefault();
     
-    // Get the inherited kind for this folder
+    // Get the inherited kind and subtype for this folder
     const kind = folder.entityKind || folder.inheritedKind;
+    const subtype = folder.entitySubtype || folder.inheritedSubtype;
     
     let newNote: ReturnType<typeof createNote>;
-    if (kind) {
-      // Create note with entity prefix for typed folders
+    if (kind && subtype) {
+      // Create note with kind:subtype prefix for subtyped folders
+      newNote = createNote(folder.id, `[${kind}:${subtype}|`);
+    } else if (kind) {
+      // Create note with just kind prefix for typed folders
       newNote = createNote(folder.id, `[${kind}|`);
     } else {
       newNote = createNote(folder.id);
@@ -386,7 +466,7 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
                   <FolderIcon className="h-4 w-4 shrink-0" style={{ color: folderColor }} />
                 )}
                 <span className="truncate text-sm font-medium">{getDisplayName(folder.name) || "New Folder"}</span>
-                {/* Entity badge for typed folders */}
+                {/* Entity badges for typed folders */}
                 {folder.entityKind && (
                   <span
                     className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
@@ -395,7 +475,7 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
                       color: ENTITY_COLORS[folder.entityKind],
                     }}
                   >
-                    {folder.entityKind}
+                    {folder.entitySubtype ? `${folder.entityKind}:${folder.entitySubtype}` : folder.entityKind}
                   </span>
                 )}
               </div>
@@ -426,10 +506,43 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
 
                     <DropdownMenuSeparator />
 
-                    <DropdownMenuItem onClick={handleCreateSubfolder}>
-                      <FolderPlus className="mr-2 h-4 w-4" />
-                      New subfolder
-                    </DropdownMenuItem>
+                    {/* Show subtype menu for typed folders, regular subfolder otherwise */}
+                    {effectiveKind ? (
+                      <div className="px-2 py-1">
+                        <div className="text-xs text-muted-foreground mb-1.5">Create Subfolder</div>
+                        <div className="flex flex-col gap-1">
+                          {getSubtypesForKind(effectiveKind).slice(0, 4).map((subtype) => (
+                            <DropdownMenuItem
+                              key={subtype}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                createFolder(formatSubtypeFolderName(effectiveKind, subtype), folder.id, {
+                                  entityKind: effectiveKind,
+                                  entitySubtype: subtype,
+                                  isSubtypeRoot: true,
+                                  color: ENTITY_COLORS[effectiveKind],
+                                });
+                                setIsExpanded(true);
+                              }}
+                              className="gap-2"
+                            >
+                              <FolderIcon className="h-4 w-4" style={{ color: ENTITY_COLORS[effectiveKind] }} />
+                              <span>{subtype}</span>
+                            </DropdownMenuItem>
+                          ))}
+                          <DropdownMenuItem onClick={handleCreateSubfolder} className="gap-2">
+                            <FolderPlus className="mr-2 h-4 w-4" />
+                            Regular subfolder
+                          </DropdownMenuItem>
+                        </div>
+                      </div>
+                    ) : (
+                      <DropdownMenuItem onClick={handleCreateSubfolder}>
+                        <FolderPlus className="mr-2 h-4 w-4" />
+                        New subfolder
+                      </DropdownMenuItem>
+                    )}
 
                     <DropdownMenuItem onClick={handleCreateNote}>
                       <Plus className="mr-2 h-4 w-4" />
@@ -587,8 +700,8 @@ function NoteItem({ note, depth = 0, folderColor, autoRename, onRenameComplete }
     setIsRenaming(true);
   };
   
-  // Check if this is an auto-created entity note (has prefix like "[CHARACTER|")
-  const isAutoCreatedEntity = Boolean(autoRename && /^\[[A-Z_]+\|$/.test(note.title));
+  // Check if this is an auto-created entity note (has prefix like "[CHARACTER|" or "[CHARACTER:ALLY|")
+  const isAutoCreatedEntity = Boolean(autoRename && /^\[[A-Z_]+(?::[A-Z_]+)?\|$/.test(note.title));
 
   return (
     <div className="relative w-full">
@@ -646,7 +759,7 @@ function NoteItem({ note, depth = 0, folderColor, autoRename, onRenameComplete }
                 style={entityColor ? { color: entityColor } : undefined}
               />
               <span className="truncate text-sm">{displayName || "Untitled Note"}</span>
-              {/* Entity badge */}
+              {/* Entity badge with optional subtype */}
               {note.isEntity && note.entityKind && (
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
@@ -655,7 +768,7 @@ function NoteItem({ note, depth = 0, folderColor, autoRename, onRenameComplete }
                     color: ENTITY_COLORS[note.entityKind],
                   }}
                 >
-                  {note.entityKind}
+                  {note.entitySubtype ? `${note.entityKind}:${note.entitySubtype}` : note.entityKind}
                 </span>
               )}
               {/* Kind mismatch warning */}

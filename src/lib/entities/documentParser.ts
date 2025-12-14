@@ -93,10 +93,10 @@ export function parseNoteConnectionsFromDocument(
   connections.wikilinks = [...new Set(connections.wikilinks)];
   connections.backlinks = [...new Set(connections.backlinks)];
 
-  // Dedupe entities by kind+label, merging positions
+  // Dedupe entities by kind+subtype+label, merging positions
   const entityMap = new Map<string, EntityReference>();
   for (const entity of connections.entities) {
-    const key = `${entity.kind}|${entity.label}`;
+    const key = `${entity.kind}:${entity.subtype || ''}|${entity.label}`;
     const existing = entityMap.get(key);
     if (existing) {
       // Merge positions
@@ -150,13 +150,14 @@ function extractRawSyntax(text: string, connections: DocumentConnections) {
     }
   }
 
-  // Extract raw entities ([KIND|Label]) with positions
-  const entityRegex = /\[([A-Z_]+)\|([^\]]+?)(?:\|({.*?}))?\]/g;
+  // Extract raw entities ([KIND:SUBTYPE|Label] or [KIND|Label]) with positions
+  const entityRegex = /\[([A-Z_]+)(?::([A-Z_]+))?\|([^\]]+?)(?:\|({.*?}))?\]/g;
   let entityMatch: RegExpExecArray | null;
   while ((entityMatch = entityRegex.exec(text)) !== null) {
-    const [, kind, label, attrsJSON] = entityMatch;
+    const [, kind, subtype, label, attrsJSON] = entityMatch;
     const entity: EntityReference = { 
       kind: kind as EntityKind, 
+      subtype: subtype || undefined,
       label,
       positions: [entityMatch.index],
     };
@@ -204,9 +205,9 @@ export function hasRawEntitySyntax(content: JSONContent): boolean {
   const walkNode = (node: JSONContent): boolean => {
     if (node.type === 'text' && node.text) {
       const text = node.text;
-      // Check for any raw entity patterns
+      // Check for any raw entity patterns (including subtype syntax)
       if (
-        /\[[A-Z_]+\|[^\]]+\]/.test(text) || // Entity syntax
+        /\[[A-Z_]+(?::[A-Z_]+)?\|[^\]]+\]/.test(text) || // Entity syntax with optional subtype
         /\[\[\s*[^\]]+\s*\]\]/.test(text) || // Wiki links
         /<<\s*[^>]+\s*>>/.test(text) || // Backlinks
         /#\w+/.test(text) || // Tags
