@@ -73,7 +73,6 @@ import 'react-image-crop/dist/ReactCrop.css';
 // Import editor components
 import EditorToolbar from './editor/EditorToolbar';
 import EditorBubbleMenus from './editor/EditorBubbleMenus';
-import { EntityBubbleMenu } from './editor/EntityBubbleMenu';
 
 import { useLayoutDimensions } from '@/hooks/useLayoutDimensions';
 
@@ -339,10 +338,7 @@ const RichEditor = ({
           <EditorContent editor={editor} className="min-h-full" />
         </div>
         
-        {/* Entity Bubble Menu */}
-        <EntityBubbleMenu editor={editor} />
-        
-        {/* Other Bubble Menus */}
+        {/* Bubble Menus */}
         <EditorBubbleMenus />
       </RichTextProvider>
     </div>
