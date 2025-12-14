@@ -58,19 +58,36 @@ export function EntityBubbleMenu({ editor }: EntityBubbleMenuProps) {
       return;
     }
 
-    const view = editor.view;
-    const start = view.coordsAtPos(from);
-    const end = view.coordsAtPos(to);
+    // Ensure the editor view is mounted and ready
+    if (!editor.view || !editor.view.dom) {
+      setIsVisible(false);
+      return;
+    }
 
-    // Calculate center position above selection
-    const centerX = (start.left + end.right) / 2;
-    const top = start.top - 50; // 50px above the selection
+    try {
+      const view = editor.view;
+      const start = view.coordsAtPos(from);
+      const end = view.coordsAtPos(to);
 
-    setPosition({
-      top: Math.max(10, top),
-      left: centerX,
-    });
-    setIsVisible(true);
+      // Calculate center position above selection
+      const centerX = (start.left + end.right) / 2;
+      const top = start.top - 50; // 50px above the selection
+
+      setPosition({
+        top: Math.max(10, top),
+        left: centerX,
+      });
+      setIsVisible(true);
+    } catch (error) {
+      // DOM is not ready or positions are invalid
+      setIsVisible(false);
+    }
+  }, [editor]);
+
+  // Reset state when editor changes
+  useEffect(() => {
+    setIsVisible(false);
+    setIsOpen(false);
   }, [editor]);
 
   useEffect(() => {
