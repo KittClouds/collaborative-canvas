@@ -270,19 +270,37 @@
 }
 
 /* reactjs-tiptap-editor theme overrides */
-.richtext-editor {
-  --richtext-bg: hsl(var(--editor-bg)) !important;
-  --richtext-text: hsl(var(--foreground)) !important;
-  --richtext-border: hsl(var(--border)) !important;
-  --richtext-primary: hsl(var(--primary)) !important;
+
+/* Light mode editor overrides (default) */
+.reactjs-tiptap-editor,
+.reactjs-tiptap-editor *,
+div[data-richtext-portal],
+div[data-richtext-portal] * {
+  --background: 45 30% 97%;
+  --foreground: 240 10% 12%;
+  --card: 45 25% 95%;
+  --card-foreground: 240 10% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 12%;
+  --primary: 32 95% 48%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 45 20% 90%;
+  --secondary-foreground: 240 10% 20%;
+  --muted: 45 15% 92%;
+  --muted-foreground: 240 5% 46%;
+  --accent: 32 60% 94%;
+  --accent-foreground: 32 90% 30%;
+  --border: 45 20% 87%;
+  --input: 45 20% 87%;
+  --ring: 32 95% 48%;
 }
 
-.dark .richtext-editor {
-  --richtext-bg: hsl(var(--editor-bg)) !important;
-  --richtext-text: hsl(var(--foreground)) !important;
+.ProseMirror {
+  background-color: hsl(45 30% 97%) !important;
+  color: hsl(240 10% 12%) !important;
 }
 
-/* Force editor dark mode when .dark is on root */
+/* Dark mode editor overrides */
 .dark .reactjs-tiptap-editor,
 .dark .reactjs-tiptap-editor *,
 .dark div[data-richtext-portal],
