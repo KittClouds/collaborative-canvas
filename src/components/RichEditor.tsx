@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { RichTextProvider } from 'reactjs-tiptap-editor';
-import { themeActions } from 'reactjs-tiptap-editor/theme';
 
 // Base tiptap extensions
 import { Document } from '@tiptap/extension-document';
@@ -304,11 +303,6 @@ const RichEditor = ({
       previousContentRef.current = content;
     }
   }, [noteId, editor, content, parseContent]);
-
-  // Sync editor theme when isDarkMode changes
-  useEffect(() => {
-    themeActions.setTheme(isDarkMode ? 'dark' : 'light');
-  }, [isDarkMode]);
 
   if (!editor) {
     return (

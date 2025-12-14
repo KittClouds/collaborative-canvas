@@ -12,7 +12,7 @@ import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Menu, FileText, Trash2 } from 'lucide-react';
 import RichEditor from '@/components/RichEditor';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme } from '@/hooks/useTheme';
 import { useState, useCallback } from 'react';
 import { useNotes, NotesProvider } from '@/contexts/NotesContext';
 import { ThemeToggle } from '@/components/ThemeToggle';

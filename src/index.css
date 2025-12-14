@@ -270,63 +270,16 @@
 }
 
 /* reactjs-tiptap-editor theme overrides */
-
-/* Light mode editor overrides (default) */
-.reactjs-tiptap-editor,
-.reactjs-tiptap-editor *,
-div[data-richtext-portal],
-div[data-richtext-portal] * {
-  --background: 45 30% 97%;
-  --foreground: 240 10% 12%;
-  --card: 45 25% 95%;
-  --card-foreground: 240 10% 12%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 12%;
-  --primary: 32 95% 48%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 45 20% 90%;
-  --secondary-foreground: 240 10% 20%;
-  --muted: 45 15% 92%;
-  --muted-foreground: 240 5% 46%;
-  --accent: 32 60% 94%;
-  --accent-foreground: 32 90% 30%;
-  --border: 45 20% 87%;
-  --input: 45 20% 87%;
-  --ring: 32 95% 48%;
+.richtext-editor {
+  --richtext-bg: hsl(var(--editor-bg)) !important;
+  --richtext-text: hsl(var(--foreground)) !important;
+  --richtext-border: hsl(var(--border)) !important;
+  --richtext-primary: hsl(var(--primary)) !important;
 }
 
-.ProseMirror {
-  background-color: hsl(45 30% 97%) !important;
-  color: hsl(240 10% 12%) !important;
-}
-
-/* Dark mode editor overrides */
-.dark .reactjs-tiptap-editor,
-.dark .reactjs-tiptap-editor *,
-.dark div[data-richtext-portal],
-.dark div[data-richtext-portal] * {
-  --background: 240 15% 6%;
-  --foreground: 45 20% 92%;
-  --card: 240 12% 9%;
-  --card-foreground: 45 20% 92%;
-  --popover: 240 15% 8%;
-  --popover-foreground: 45 20% 92%;
-  --primary: 38 100% 55%;
-  --primary-foreground: 240 15% 6%;
-  --secondary: 240 10% 14%;
-  --secondary-foreground: 45 15% 85%;
-  --muted: 240 10% 12%;
-  --muted-foreground: 240 5% 50%;
-  --accent: 240 10% 15%;
-  --accent-foreground: 38 95% 65%;
-  --border: 240 10% 14%;
-  --input: 240 10% 16%;
-  --ring: 38 100% 55%;
-}
-
-.dark .ProseMirror {
-  background-color: hsl(240 15% 6%) !important;
-  color: hsl(45 20% 92%) !important;
+.dark .richtext-editor {
+  --richtext-bg: hsl(var(--editor-bg)) !important;
+  --richtext-text: hsl(var(--foreground)) !important;
 }
 
 /* Ensure editor takes full height */

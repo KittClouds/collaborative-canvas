@@ -1,6 +1,6 @@
 import { Around } from '@theme-toggles/react';
 import '@theme-toggles/react/css/Around.css';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useTheme } from '@/hooks/useTheme';
 import { useRef } from 'react';
 
 export function ThemeToggle() {
