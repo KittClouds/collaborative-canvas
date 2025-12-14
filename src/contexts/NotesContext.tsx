@@ -11,13 +11,21 @@ export interface Note {
   folderId?: string;
   tags: string[];
   isPinned: boolean;
+  favorite?: boolean;
 }
 
 export interface Folder {
   id: string;
   name: string;
   parentId?: string;
+  color?: string;
   createdAt: Date;
+}
+
+// Helper type for building folder tree
+export interface FolderWithChildren extends Folder {
+  subfolders: FolderWithChildren[];
+  notes: Note[];
 }
 
 interface NotesState {
@@ -31,6 +39,7 @@ interface NotesState {
 
 type NotesAction =
   | { type: 'SET_NOTES'; payload: Note[] }
+  | { type: 'SET_FOLDERS'; payload: Folder[] }
   | { type: 'ADD_NOTE'; payload: Note }
   | { type: 'UPDATE_NOTE'; payload: { id: string; updates: Partial<Note> } }
   | { type: 'DELETE_NOTE'; payload: string }
@@ -39,6 +48,7 @@ type NotesAction =
   | { type: 'SET_SAVING'; payload: boolean }
   | { type: 'SET_LAST_SAVED'; payload: Date }
   | { type: 'ADD_FOLDER'; payload: Folder }
+  | { type: 'UPDATE_FOLDER'; payload: { id: string; updates: Partial<Folder> } }
   | { type: 'DELETE_FOLDER'; payload: string };
 
 const initialState: NotesState = {
@@ -54,6 +64,8 @@ function notesReducer(state: NotesState, action: NotesAction): NotesState {
   switch (action.type) {
     case 'SET_NOTES':
       return { ...state, notes: action.payload };
+    case 'SET_FOLDERS':
+      return { ...state, folders: action.payload };
     case 'ADD_NOTE':
       return { ...state, notes: [action.payload, ...state.notes] };
     case 'UPDATE_NOTE':
@@ -82,20 +94,63 @@ function notesReducer(state: NotesState, action: NotesAction): NotesState {
       return { ...state, lastSaved: action.payload };
     case 'ADD_FOLDER':
       return { ...state, folders: [...state.folders, action.payload] };
+    case 'UPDATE_FOLDER':
+      return {
+        ...state,
+        folders: state.folders.map((folder) =>
+          folder.id === action.payload.id
+            ? { ...folder, ...action.payload.updates }
+            : folder
+        ),
+      };
     case 'DELETE_FOLDER':
       return {
         ...state,
         folders: state.folders.filter((f) => f.id !== action.payload),
+        // Also remove notes in deleted folder
+        notes: state.notes.filter((n) => n.folderId !== action.payload),
       };
     default:
       return state;
   }
 }
 
+// Build folder tree from flat list
+function buildFolderTree(folders: Folder[], notes: Note[]): FolderWithChildren[] {
+  const folderMap = new Map<string, FolderWithChildren>();
+  
+  // Create folder nodes
+  folders.forEach((folder) => {
+    folderMap.set(folder.id, { ...folder, subfolders: [], notes: [] });
+  });
+  
+  // Assign notes to folders
+  notes.forEach((note) => {
+    if (note.folderId && folderMap.has(note.folderId)) {
+      folderMap.get(note.folderId)!.notes.push(note);
+    }
+  });
+  
+  // Build tree structure
+  const rootFolders: FolderWithChildren[] = [];
+  folderMap.forEach((folder) => {
+    if (folder.parentId && folderMap.has(folder.parentId)) {
+      folderMap.get(folder.parentId)!.subfolders.push(folder);
+    } else {
+      rootFolders.push(folder);
+    }
+  });
+  
+  return rootFolders;
+}
+
 interface NotesContextValue {
   state: NotesState;
   selectedNote: Note | null;
   filteredNotes: Note[];
+  folderTree: FolderWithChildren[];
+  globalNotes: Note[];
+  favoriteNotes: Note[];
   createNote: (folderId?: string) => Note;
   updateNote: (id: string, updates: Partial<Note>) => void;
   updateNoteContent: (id: string, content: string) => void;
@@ -103,6 +158,7 @@ interface NotesContextValue {
   selectNote: (id: string | null) => void;
   setSearchQuery: (query: string) => void;
   createFolder: (name: string, parentId?: string) => Folder;
+  updateFolder: (id: string, updates: Partial<Folder>) => void;
   deleteFolder: (id: string) => void;
 }
 
@@ -149,12 +205,8 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   // Load initial data
   useEffect(() => {
     const { notes, folders } = loadFromStorage();
-    if (notes.length > 0) {
-      dispatch({ type: 'SET_NOTES', payload: notes });
-    }
-    folders.forEach((folder) => {
-      dispatch({ type: 'ADD_FOLDER', payload: folder });
-    });
+    dispatch({ type: 'SET_NOTES', payload: notes });
+    dispatch({ type: 'SET_FOLDERS', payload: folders });
   }, []);
 
   // Auto-save on changes
@@ -181,6 +233,15 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       note.tags.some((tag) => tag.toLowerCase().includes(query))
     );
   });
+
+  // Build folder tree
+  const folderTree = buildFolderTree(state.folders, state.notes);
+  
+  // Notes without a folder
+  const globalNotes = state.notes.filter((note) => !note.folderId);
+  
+  // Favorite notes
+  const favoriteNotes = state.notes.filter((note) => note.favorite);
 
   const createNote = useCallback((folderId?: string): Note => {
     const newNote: Note = {
@@ -236,12 +297,16 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const createFolder = useCallback((name: string, parentId?: string): Folder => {
     const newFolder: Folder = {
       id: uuidv4(),
-      name,
+      name: name || 'New Folder',
       parentId,
       createdAt: new Date(),
     };
     dispatch({ type: 'ADD_FOLDER', payload: newFolder });
     return newFolder;
+  }, []);
+
+  const updateFolder = useCallback((id: string, updates: Partial<Folder>) => {
+    dispatch({ type: 'UPDATE_FOLDER', payload: { id, updates } });
   }, []);
 
   const deleteFolder = useCallback((id: string) => {
@@ -254,6 +319,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         state,
         selectedNote,
         filteredNotes,
+        folderTree,
+        globalNotes,
+        favoriteNotes,
         createNote,
         updateNote,
         updateNoteContent,
@@ -261,6 +329,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         selectNote,
         setSearchQuery,
         createFolder,
+        updateFolder,
         deleteFolder,
       }}
     >
