@@ -9,6 +9,8 @@ import {
   Star,
   StarOff,
   Link as LinkIcon,
+  Link2,
+  ArrowRight,
   X,
   FileText,
   Search,
@@ -51,10 +53,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useNotes, FolderWithChildren, Note } from "@/contexts/NotesContext";
 import { ENTITY_COLORS, ENTITY_SUBTYPES, EntityKind, getSubtypesForKind } from "@/lib/entities/entityTypes";
 import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName, formatSubtypeFolderName } from "@/lib/entities/titleParser";
+import { useLinkIndex } from "@/hooks/useLinkIndex";
+import { BacklinksPanel } from "@/components/BacklinksPanel";
+import { OutgoingLinksPanel } from "@/components/OutgoingLinksPanel";
 
 // Entity kind icons mapping
 const ENTITY_ICONS: Record<EntityKind, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
@@ -840,7 +846,33 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     createNote,
     createFolder,
     setSearchQuery,
+    selectNote,
+    selectedNote,
   } = useNotes();
+
+  // Link index for backlinks/outgoing links
+  const { getBacklinks, getOutgoingLinks, findNoteByTitle } = useLinkIndex(state.notes);
+  
+  const backlinks = React.useMemo(() => 
+    selectedNote ? getBacklinks(selectedNote) : [], 
+    [selectedNote, getBacklinks]
+  );
+  
+  const outgoingLinks = React.useMemo(() => 
+    selectedNote ? getOutgoingLinks(selectedNote.id) : [], 
+    [selectedNote, getOutgoingLinks]
+  );
+
+  // Navigate to a note by title (for link panels)
+  const handleNavigateToNote = React.useCallback((title: string, createIfNotExists?: boolean) => {
+    const existingNote = findNoteByTitle(title);
+    if (existingNote) {
+      selectNote(existingNote.id);
+    } else if (createIfNotExists) {
+      const newNote = createNote(undefined, title);
+      selectNote(newNote.id);
+    }
+  }, [findNoteByTitle, selectNote, createNote]);
 
   return (
     <Sidebar className="border-r border-sidebar-border" {...props}>
@@ -864,72 +896,103 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
 
       <SidebarContent className="gap-0 px-2">
-        {/* Favorites */}
-        {favoriteNotes.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2">
-              Favorites
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {favoriteNotes.map((note) => (
-                  <NoteItem key={note.id} note={note} depth={0} />
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+        <Tabs defaultValue="notes" className="flex-1 flex flex-col">
+          <TabsList className="grid w-full grid-cols-3 mb-2">
+            <TabsTrigger value="notes" className="text-xs">Notes</TabsTrigger>
+            <TabsTrigger value="backlinks" className="text-xs gap-1">
+              <Link2 className="h-3 w-3" />
+              <span className="hidden sm:inline">Back</span>
+            </TabsTrigger>
+            <TabsTrigger value="outgoing" className="text-xs gap-1">
+              <ArrowRight className="h-3 w-3" />
+              <span className="hidden sm:inline">Out</span>
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Quick Notes (global notes without folder) */}
-        <SidebarGroup>
-          <div className="flex items-center justify-between px-2 mb-1">
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider p-0">
-              Quick Notes
-            </SidebarGroupLabel>
-            <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={() => createNote()}>
-              <Plus className="h-3 w-3" />
-            </Button>
-          </div>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {globalNotes.length === 0 ? (
-                <div className="px-3 py-4 text-center text-muted-foreground">
-                  <FileText className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                  <p className="text-xs">No notes yet</p>
-                </div>
-              ) : (
-                globalNotes.map((note) => (
-                  <NoteItem key={note.id} note={note} depth={0} />
-                ))
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+          <TabsContent value="notes" className="flex-1 mt-0 space-y-4">
+            {/* Favorites */}
+            {favoriteNotes.length > 0 && (
+              <SidebarGroup>
+                <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2">
+                  Favorites
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {favoriteNotes.map((note) => (
+                      <NoteItem key={note.id} note={note} depth={0} />
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
 
-        {/* Folders section with entity creation menu */}
-        <SidebarGroup>
-          <div className="flex items-center justify-between px-2 mb-1">
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider p-0">
-              Folders
-            </SidebarGroupLabel>
-            <EntityFolderCreationMenu />
-          </div>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {folderTree.length === 0 ? (
-                <div className="px-3 py-4 text-center text-muted-foreground">
-                  <FolderIcon className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                  <p className="text-xs">No folders yet</p>
-                  <p className="text-[10px] mt-1">Click + to create entity folder</p>
-                </div>
-              ) : (
-                folderTree.map((folder) => (
-                  <FolderItem key={folder.id} folder={folder} depth={0} />
-                ))
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+            {/* Quick Notes (global notes without folder) */}
+            <SidebarGroup>
+              <div className="flex items-center justify-between px-2 mb-1">
+                <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider p-0">
+                  Quick Notes
+                </SidebarGroupLabel>
+                <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={() => createNote()}>
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {globalNotes.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-muted-foreground">
+                      <FileText className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                      <p className="text-xs">No notes yet</p>
+                    </div>
+                  ) : (
+                    globalNotes.map((note) => (
+                      <NoteItem key={note.id} note={note} depth={0} />
+                    ))
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            {/* Folders section with entity creation menu */}
+            <SidebarGroup>
+              <div className="flex items-center justify-between px-2 mb-1">
+                <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider p-0">
+                  Folders
+                </SidebarGroupLabel>
+                <EntityFolderCreationMenu />
+              </div>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {folderTree.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-muted-foreground">
+                      <FolderIcon className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                      <p className="text-xs">No folders yet</p>
+                      <p className="text-[10px] mt-1">Click + to create entity folder</p>
+                    </div>
+                  ) : (
+                    folderTree.map((folder) => (
+                      <FolderItem key={folder.id} folder={folder} depth={0} />
+                    ))
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </TabsContent>
+
+          <TabsContent value="backlinks" className="flex-1 mt-0">
+            <BacklinksPanel 
+              backlinks={backlinks} 
+              onNavigate={handleNavigateToNote} 
+            />
+          </TabsContent>
+
+          <TabsContent value="outgoing" className="flex-1 mt-0">
+            <OutgoingLinksPanel 
+              outgoingLinks={outgoingLinks} 
+              notes={state.notes}
+              onNavigate={handleNavigateToNote} 
+            />
+          </TabsContent>
+        </Tabs>
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-sidebar-border">

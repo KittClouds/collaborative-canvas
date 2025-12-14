@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useMemo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { RichTextProvider } from 'reactjs-tiptap-editor';
 
@@ -60,7 +60,7 @@ import { SlashCommand } from 'reactjs-tiptap-editor/slashcommand';
 import { EntityMark } from '@/lib/extensions/EntityMark';
 import { TagMark } from '@/lib/extensions/TagMark';
 import { MentionMarkExt } from '@/lib/extensions/MentionMarkExt';
-import { WikiLinkMark } from '@/lib/extensions/WikiLinkMark';
+import { WikiLinkMark, type WikiLinkMarkOptions } from '@/lib/extensions/WikiLinkMark';
 
 // Import CSS
 import 'reactjs-tiptap-editor/style.css';
@@ -83,6 +83,8 @@ interface RichEditorProps {
   noteId?: string;
   toolbarVisible?: boolean;
   onToolbarVisibilityChange?: (visible: boolean) => void;
+  onWikilinkClick?: (title: string) => void;
+  checkWikilinkExists?: (title: string) => boolean;
 }
 
 function convertBase64ToBlob(base64: string) {
@@ -97,142 +99,151 @@ function convertBase64ToBlob(base64: string) {
   return new Blob([u8arr], { type: mime });
 }
 
-const extensions = [
-  // Base Extensions
-  Document,
-  Text,
-  Paragraph,
-  HardBreak,
-  Dropcursor,
-  Gapcursor,
-  TextStyle,
-  ListItem,
-  Placeholder.configure({
-    placeholder: "Start writing or press '/' for commands...",
-    showOnlyCurrent: true,
-  }),
+// Create extensions factory function to allow dynamic configuration
+function createExtensions(
+  onWikilinkClick?: (title: string) => void,
+  checkWikilinkExists?: (title: string) => boolean
+) {
+  return [
+    // Base Extensions
+    Document,
+    Text,
+    Paragraph,
+    HardBreak,
+    Dropcursor,
+    Gapcursor,
+    TextStyle,
+    ListItem,
+    Placeholder.configure({
+      placeholder: "Start writing or press '/' for commands...",
+      showOnlyCurrent: true,
+    }),
 
-  // Editor Extensions
-  History,
-  SearchAndReplace,
-  Clear,
-  FontFamily,
-  Heading.configure({ spacer: true }),
-  FontSize,
-  Bold,
-  Italic,
-  TextUnderline,
-  Strike,
-  MoreMark,
-  Highlight,
-  Emoji,
-  Color.configure({ spacer: true }),
-  BulletList,
-  OrderedList,
-  TextAlign.configure({ types: ['heading', 'paragraph'], spacer: true }),
-  Indent,
-  LineHeight,
-  TaskList.configure({
-    spacer: true,
-    taskItem: {
-      nested: true,
-    },
-  }),
-  Link,
-  Image.configure({
-    upload: (files: File) => {
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(URL.createObjectURL(files));
-        }, 500);
-      });
-    },
-  }),
-  Video.configure({
-    upload: (files: File) => {
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(URL.createObjectURL(files));
-        }, 500);
-      });
-    },
-  }),
-  ImageGif.configure({
-    API_KEY: import.meta.env.VITE_GIPHY_API_KEY || '',
-    provider: 'giphy',
-  }),
-  Blockquote,
-  HorizontalRule,
-  Code.configure({
-    toolbar: false,
-  }),
-  CodeBlock,
-  Column,
-  Table,
-  Iframe,
-  ExportPdf.configure({ spacer: true }),
-  ImportWord.configure({
-    upload: (files: File[]) => {
-      const f = files.map(file => ({
-        src: URL.createObjectURL(file),
-        alt: file.name,
-      }));
-      return Promise.resolve(f);
-    },
-  }),
-  ExportWord,
-  TextDirection,
-  Mention,
-  Attachment.configure({
-    upload: (file: any) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
+    // Editor Extensions
+    History,
+    SearchAndReplace,
+    Clear,
+    FontFamily,
+    Heading.configure({ spacer: true }),
+    FontSize,
+    Bold,
+    Italic,
+    TextUnderline,
+    Strike,
+    MoreMark,
+    Highlight,
+    Emoji,
+    Color.configure({ spacer: true }),
+    BulletList,
+    OrderedList,
+    TextAlign.configure({ types: ['heading', 'paragraph'], spacer: true }),
+    Indent,
+    LineHeight,
+    TaskList.configure({
+      spacer: true,
+      taskItem: {
+        nested: true,
+      },
+    }),
+    Link,
+    Image.configure({
+      upload: (files: File) => {
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve(URL.createObjectURL(files));
+          }, 500);
+        });
+      },
+    }),
+    Video.configure({
+      upload: (files: File) => {
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve(URL.createObjectURL(files));
+          }, 500);
+        });
+      },
+    }),
+    ImageGif.configure({
+      API_KEY: import.meta.env.VITE_GIPHY_API_KEY || '',
+      provider: 'giphy',
+    }),
+    Blockquote,
+    HorizontalRule,
+    Code.configure({
+      toolbar: false,
+    }),
+    CodeBlock,
+    Column,
+    Table,
+    Iframe,
+    ExportPdf.configure({ spacer: true }),
+    ImportWord.configure({
+      upload: (files: File[]) => {
+        const f = files.map(file => ({
+          src: URL.createObjectURL(file),
+          alt: file.name,
+        }));
+        return Promise.resolve(f);
+      },
+    }),
+    ExportWord,
+    TextDirection,
+    Mention,
+    Attachment.configure({
+      upload: (file: any) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
 
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          const blob = convertBase64ToBlob(reader.result as string);
-          resolve(URL.createObjectURL(blob));
-        }, 300);
-      });
-    },
-  }),
-  Katex,
-  Excalidraw,
-  Mermaid.configure({
-    upload: (file: any) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            const blob = convertBase64ToBlob(reader.result as string);
+            resolve(URL.createObjectURL(blob));
+          }, 300);
+        });
+      },
+    }),
+    Katex,
+    Excalidraw,
+    Mermaid.configure({
+      upload: (file: any) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
 
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          const blob = convertBase64ToBlob(reader.result as string);
-          resolve(URL.createObjectURL(blob));
-        }, 300);
-      });
-    },
-  }),
-  Drawer.configure({
-    upload: (file: any) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            const blob = convertBase64ToBlob(reader.result as string);
+            resolve(URL.createObjectURL(blob));
+          }, 300);
+        });
+      },
+    }),
+    Drawer.configure({
+      upload: (file: any) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
 
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          const blob = convertBase64ToBlob(reader.result as string);
-          resolve(URL.createObjectURL(blob));
-        }, 300);
-      });
-    },
-  }),
-  Twitter,
-  SlashCommand,
-  
-  // Custom entity extensions for syntax highlighting
-  EntityMark,
-  TagMark,
-  MentionMarkExt,
-  WikiLinkMark,
-];
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            const blob = convertBase64ToBlob(reader.result as string);
+            resolve(URL.createObjectURL(blob));
+          }, 300);
+        });
+      },
+    }),
+    Twitter,
+    SlashCommand,
+    
+    // Custom entity extensions for syntax highlighting
+    EntityMark,
+    TagMark,
+    MentionMarkExt,
+    WikiLinkMark.configure({
+      onLinkClick: onWikilinkClick,
+      checkLinkExists: checkWikilinkExists,
+    }),
+  ];
+}
 
 const RichEditor = ({
   content,
@@ -241,8 +252,17 @@ const RichEditor = ({
   noteId,
   toolbarVisible = true,
   onToolbarVisibilityChange,
+  onWikilinkClick,
+  checkWikilinkExists,
 }: RichEditorProps) => {
   const previousContentRef = useRef<string>('');
+  
+  // Memoize extensions with link handlers
+  const extensions = useMemo(
+    () => createExtensions(onWikilinkClick, checkWikilinkExists),
+    [onWikilinkClick, checkWikilinkExists]
+  );
+
 
   const dimensions = useLayoutDimensions({
     includeToolbar: toolbarVisible,
