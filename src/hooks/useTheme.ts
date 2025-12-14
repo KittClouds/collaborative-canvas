@@ -1,10 +1,24 @@
 import { useState, useEffect, useCallback, RefObject } from 'react';
 import { flushSync } from 'react-dom';
-import { themeActions } from 'reactjs-tiptap-editor/theme';
 
 type Theme = 'light' | 'dark';
 
 const THEME_KEY = 'networked-notes-theme';
+
+// Dynamically import themeActions to avoid SSR issues
+let themeActions: { setTheme: (theme: 'light' | 'dark') => void } | null = null;
+import('reactjs-tiptap-editor/theme').then((module) => {
+  themeActions = module.themeActions;
+}).catch(() => {
+  // Silently fail if theme module not available
+});
+
+const syncEditorTheme = (theme: Theme) => {
+  // Defer the editor theme sync to avoid conflicts with React rendering
+  setTimeout(() => {
+    themeActions?.setTheme(theme);
+  }, 0);
+};
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => {
@@ -24,11 +38,12 @@ export function useTheme() {
     
     if (theme === 'dark') {
       root.classList.add('dark');
-      themeActions.setTheme('dark');
     } else {
       root.classList.remove('dark');
-      themeActions.setTheme('light');
     }
+    
+    // Sync editor theme after DOM update
+    syncEditorTheme(theme);
     
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
