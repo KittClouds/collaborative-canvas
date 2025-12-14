@@ -1,23 +1,25 @@
-import { Moon, Sun } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Around } from '@theme-toggles/react';
+import '@theme-toggles/react/css/Around.css';
 import { useTheme } from '@/hooks/useTheme';
+import { useRef } from 'react';
 
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
+  const buttonRef = useRef<HTMLElement>(null);
+  const isDark = theme === 'dark';
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={toggleTheme}
-      className="h-8 w-8 transition-colors"
-      title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-    >
-      {theme === 'dark' ? (
-        <Sun className="h-4 w-4 text-amber-400" />
-      ) : (
-        <Moon className="h-4 w-4" />
-      )}
-    </Button>
+    <div ref={buttonRef as React.RefObject<HTMLDivElement>} className="flex items-center">
+      <Around
+        toggled={isDark}
+        toggle={() => toggleTheme(buttonRef)}
+        duration={750}
+        className="text-foreground hover:text-primary transition-colors text-2xl p-1"
+        aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+        placeholder=""
+        onPointerEnterCapture={() => {}}
+        onPointerLeaveCapture={() => {}}
+      />
+    </div>
   );
 }
