@@ -1,5 +1,5 @@
 import type { JSONContent } from '@tiptap/react';
-import type { DocumentConnections, Entity, EntityKind } from './entityTypes';
+import type { DocumentConnections, Entity, EntityKind, EntityReference } from './entityTypes';
 
 /**
  * Parse connections from TipTap JSONContent structure
@@ -93,11 +93,17 @@ export function parseNoteConnectionsFromDocument(
   connections.wikilinks = [...new Set(connections.wikilinks)];
   connections.backlinks = [...new Set(connections.backlinks)];
 
-  // Dedupe entities by kind+label
-  const entityMap = new Map<string, Entity>();
+  // Dedupe entities by kind+label, merging positions
+  const entityMap = new Map<string, EntityReference>();
   for (const entity of connections.entities) {
     const key = `${entity.kind}|${entity.label}`;
-    entityMap.set(key, entity);
+    const existing = entityMap.get(key);
+    if (existing) {
+      // Merge positions
+      existing.positions = [...(existing.positions || []), ...(entity.positions || [])];
+    } else {
+      entityMap.set(key, { ...entity });
+    }
   }
   connections.entities = Array.from(entityMap.values());
 
@@ -144,24 +150,24 @@ function extractRawSyntax(text: string, connections: DocumentConnections) {
     }
   }
 
-  // Extract raw entities ([KIND|Label])
-  const entityMatches = text.match(/\[([A-Z_]+)\|([^\]]+?)(?:\|({.*?}))?\]/g);
-  if (entityMatches) {
-    for (const match of entityMatches) {
-      const entityMatch = match.match(/\[([A-Z_]+)\|([^\]]+?)(?:\|({.*?}))?\]/);
-      if (entityMatch) {
-        const [, kind, label, attrsJSON] = entityMatch;
-        const entity: Entity = { kind: kind as EntityKind, label };
-        if (attrsJSON) {
-          try {
-            entity.attributes = JSON.parse(attrsJSON.replace(/'/g, '"'));
-          } catch {
-            // Ignore parse errors
-          }
-        }
-        connections.entities.push(entity);
+  // Extract raw entities ([KIND|Label]) with positions
+  const entityRegex = /\[([A-Z_]+)\|([^\]]+?)(?:\|({.*?}))?\]/g;
+  let entityMatch: RegExpExecArray | null;
+  while ((entityMatch = entityRegex.exec(text)) !== null) {
+    const [, kind, label, attrsJSON] = entityMatch;
+    const entity: EntityReference = { 
+      kind: kind as EntityKind, 
+      label,
+      positions: [entityMatch.index],
+    };
+    if (attrsJSON) {
+      try {
+        entity.attributes = JSON.parse(attrsJSON.replace(/'/g, '"'));
+      } catch {
+        // Ignore parse errors
       }
     }
+    connections.entities.push(entity);
   }
 
   // Extract raw backlinks (<<Page Title>>)

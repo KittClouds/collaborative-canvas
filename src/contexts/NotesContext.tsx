@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useMemo, ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { loadFromStorage, saveToStorage, exportNotes, importNotes } from '@/lib/storage';
-import type { DocumentConnections } from '@/lib/entities/entityTypes';
+import type { DocumentConnections, EntityKind } from '@/lib/entities/entityTypes';
+import { parseEntityFromTitle, parseFolderEntityFromName } from '@/lib/entities/titleParser';
+import { migrateExistingNotes, migrateExistingFolders, needsMigration } from '@/lib/entities/migration';
 
 // Types
 export interface Note {
@@ -15,6 +17,10 @@ export interface Note {
   isPinned: boolean;
   favorite?: boolean;
   connections?: DocumentConnections;
+  // Entity properties
+  entityKind?: EntityKind;
+  entityLabel?: string;
+  isEntity?: boolean;
 }
 
 export interface Folder {
@@ -23,6 +29,11 @@ export interface Folder {
   parentId?: string;
   color?: string;
   createdAt: Date;
+  // Entity properties
+  entityKind?: EntityKind;
+  entityLabel?: string;
+  isTypedRoot?: boolean;
+  inheritedKind?: EntityKind;
 }
 
 // Helper type for building folder tree
@@ -220,7 +231,8 @@ interface NotesContextValue {
   favoriteNotes: Note[];
   canUndo: boolean;
   canRedo: boolean;
-  createNote: (folderId?: string) => Note;
+  createNote: (folderId?: string, title?: string) => Note;
+  getEntityNote: (kind: EntityKind, label: string) => Note | undefined;
   updateNote: (id: string, updates: Partial<Note>) => void;
   updateNoteContent: (id: string, content: string) => void;
   deleteNote: (id: string) => void;
@@ -240,9 +252,17 @@ const NotesContext = createContext<NotesContextValue | null>(null);
 export function NotesProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(notesReducer, initialState);
 
-  // Load initial data
+  // Load initial data with migration
   useEffect(() => {
-    const { notes, folders } = loadFromStorage();
+    let { notes, folders } = loadFromStorage();
+    
+    // Run migration if needed
+    if (needsMigration(notes, folders)) {
+      console.log('Migrating notes and folders to entity model...');
+      notes = migrateExistingNotes(notes);
+      folders = migrateExistingFolders(folders);
+    }
+    
     dispatch({ type: 'SET_NOTES', payload: notes });
     dispatch({ type: 'SET_FOLDERS', payload: folders });
   }, []);
@@ -341,11 +361,43 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const canUndo = state.historyIndex >= 0;
   const canRedo = state.historyIndex < state.history.length - 1;
 
-  const createNote = useCallback((folderId?: string): Note => {
+  // Helper to get inherited entity kind from folder hierarchy
+  const getInheritedKindFromFolder = useCallback((folderId: string): EntityKind | undefined => {
+    const folder = state.folders.find(f => f.id === folderId);
+    if (!folder) return undefined;
+    if (folder.entityKind) return folder.entityKind;
+    if (folder.inheritedKind) return folder.inheritedKind;
+    if (folder.parentId) return getInheritedKindFromFolder(folder.parentId);
+    return undefined;
+  }, [state.folders]);
+
+  const createNote = useCallback((folderId?: string, title?: string): Note => {
     dispatch({ type: 'PUSH_HISTORY' });
+    
+    // Determine title and entity properties
+    let noteTitle = title || 'Untitled Note';
+    let entityKind: EntityKind | undefined;
+    let entityLabel: string | undefined;
+    let isEntity = false;
+    
+    // Parse title for entity syntax
+    const parsed = parseEntityFromTitle(noteTitle);
+    if (parsed && parsed.label) {
+      entityKind = parsed.kind;
+      entityLabel = parsed.label;
+      isEntity = true;
+    } else if (folderId) {
+      // If in a typed folder, inherit the kind context (but note is not an entity itself)
+      const inheritedKind = getInheritedKindFromFolder(folderId);
+      if (inheritedKind && !parsed) {
+        // Could suggest entity title, but for now just track context
+        entityKind = undefined; // Note is not typed, just in a typed folder
+      }
+    }
+    
     const newNote: Note = {
       id: uuidv4(),
-      title: 'Untitled Note',
+      title: noteTitle,
       content: JSON.stringify({
         type: 'doc',
         content: [{ type: 'paragraph', content: [] }],
@@ -355,28 +407,36 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       folderId,
       tags: [],
       isPinned: false,
+      entityKind,
+      entityLabel,
+      isEntity,
     };
     dispatch({ type: 'ADD_NOTE', payload: newNote });
     dispatch({ type: 'SELECT_NOTE', payload: newNote.id });
     return newNote;
-  }, []);
+  }, [getInheritedKindFromFolder]);
+
 
   const updateNote = useCallback((id: string, updates: Partial<Note>) => {
+    // If title is being updated, re-parse entity properties
+    if (updates.title !== undefined) {
+      const parsed = parseEntityFromTitle(updates.title);
+      if (parsed && parsed.label) {
+        updates.entityKind = parsed.kind;
+        updates.entityLabel = parsed.label;
+        updates.isEntity = true;
+      } else {
+        updates.entityKind = undefined;
+        updates.entityLabel = undefined;
+        updates.isEntity = false;
+      }
+    }
     dispatch({ type: 'UPDATE_NOTE', payload: { id, updates } });
   }, []);
 
   const updateNoteContent = useCallback((id: string, content: string) => {
-    let title = 'Untitled Note';
-    try {
-      const parsed = JSON.parse(content);
-      if (parsed.content?.[0]?.content?.[0]?.text) {
-        title = parsed.content[0].content[0].text.slice(0, 50);
-      }
-    } catch {
-      const firstLine = content.split('\n')[0].slice(0, 50);
-      if (firstLine) title = firstLine;
-    }
-    dispatch({ type: 'UPDATE_NOTE', payload: { id, updates: { content, title } } });
+    // NO LONGER extract title from content - titles are explicit
+    dispatch({ type: 'UPDATE_NOTE', payload: { id, updates: { content } } });
   }, []);
 
   const deleteNote = useCallback((id: string) => {
@@ -394,19 +454,47 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   const createFolder = useCallback((name: string, parentId?: string): Folder => {
     dispatch({ type: 'PUSH_HISTORY' });
+    
+    // Parse folder name for entity properties
+    const parsed = parseFolderEntityFromName(name);
+    let inheritedKind: EntityKind | undefined;
+    
+    // Get inherited kind from parent
+    if (parentId) {
+      inheritedKind = getInheritedKindFromFolder(parentId);
+    }
+    
     const newFolder: Folder = {
       id: uuidv4(),
       name: name || 'New Folder',
       parentId,
       createdAt: new Date(),
+      entityKind: parsed?.kind,
+      entityLabel: parsed?.label,
+      isTypedRoot: parsed?.isTypedRoot ?? false,
+      inheritedKind,
     };
     dispatch({ type: 'ADD_FOLDER', payload: newFolder });
     return newFolder;
-  }, []);
+  }, [getInheritedKindFromFolder]);
 
   const updateFolder = useCallback((id: string, updates: Partial<Folder>) => {
+    // If name is being updated, re-parse entity properties
+    if (updates.name !== undefined) {
+      const parsed = parseFolderEntityFromName(updates.name);
+      if (parsed) {
+        updates.entityKind = parsed.kind;
+        updates.entityLabel = parsed.label;
+        updates.isTypedRoot = parsed.isTypedRoot;
+      } else {
+        updates.entityKind = undefined;
+        updates.entityLabel = undefined;
+        updates.isTypedRoot = false;
+      }
+    }
     dispatch({ type: 'UPDATE_FOLDER', payload: { id, updates } });
   }, []);
+
 
   const deleteFolder = useCallback((id: string) => {
     dispatch({ type: 'PUSH_HISTORY' });
@@ -430,6 +518,13 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     const data = await importNotes(file);
     dispatch({ type: 'IMPORT_DATA', payload: data });
   }, []);
+
+  // Find canonical entity note by kind and label
+  const getEntityNote = useCallback((kind: EntityKind, label: string): Note | undefined => {
+    return state.notes.find(
+      note => note.isEntity && note.entityKind === kind && note.entityLabel === label
+    );
+  }, [state.notes]);
 
   return (
     <NotesContext.Provider
@@ -455,6 +550,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         redo,
         exportData,
         importData: importDataFn,
+        getEntityNote,
       }}
     >
       {children}

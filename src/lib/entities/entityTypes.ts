@@ -17,6 +17,14 @@ export interface Entity {
   attributes?: Record<string, any>;
 }
 
+/**
+ * Entity reference with optional link to canonical note
+ */
+export interface EntityReference extends Entity {
+  noteId?: string;      // ID of canonical entity note if exists
+  positions?: number[]; // Character positions in content where mentioned
+}
+
 export interface Triple {
   subject: Entity;
   predicate: string;
@@ -28,7 +36,7 @@ export interface DocumentConnections {
   mentions: string[];
   links: string[];
   wikilinks: string[];
-  entities: Entity[];
+  entities: EntityReference[];  // Changed from Entity[] to include note linking
   triples: Triple[];
   backlinks: string[];
 }
@@ -44,3 +52,10 @@ export const ENTITY_COLORS: Record<EntityKind, string> = {
   EVENT: '#14b8a6', // Teal
   CONCEPT: '#6366f1', // Indigo
 };
+
+/**
+ * Check if a string is a valid entity kind
+ */
+export function isValidEntityKind(kind: string): kind is EntityKind {
+  return ENTITY_KINDS.includes(kind as EntityKind);
+}
