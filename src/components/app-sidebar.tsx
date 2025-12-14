@@ -93,21 +93,60 @@ interface RenameInputProps {
   onCancel: () => void;
   placeholder?: string;
   showEntityHint?: boolean;
+  cursorAfterPipe?: boolean; // Position cursor after | for entity prefix
+  deleteOnEmpty?: boolean; // Delete note if empty on cancel
+  onDelete?: () => void;
 }
 
-function RenameInput({ initialValue, onSave, onCancel, placeholder, showEntityHint }: RenameInputProps) {
+function RenameInput({ 
+  initialValue, 
+  onSave, 
+  onCancel, 
+  placeholder, 
+  showEntityHint,
+  cursorAfterPipe,
+  deleteOnEmpty,
+  onDelete,
+}: RenameInputProps) {
   const [value, setValue] = React.useState(initialValue);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
+    if (inputRef.current) {
+      inputRef.current.focus();
+      if (cursorAfterPipe && initialValue.includes('|')) {
+        // Position cursor after the pipe character
+        const pipeIndex = initialValue.indexOf('|') + 1;
+        inputRef.current.setSelectionRange(pipeIndex, pipeIndex);
+      } else {
+        inputRef.current.select();
+      }
+    }
+  }, [cursorAfterPipe, initialValue]);
 
   const handleSubmit = () => {
     const trimmed = value.trim();
-    if (trimmed && trimmed !== initialValue) {
-      onSave(trimmed);
+    // Check if it's just a prefix like "[CHARACTER|" with no name
+    const isEmptyEntityPrefix = /^\[[A-Z_]+\|?\]?$/.test(trimmed) || trimmed.endsWith('|');
+    
+    if (isEmptyEntityPrefix || !trimmed) {
+      // Empty or just prefix - cancel or delete
+      if (deleteOnEmpty && onDelete) {
+        onDelete();
+      } else {
+        onCancel();
+      }
+      return;
+    }
+    
+    // Complete the entity syntax if needed (e.g., "[CHARACTER|Jon Snow" → "[CHARACTER|Jon Snow]")
+    let finalValue = trimmed;
+    if (trimmed.match(/^\[[A-Z_]+\|[^\]]+$/) && !trimmed.endsWith(']')) {
+      finalValue = trimmed + ']';
+    }
+    
+    if (finalValue !== initialValue) {
+      onSave(finalValue);
     } else {
       onCancel();
     }
@@ -119,7 +158,11 @@ function RenameInput({ initialValue, onSave, onCancel, placeholder, showEntityHi
       handleSubmit();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      onCancel();
+      if (deleteOnEmpty && onDelete) {
+        onDelete();
+      } else {
+        onCancel();
+      }
     }
   };
 
@@ -218,6 +261,7 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [isHovered, setIsHovered] = React.useState(false);
   const [isRenaming, setIsRenaming] = React.useState(false);
+  const [newlyCreatedNoteId, setNewlyCreatedNoteId] = React.useState<string | null>(null);
 
   // Color inheritance: folder.color → parentColor → default palette
   const folderColor = folder.color || parentColor || DEFAULT_COLORS[depth % DEFAULT_COLORS.length];
@@ -233,8 +277,24 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
   const handleCreateNote = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    createNote(folder.id);
+    
+    // Get the inherited kind for this folder
+    const kind = folder.entityKind || folder.inheritedKind;
+    
+    let newNote: ReturnType<typeof createNote>;
+    if (kind) {
+      // Create note with entity prefix for typed folders
+      newNote = createNote(folder.id, `[${kind}|`);
+    } else {
+      newNote = createNote(folder.id);
+    }
+    
     setIsExpanded(true);
+    
+    // Trigger auto-rename for the new note (only for typed folders)
+    if (newNote && kind) {
+      setNewlyCreatedNoteId(newNote.id);
+    }
   };
 
   const handleChangeColor = (e: React.MouseEvent, color: string) => {
@@ -428,6 +488,8 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
                   note={note}
                   depth={depth + 1}
                   folderColor={folderColor}
+                  autoRename={note.id === newlyCreatedNoteId}
+                  onRenameComplete={() => setNewlyCreatedNoteId(null)}
                 />
               ))}
 
@@ -451,13 +513,22 @@ interface NoteItemProps {
   note: Note;
   depth?: number;
   folderColor?: string;
+  autoRename?: boolean;
+  onRenameComplete?: () => void;
 }
 
-function NoteItem({ note, depth = 0, folderColor }: NoteItemProps) {
+function NoteItem({ note, depth = 0, folderColor, autoRename, onRenameComplete }: NoteItemProps) {
   const { selectNote, updateNote, deleteNote, state, getEntityNote } = useNotes();
   const [isHovered, setIsHovered] = React.useState(false);
-  const [isRenaming, setIsRenaming] = React.useState(false);
+  const [isRenaming, setIsRenaming] = React.useState(autoRename || false);
   const isActive = state.selectedNoteId === note.id;
+  
+  // Start renaming when autoRename becomes true
+  React.useEffect(() => {
+    if (autoRename) {
+      setIsRenaming(true);
+    }
+  }, [autoRename]);
 
   // Parse entity info for display
   const displayName = getDisplayName(note.title);
@@ -497,6 +568,17 @@ function NoteItem({ note, depth = 0, folderColor }: NoteItemProps) {
       isEntity: parsed !== null && parsed.label !== undefined,
     });
     setIsRenaming(false);
+    onRenameComplete?.();
+  };
+
+  const handleCancelRename = () => {
+    setIsRenaming(false);
+    onRenameComplete?.();
+  };
+
+  const handleDeleteNewNote = () => {
+    deleteNote(note.id);
+    onRenameComplete?.();
   };
 
   const handleStartRename = (e: React.MouseEvent) => {
@@ -504,6 +586,9 @@ function NoteItem({ note, depth = 0, folderColor }: NoteItemProps) {
     e.stopPropagation();
     setIsRenaming(true);
   };
+  
+  // Check if this is an auto-created entity note (has prefix like "[CHARACTER|")
+  const isAutoCreatedEntity = Boolean(autoRename && /^\[[A-Z_]+\|$/.test(note.title));
 
   return (
     <div className="relative w-full">
@@ -539,9 +624,12 @@ function NoteItem({ note, depth = 0, folderColor }: NoteItemProps) {
             <RenameInput
               initialValue={note.title}
               onSave={handleRename}
-              onCancel={() => setIsRenaming(false)}
-              placeholder="Note title"
-              showEntityHint={note.isEntity}
+              onCancel={handleCancelRename}
+              placeholder="Enter entity name..."
+              showEntityHint={note.isEntity || isAutoCreatedEntity}
+              cursorAfterPipe={isAutoCreatedEntity}
+              deleteOnEmpty={isAutoCreatedEntity}
+              onDelete={handleDeleteNewNote}
             />
           </div>
         ) : (
