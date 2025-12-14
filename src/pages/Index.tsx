@@ -20,6 +20,8 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SchemaProvider } from '@/contexts/SchemaContext';
 import { SchemaManager } from '@/components/schema/SchemaManager';
 import { useLinkIndex } from '@/hooks/useLinkIndex';
+import { EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
+import { RightSidebar, RightSidebarProvider, RightSidebarTrigger } from '@/components/RightSidebar';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,35 +93,36 @@ function NotesApp() {
   }, []);
 
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-background">
-        {/* Left Sidebar */}
-        <AppSidebar />
+    <RightSidebarProvider>
+      <SidebarProvider>
+        <div className="min-h-screen flex w-full bg-background">
+          {/* Left Sidebar */}
+          <AppSidebar />
 
-        {/* Main Content Area */}
-        <div className="flex flex-col flex-1 min-w-0">
-          {/* Header */}
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb className="flex-1">
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink
-                    href="#"
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Notes
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-foreground font-medium">
-                    {selectedNote ? selectedNote.title : 'Select a note'}
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+          {/* Main Content Area */}
+          <div className="flex flex-col flex-1 min-w-0">
+            {/* Header */}
+            <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
+              <SidebarTrigger className="-ml-1" />
+              <Separator orientation="vertical" className="mr-2 h-4" />
+              <Breadcrumb className="flex-1">
+                <BreadcrumbList>
+                  <BreadcrumbItem className="hidden md:block">
+                    <BreadcrumbLink
+                      href="#"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Notes
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator className="hidden md:block" />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage className="text-foreground font-medium">
+                      {selectedNote ? selectedNote.title : 'Select a note'}
+                    </BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
 
             {/* Header Actions */}
             <div className="flex items-center gap-1">
@@ -165,6 +168,7 @@ function NotesApp() {
               >
                 <Menu className="h-4 w-4" />
               </Button>
+              <RightSidebarTrigger />
               <ThemeToggle />
             </div>
           </header>
@@ -203,8 +207,12 @@ function NotesApp() {
             )}
           </main>
         </div>
+
+        {/* Right Sidebar */}
+        <RightSidebar />
       </div>
     </SidebarProvider>
+    </RightSidebarProvider>
   );
 }
 
@@ -213,7 +221,9 @@ const Index = () => {
     <ErrorBoundary>
       <SchemaProvider>
         <NotesProvider>
-          <NotesApp />
+          <EntitySelectionProvider>
+            <NotesApp />
+          </EntitySelectionProvider>
         </NotesProvider>
       </SchemaProvider>
     </ErrorBoundary>
