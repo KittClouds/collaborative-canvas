@@ -1,6 +1,4 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 export interface WikiLinkMarkOptions {
   HTMLAttributes: Record<string, any>;
@@ -71,69 +69,5 @@ export const WikiLinkMark = Mark.create<WikiLinkMarkOptions>({
     };
   },
 
-  addProseMirrorPlugins() {
-    const options = this.options;
-    
-    return [
-      new Plugin({
-        key: new PluginKey('wikilink-auto-detect'),
-        props: {
-          decorations: (state) => {
-            const decorations: Decoration[] = [];
-            const doc = state.doc;
-
-            doc.descendants((node, pos) => {
-              if (node.isText && node.text) {
-                // Match [[Page Title]] or [[Page Title|Display Text]]
-                const regex = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
-                let match;
-
-                while ((match = regex.exec(node.text)) !== null) {
-                  const from = pos + match.index;
-                  const to = from + match[0].length;
-                  const title = match[1].trim();
-                  
-                  // Check if the link target exists
-                  const exists = options.checkLinkExists ? options.checkLinkExists(title) : true;
-                  
-                  // Different styling for existing vs broken links
-                  const baseStyle = 'padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;';
-                  const existingStyle = `${baseStyle} background-color: hsl(var(--primary) / 0.15); color: hsl(var(--primary)); text-decoration: underline; text-decoration-style: dotted;`;
-                  const brokenStyle = `${baseStyle} background-color: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); text-decoration: underline; text-decoration-style: dashed;`;
-
-                  decorations.push(
-                    Decoration.inline(from, to, {
-                      class: exists ? 'wikilink-highlight wikilink-exists' : 'wikilink-highlight wikilink-broken',
-                      style: exists ? existingStyle : brokenStyle,
-                      'data-wikilink-title': title,
-                      'data-wikilink-exists': exists ? 'true' : 'false',
-                    })
-                  );
-                }
-              }
-            });
-
-            return DecorationSet.create(doc, decorations);
-          },
-          
-          // Handle clicks on wikilinks
-          handleDOMEvents: {
-            click: (view, event) => {
-              const target = event.target as HTMLElement;
-              const wikilinkTitle = target.getAttribute('data-wikilink-title');
-              
-              if (wikilinkTitle && options.onLinkClick) {
-                event.preventDefault();
-                event.stopPropagation();
-                options.onLinkClick(wikilinkTitle);
-                return true;
-              }
-              
-              return false;
-            },
-          },
-        },
-      }),
-    ];
-  },
+  // Decoration plugin removed - now handled by UnifiedSyntaxHighlighter
 });

@@ -56,11 +56,12 @@ import { Mermaid } from 'reactjs-tiptap-editor/mermaid';
 import { Column } from 'reactjs-tiptap-editor/column';
 import { SlashCommand } from 'reactjs-tiptap-editor/slashcommand';
 
-// Custom entity extensions
+// Custom entity extensions - marks for commands/parsing, unified plugin for decorations
 import { EntityMark } from '@/lib/extensions/EntityMark';
 import { TagMark } from '@/lib/extensions/TagMark';
 import { MentionMarkExt } from '@/lib/extensions/MentionMarkExt';
-import { WikiLinkMark, type WikiLinkMarkOptions } from '@/lib/extensions/WikiLinkMark';
+import { WikiLinkMark } from '@/lib/extensions/WikiLinkMark';
+import { UnifiedSyntaxHighlighter } from '@/lib/extensions/UnifiedSyntaxHighlighter';
 
 // Import CSS
 import 'reactjs-tiptap-editor/style.css';
@@ -234,13 +235,16 @@ function createExtensions(
     Twitter,
     SlashCommand,
     
-    // Custom entity extensions for syntax highlighting
+    // Custom entity extensions - marks for commands/parsing
     EntityMark,
     TagMark,
     MentionMarkExt,
-    WikiLinkMark.configure({
-      onLinkClick: onWikilinkClick,
-      checkLinkExists: checkWikilinkExists,
+    WikiLinkMark,
+    
+    // Unified syntax highlighter for all decorations (entities, wikilinks, tags, mentions)
+    UnifiedSyntaxHighlighter.configure({
+      onWikilinkClick,
+      checkWikilinkExists,
     }),
   ];
 }
