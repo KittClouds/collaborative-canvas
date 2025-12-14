@@ -12,23 +12,57 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { ListItem } from '@tiptap/extension-list-item';
 
 // Import extensions from reactjs-tiptap-editor
+import { Attachment } from 'reactjs-tiptap-editor/attachment';
 import { Blockquote } from 'reactjs-tiptap-editor/blockquote';
 import { Bold } from 'reactjs-tiptap-editor/bold';
 import { BulletList } from 'reactjs-tiptap-editor/bulletlist';
+import { Clear } from 'reactjs-tiptap-editor/clear';
 import { Code } from 'reactjs-tiptap-editor/code';
 import { CodeBlock } from 'reactjs-tiptap-editor/codeblock';
+import { Color } from 'reactjs-tiptap-editor/color';
+import { Emoji } from 'reactjs-tiptap-editor/emoji';
+import { ExportPdf } from 'reactjs-tiptap-editor/exportpdf';
+import { ExportWord } from 'reactjs-tiptap-editor/exportword';
+import { FontFamily } from 'reactjs-tiptap-editor/fontfamily';
+import { FontSize } from 'reactjs-tiptap-editor/fontsize';
 import { Heading } from 'reactjs-tiptap-editor/heading';
+import { Highlight } from 'reactjs-tiptap-editor/highlight';
 import { History } from 'reactjs-tiptap-editor/history';
 import { HorizontalRule } from 'reactjs-tiptap-editor/horizontalrule';
+import { Iframe } from 'reactjs-tiptap-editor/iframe';
+import { Image } from 'reactjs-tiptap-editor/image';
+import { ImageGif } from 'reactjs-tiptap-editor/imagegif';
+import { ImportWord } from 'reactjs-tiptap-editor/importword';
+import { Indent } from 'reactjs-tiptap-editor/indent';
 import { Italic } from 'reactjs-tiptap-editor/italic';
+import { LineHeight } from 'reactjs-tiptap-editor/lineheight';
 import { Link } from 'reactjs-tiptap-editor/link';
+import { Mention } from 'reactjs-tiptap-editor/mention';
+import { MoreMark } from 'reactjs-tiptap-editor/moremark';
 import { OrderedList } from 'reactjs-tiptap-editor/orderedlist';
+import { SearchAndReplace } from 'reactjs-tiptap-editor/searchandreplace';
 import { Strike } from 'reactjs-tiptap-editor/strike';
+import { Table } from 'reactjs-tiptap-editor/table';
 import { TaskList } from 'reactjs-tiptap-editor/tasklist';
+import { TextAlign } from 'reactjs-tiptap-editor/textalign';
 import { TextUnderline } from 'reactjs-tiptap-editor/textunderline';
+import { Video } from 'reactjs-tiptap-editor/video';
+import { TextDirection } from 'reactjs-tiptap-editor/textdirection';
+import { Katex } from 'reactjs-tiptap-editor/katex';
+import { Drawer } from 'reactjs-tiptap-editor/drawer';
+import { Excalidraw } from 'reactjs-tiptap-editor/excalidraw';
+import { Twitter } from 'reactjs-tiptap-editor/twitter';
+import { Mermaid } from 'reactjs-tiptap-editor/mermaid';
+import { Column } from 'reactjs-tiptap-editor/column';
+import { SlashCommand } from 'reactjs-tiptap-editor/slashcommand';
 
 // Import CSS
 import 'reactjs-tiptap-editor/style.css';
+import 'prism-code-editor-lightweight/layout.css';
+import 'prism-code-editor-lightweight/themes/github-dark.css';
+import 'katex/dist/katex.min.css';
+import 'easydrawer/styles.css';
+import 'react-image-crop/dist/ReactCrop.css';
 
 import { useLayoutDimensions } from '@/hooks/useLayoutDimensions';
 
@@ -39,6 +73,18 @@ interface RichEditorProps {
   noteId?: string;
   toolbarVisible?: boolean;
   onToolbarVisibilityChange?: (visible: boolean) => void;
+}
+
+function convertBase64ToBlob(base64: string) {
+  const arr = base64.split(',');
+  const mime = arr[0].match(/:(.*?);/)![1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
 }
 
 const extensions = [
@@ -58,15 +104,24 @@ const extensions = [
 
   // Editor Extensions
   History,
+  SearchAndReplace,
+  Clear,
+  FontFamily,
   Heading.configure({ spacer: true }),
+  FontSize,
   Bold,
   Italic,
   TextUnderline,
   Strike,
-  Code.configure({ toolbar: false }),
-  CodeBlock,
+  MoreMark,
+  Highlight,
+  Emoji,
+  Color.configure({ spacer: true }),
   BulletList,
   OrderedList,
+  TextAlign.configure({ types: ['heading', 'paragraph'], spacer: true }),
+  Indent,
+  LineHeight,
   TaskList.configure({
     spacer: true,
     taskItem: {
@@ -74,8 +129,93 @@ const extensions = [
     },
   }),
   Link,
+  Image.configure({
+    upload: (files: File) => {
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(URL.createObjectURL(files));
+        }, 500);
+      });
+    },
+  }),
+  Video.configure({
+    upload: (files: File) => {
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(URL.createObjectURL(files));
+        }, 500);
+      });
+    },
+  }),
+  ImageGif.configure({
+    API_KEY: import.meta.env.VITE_GIPHY_API_KEY || '',
+    provider: 'giphy',
+  }),
   Blockquote,
   HorizontalRule,
+  Code.configure({
+    toolbar: false,
+  }),
+  CodeBlock,
+  Column,
+  Table,
+  Iframe,
+  ExportPdf.configure({ spacer: true }),
+  ImportWord.configure({
+    upload: (files: File[]) => {
+      const f = files.map(file => ({
+        src: URL.createObjectURL(file),
+        alt: file.name,
+      }));
+      return Promise.resolve(f);
+    },
+  }),
+  ExportWord,
+  TextDirection,
+  Mention,
+  Attachment.configure({
+    upload: (file: any) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          const blob = convertBase64ToBlob(reader.result as string);
+          resolve(URL.createObjectURL(blob));
+        }, 300);
+      });
+    },
+  }),
+  Katex,
+  Excalidraw,
+  Mermaid.configure({
+    upload: (file: any) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          const blob = convertBase64ToBlob(reader.result as string);
+          resolve(URL.createObjectURL(blob));
+        }, 300);
+      });
+    },
+  }),
+  Drawer.configure({
+    upload: (file: any) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          const blob = convertBase64ToBlob(reader.result as string);
+          resolve(URL.createObjectURL(blob));
+        }, 300);
+      });
+    },
+  }),
+  Twitter,
+  SlashCommand,
 ];
 
 const RichEditor = ({
@@ -172,7 +312,7 @@ const RichEditor = ({
     <div className="h-full flex flex-col min-h-0">
       <RichTextProvider editor={editor} dark={isDarkMode}>
         <div 
-          className="flex-1 overflow-auto custom-scrollbar bg-editor-bg"
+          className="flex-1 overflow-auto custom-scrollbar bg-background"
           style={{ maxHeight: dimensions.availableHeight }}
         >
           <EditorContent editor={editor} className="min-h-full" />
