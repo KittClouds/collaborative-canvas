@@ -214,7 +214,7 @@ function EntityFolderCreationMenu() {
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+        <Button variant="ghost" size="icon" className="h-5 w-5 p-0" aria-label="Create folder">
           <FolderPlus className="h-3 w-3" />
         </Button>
       </DropdownMenuTrigger>
@@ -227,6 +227,7 @@ function EntityFolderCreationMenu() {
           return (
             <DropdownMenuItem
               key={kind}
+              textValue={label}
               onClick={() => handleCreateEntityFolder(kind)}
               className="gap-2"
             >
@@ -289,7 +290,7 @@ function SubtypeFolderMenu({ parentId, parentKind, onComplete }: SubtypeFolderMe
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+        <Button variant="ghost" size="icon" className="h-5 w-5 p-0" aria-label="Create subfolder">
           <FolderPlus className="h-3 w-3" />
         </Button>
       </DropdownMenuTrigger>
@@ -300,6 +301,7 @@ function SubtypeFolderMenu({ parentId, parentKind, onComplete }: SubtypeFolderMe
         {subtypes.map((subtype) => (
           <DropdownMenuItem
             key={subtype}
+            textValue={subtype}
             onClick={() => handleCreateSubtypeFolder(subtype)}
             className="gap-2"
           >
@@ -493,14 +495,14 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
                   size="icon"
                   className="h-6 w-6 p-0"
                   onClick={handleCreateNote}
-                  title="Add note"
+                  aria-label="Add note"
                 >
                   <Plus className="h-3 w-3" />
                 </Button>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
+                    <Button variant="ghost" size="icon" className="h-6 w-6 p-0" aria-label="More options">
                       <MoreVertical className="h-3 w-3" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -520,6 +522,7 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
                           {getSubtypesForKind(effectiveKind).slice(0, 4).map((subtype) => (
                             <DropdownMenuItem
                               key={subtype}
+                              textValue={subtype}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -790,7 +793,7 @@ function NoteItem({ note, depth = 0, folderColor, autoRename, onRenameComplete }
             <div className={cn("flex items-center shrink-0 transition-opacity", !isHovered && "opacity-0")}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
+                  <Button variant="ghost" size="icon" className="h-6 w-6 p-0" aria-label="Note options">
                     <MoreVertical className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -932,7 +935,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider p-0">
                   Quick Notes
                 </SidebarGroupLabel>
-                <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={() => createNote()}>
+                <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={() => createNote()} aria-label="Create quick note">
                   <Plus className="h-3 w-3" />
                 </Button>
               </div>
