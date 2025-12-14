@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, RefObject } from 'react';
 import { flushSync } from 'react-dom';
+import { themeActions } from 'reactjs-tiptap-editor/theme';
 
 type Theme = 'light' | 'dark';
 
@@ -23,8 +24,10 @@ export function useTheme() {
     
     if (theme === 'dark') {
       root.classList.add('dark');
+      themeActions.setTheme('dark');
     } else {
       root.classList.remove('dark');
+      themeActions.setTheme('light');
     }
     
     localStorage.setItem(THEME_KEY, theme);
