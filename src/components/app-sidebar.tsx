@@ -12,10 +12,18 @@ import {
   X,
   FileText,
   Search,
-  Settings,
   FolderPlus,
   Check,
   Clock,
+  User,
+  MapPin,
+  Users,
+  Package,
+  Flag,
+  Film,
+  Calendar,
+  Lightbulb,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -44,6 +52,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useNotes, FolderWithChildren, Note } from "@/contexts/NotesContext";
+import { ENTITY_COLORS, EntityKind } from "@/lib/entities/entityTypes";
+import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName } from "@/lib/entities/titleParser";
+
+// Entity kind icons mapping
+const ENTITY_ICONS: Record<EntityKind, React.ComponentType<{ className?: string }>> = {
+  CHARACTER: User,
+  LOCATION: MapPin,
+  NPC: Users,
+  ITEM: Package,
+  FACTION: Flag,
+  SCENE: Film,
+  EVENT: Calendar,
+  CONCEPT: Lightbulb,
+};
 
 // Color palette for folders
 const DEFAULT_COLORS = [
@@ -141,7 +163,19 @@ function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
               ) : (
                 <FolderIcon className="h-4 w-4 shrink-0" style={{ color: folderColor }} />
               )}
-              <span className="truncate text-sm font-medium">{folder.name || "New Folder"}</span>
+              <span className="truncate text-sm font-medium">{getDisplayName(folder.name) || "New Folder"}</span>
+              {/* Entity badge for typed folders */}
+              {folder.entityKind && (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
+                  style={{
+                    backgroundColor: `${ENTITY_COLORS[folder.entityKind]}20`,
+                    color: ENTITY_COLORS[folder.entityKind],
+                  }}
+                >
+                  {folder.entityKind}
+                </span>
+              )}
             </div>
 
             {/* Action buttons - visible on hover */}
@@ -250,9 +284,19 @@ interface NoteItemProps {
 }
 
 function NoteItem({ note, depth = 0, folderColor }: NoteItemProps) {
-  const { selectNote, updateNote, deleteNote, state } = useNotes();
+  const { selectNote, updateNote, deleteNote, state, getEntityNote } = useNotes();
   const [isHovered, setIsHovered] = React.useState(false);
   const isActive = state.selectedNoteId === note.id;
+
+  // Parse entity info for display
+  const displayName = getDisplayName(note.title);
+  const EntityIcon = note.isEntity && note.entityKind ? ENTITY_ICONS[note.entityKind] : FileText;
+  const entityColor = note.isEntity && note.entityKind ? ENTITY_COLORS[note.entityKind] : undefined;
+  
+  // Check for kind mismatch with folder
+  const folder = note.folderId ? state.folders.find(f => f.id === note.folderId) : undefined;
+  const folderKind = folder?.entityKind || folder?.inheritedKind;
+  const hasKindMismatch = note.isEntity && note.entityKind && folderKind && note.entityKind !== folderKind;
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -309,8 +353,29 @@ function NoteItem({ note, depth = 0, folderColor }: NoteItemProps) {
             isActive={isActive}
             className={cn("flex-1 justify-start gap-2 h-8 min-w-0")}
           >
-            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="truncate text-sm">{note.title || "Untitled Note"}</span>
+            <EntityIcon 
+              className="h-4 w-4 shrink-0" 
+              style={entityColor ? { color: entityColor } : undefined}
+            />
+            <span className="truncate text-sm">{displayName || "Untitled Note"}</span>
+            {/* Entity badge */}
+            {note.isEntity && note.entityKind && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
+                style={{
+                  backgroundColor: `${ENTITY_COLORS[note.entityKind]}20`,
+                  color: ENTITY_COLORS[note.entityKind],
+                }}
+              >
+                {note.entityKind}
+              </span>
+            )}
+            {/* Kind mismatch warning */}
+            {hasKindMismatch && (
+              <span title="Entity kind does not match folder">
+                <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
+              </span>
+            )}
             {note.favorite && <Star className="h-3 w-3 shrink-0 fill-yellow-400 text-yellow-400 ml-auto" />}
           </SidebarMenuButton>
 
