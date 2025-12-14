@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useReducer, useCallback, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useMemo, ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { loadFromStorage, saveToStorage, exportNotes, importNotes } from '@/lib/storage';
 
 // Types
 export interface Note {
@@ -28,6 +29,13 @@ export interface FolderWithChildren extends Folder {
   notes: Note[];
 }
 
+// Snapshot for history (minimal data for undo/redo)
+interface HistorySnapshot {
+  notes: Note[];
+  folders: Folder[];
+  selectedNoteId: string | null;
+}
+
 interface NotesState {
   notes: Note[];
   folders: Folder[];
@@ -35,6 +43,9 @@ interface NotesState {
   searchQuery: string;
   isSaving: boolean;
   lastSaved: Date | null;
+  // History for undo/redo
+  history: HistorySnapshot[];
+  historyIndex: number;
 }
 
 type NotesAction =
@@ -49,7 +60,13 @@ type NotesAction =
   | { type: 'SET_LAST_SAVED'; payload: Date }
   | { type: 'ADD_FOLDER'; payload: Folder }
   | { type: 'UPDATE_FOLDER'; payload: { id: string; updates: Partial<Folder> } }
-  | { type: 'DELETE_FOLDER'; payload: string };
+  | { type: 'DELETE_FOLDER'; payload: string }
+  | { type: 'PUSH_HISTORY' }
+  | { type: 'UNDO' }
+  | { type: 'REDO' }
+  | { type: 'IMPORT_DATA'; payload: { notes: Note[]; folders: Folder[] } };
+
+const MAX_HISTORY = 50;
 
 const initialState: NotesState = {
   notes: [],
@@ -58,7 +75,18 @@ const initialState: NotesState = {
   searchQuery: '',
   isSaving: false,
   lastSaved: null,
+  history: [],
+  historyIndex: -1,
 };
+
+// Create a snapshot of current state for history
+function createSnapshot(state: NotesState): HistorySnapshot {
+  return {
+    notes: state.notes.map(n => ({ ...n })),
+    folders: state.folders.map(f => ({ ...f })),
+    selectedNoteId: state.selectedNoteId,
+  };
+}
 
 function notesReducer(state: NotesState, action: NotesAction): NotesState {
   switch (action.type) {
@@ -107,8 +135,48 @@ function notesReducer(state: NotesState, action: NotesAction): NotesState {
       return {
         ...state,
         folders: state.folders.filter((f) => f.id !== action.payload),
-        // Also remove notes in deleted folder
         notes: state.notes.filter((n) => n.folderId !== action.payload),
+      };
+    case 'PUSH_HISTORY': {
+      const newHistory = [
+        ...state.history.slice(0, state.historyIndex + 1),
+        createSnapshot(state),
+      ].slice(-MAX_HISTORY);
+      return {
+        ...state,
+        history: newHistory,
+        historyIndex: newHistory.length - 1,
+      };
+    }
+    case 'UNDO': {
+      if (state.historyIndex < 0) return state;
+      const snapshot = state.history[state.historyIndex];
+      if (!snapshot) return state;
+      return {
+        ...state,
+        notes: snapshot.notes,
+        folders: snapshot.folders,
+        selectedNoteId: snapshot.selectedNoteId,
+        historyIndex: state.historyIndex - 1,
+      };
+    }
+    case 'REDO': {
+      if (state.historyIndex >= state.history.length - 1) return state;
+      const snapshot = state.history[state.historyIndex + 2];
+      if (!snapshot) return state;
+      return {
+        ...state,
+        notes: snapshot.notes,
+        folders: snapshot.folders,
+        selectedNoteId: snapshot.selectedNoteId,
+        historyIndex: state.historyIndex + 1,
+      };
+    }
+    case 'IMPORT_DATA':
+      return {
+        ...state,
+        notes: action.payload.notes,
+        folders: action.payload.folders,
       };
     default:
       return state;
@@ -119,19 +187,16 @@ function notesReducer(state: NotesState, action: NotesAction): NotesState {
 function buildFolderTree(folders: Folder[], notes: Note[]): FolderWithChildren[] {
   const folderMap = new Map<string, FolderWithChildren>();
   
-  // Create folder nodes
   folders.forEach((folder) => {
     folderMap.set(folder.id, { ...folder, subfolders: [], notes: [] });
   });
   
-  // Assign notes to folders
   notes.forEach((note) => {
     if (note.folderId && folderMap.has(note.folderId)) {
       folderMap.get(note.folderId)!.notes.push(note);
     }
   });
   
-  // Build tree structure
   const rootFolders: FolderWithChildren[] = [];
   folderMap.forEach((folder) => {
     if (folder.parentId && folderMap.has(folder.parentId)) {
@@ -151,6 +216,8 @@ interface NotesContextValue {
   folderTree: FolderWithChildren[];
   globalNotes: Note[];
   favoriteNotes: Note[];
+  canUndo: boolean;
+  canRedo: boolean;
   createNote: (folderId?: string) => Note;
   updateNote: (id: string, updates: Partial<Note>) => void;
   updateNoteContent: (id: string, content: string) => void;
@@ -160,44 +227,13 @@ interface NotesContextValue {
   createFolder: (name: string, parentId?: string) => Folder;
   updateFolder: (id: string, updates: Partial<Folder>) => void;
   deleteFolder: (id: string) => void;
+  undo: () => void;
+  redo: () => void;
+  exportData: () => void;
+  importData: (file: File) => Promise<void>;
 }
 
 const NotesContext = createContext<NotesContextValue | null>(null);
-
-const STORAGE_KEY = 'networked-notes-data';
-
-// Load from localStorage
-function loadFromStorage(): { notes: Note[]; folders: Folder[] } {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return {
-        notes: parsed.notes.map((n: any) => ({
-          ...n,
-          createdAt: new Date(n.createdAt),
-          updatedAt: new Date(n.updatedAt),
-        })),
-        folders: parsed.folders.map((f: any) => ({
-          ...f,
-          createdAt: new Date(f.createdAt),
-        })),
-      };
-    }
-  } catch (e) {
-    console.error('Failed to load notes from storage:', e);
-  }
-  return { notes: [], folders: [] };
-}
-
-// Save to localStorage
-function saveToStorage(notes: Note[], folders: Folder[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ notes, folders }));
-  } catch (e) {
-    console.error('Failed to save notes to storage:', e);
-  }
-}
 
 export function NotesProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(notesReducer, initialState);
@@ -209,7 +245,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_FOLDERS', payload: folders });
   }, []);
 
-  // Auto-save on changes
+  // Auto-save with backup
   useEffect(() => {
     if (state.notes.length > 0 || state.folders.length > 0) {
       const timeoutId = setTimeout(() => {
@@ -222,28 +258,89 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
   }, [state.notes, state.folders]);
 
-  const selectedNote = state.notes.find((n) => n.id === state.selectedNoteId) || null;
+  // Multi-tab sync
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'networked-notes-data' && e.newValue) {
+        try {
+          const { notes, folders } = JSON.parse(e.newValue);
+          // Merge: keep whichever was updated more recently
+          const mergedNotes = notes.map((externalNote: Note) => {
+            const localNote = state.notes.find(n => n.id === externalNote.id);
+            if (!localNote) return externalNote;
+            return new Date(externalNote.updatedAt) > new Date(localNote.updatedAt)
+              ? externalNote
+              : localNote;
+          });
+          dispatch({ type: 'SET_NOTES', payload: mergedNotes });
+          dispatch({ type: 'SET_FOLDERS', payload: folders });
+        } catch (e) {
+          console.error('Failed to sync from other tab:', e);
+        }
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [state.notes]);
 
-  const filteredNotes = state.notes.filter((note) => {
-    if (!state.searchQuery) return true;
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        // Only handle global undo if not in editor
+        const activeElement = document.activeElement;
+        const isInEditor = activeElement?.closest('.ProseMirror');
+        if (isInEditor) return; // Let editor handle its own undo
+        
+        e.preventDefault();
+        if (e.shiftKey) {
+          dispatch({ type: 'REDO' });
+        } else {
+          dispatch({ type: 'UNDO' });
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Memoized computed values
+  const selectedNote = useMemo(
+    () => state.notes.find((n) => n.id === state.selectedNoteId) || null,
+    [state.notes, state.selectedNoteId]
+  );
+
+  const filteredNotes = useMemo(() => {
+    if (!state.searchQuery) return state.notes;
     const query = state.searchQuery.toLowerCase();
-    return (
+    return state.notes.filter((note) =>
       note.title.toLowerCase().includes(query) ||
       note.content.toLowerCase().includes(query) ||
       note.tags.some((tag) => tag.toLowerCase().includes(query))
     );
-  });
+  }, [state.notes, state.searchQuery]);
 
-  // Build folder tree
-  const folderTree = buildFolderTree(state.folders, state.notes);
+  const folderTree = useMemo(
+    () => buildFolderTree(state.folders, state.notes),
+    [state.folders, state.notes]
+  );
   
-  // Notes without a folder
-  const globalNotes = state.notes.filter((note) => !note.folderId);
+  const globalNotes = useMemo(
+    () => state.notes.filter((note) => !note.folderId),
+    [state.notes]
+  );
   
-  // Favorite notes
-  const favoriteNotes = state.notes.filter((note) => note.favorite);
+  const favoriteNotes = useMemo(
+    () => state.notes.filter((note) => note.favorite),
+    [state.notes]
+  );
+
+  const canUndo = state.historyIndex >= 0;
+  const canRedo = state.historyIndex < state.history.length - 1;
 
   const createNote = useCallback((folderId?: string): Note => {
+    dispatch({ type: 'PUSH_HISTORY' });
     const newNote: Note = {
       id: uuidv4(),
       title: 'Untitled Note',
@@ -267,7 +364,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateNoteContent = useCallback((id: string, content: string) => {
-    // Extract title from content if it's JSON
     let title = 'Untitled Note';
     try {
       const parsed = JSON.parse(content);
@@ -275,7 +371,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         title = parsed.content[0].content[0].text.slice(0, 50);
       }
     } catch {
-      // Not JSON, try to extract first line
       const firstLine = content.split('\n')[0].slice(0, 50);
       if (firstLine) title = firstLine;
     }
@@ -283,6 +378,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteNote = useCallback((id: string) => {
+    dispatch({ type: 'PUSH_HISTORY' });
     dispatch({ type: 'DELETE_NOTE', payload: id });
   }, []);
 
@@ -295,6 +391,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createFolder = useCallback((name: string, parentId?: string): Folder => {
+    dispatch({ type: 'PUSH_HISTORY' });
     const newFolder: Folder = {
       id: uuidv4(),
       name: name || 'New Folder',
@@ -310,7 +407,26 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteFolder = useCallback((id: string) => {
+    dispatch({ type: 'PUSH_HISTORY' });
     dispatch({ type: 'DELETE_FOLDER', payload: id });
+  }, []);
+
+  const undo = useCallback(() => {
+    dispatch({ type: 'UNDO' });
+  }, []);
+
+  const redo = useCallback(() => {
+    dispatch({ type: 'REDO' });
+  }, []);
+
+  const exportData = useCallback(() => {
+    exportNotes(state.notes, state.folders);
+  }, [state.notes, state.folders]);
+
+  const importDataFn = useCallback(async (file: File) => {
+    dispatch({ type: 'PUSH_HISTORY' });
+    const data = await importNotes(file);
+    dispatch({ type: 'IMPORT_DATA', payload: data });
   }, []);
 
   return (
@@ -322,6 +438,8 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         folderTree,
         globalNotes,
         favoriteNotes,
+        canUndo,
+        canRedo,
         createNote,
         updateNote,
         updateNoteContent,
@@ -331,6 +449,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         createFolder,
         updateFolder,
         deleteFolder,
+        undo,
+        redo,
+        exportData,
+        importData: importDataFn,
       }}
     >
       {children}
