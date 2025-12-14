@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import { PanelRightClose, PanelRight } from 'lucide-react';
+import { PanelRightClose, PanelRight, Sparkles, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { FactSheetContainer } from '@/components/fact-sheets/FactSheetContainer';
+import { AnalyticsPanel } from '@/components/analytics';
 
 // Right Sidebar Context (independent from left sidebar)
 interface RightSidebarContextType {
@@ -84,9 +86,19 @@ export function RightSidebarTrigger({ className }: { className?: string }) {
   );
 }
 
+const RIGHT_TAB_STORAGE_KEY = 'right-sidebar:tab';
+
 // The actual right sidebar component
 export function RightSidebar() {
   const { isOpen } = useRightSidebar();
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem(RIGHT_TAB_STORAGE_KEY) || 'entities';
+  });
+
+  // Persist tab state
+  useEffect(() => {
+    localStorage.setItem(RIGHT_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
 
   return (
     <aside
@@ -96,17 +108,35 @@ export function RightSidebar() {
       )}
     >
       {isOpen && (
-        <>
-          {/* Header */}
-          <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
-            <span className="font-semibold text-sm text-foreground">Entity Details</span>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+          {/* Header with Tabs */}
+          <div className="shrink-0 border-b border-border">
+            <TabsList className="w-full h-12 bg-transparent rounded-none p-0">
+              <TabsTrigger 
+                value="entities" 
+                className="flex-1 h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span className="text-sm">Entities</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="analytics" 
+                className="flex-1 h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent gap-2"
+              >
+                <BarChart3 className="h-4 w-4" />
+                <span className="text-sm">Analytics</span>
+              </TabsTrigger>
+            </TabsList>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-auto">
+          <TabsContent value="entities" className="flex-1 overflow-auto mt-0">
             <FactSheetContainer />
-          </div>
-        </>
+          </TabsContent>
+          <TabsContent value="analytics" className="flex-1 overflow-auto mt-0">
+            <AnalyticsPanel />
+          </TabsContent>
+        </Tabs>
       )}
     </aside>
   );
