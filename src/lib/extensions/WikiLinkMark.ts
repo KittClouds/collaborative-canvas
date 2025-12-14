@@ -4,6 +4,8 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 export interface WikiLinkMarkOptions {
   HTMLAttributes: Record<string, any>;
+  onLinkClick?: (title: string) => void;
+  checkLinkExists?: (title: string) => boolean;
 }
 
 declare module '@tiptap/core' {
@@ -21,6 +23,8 @@ export const WikiLinkMark = Mark.create<WikiLinkMarkOptions>({
   addOptions() {
     return {
       HTMLAttributes: {},
+      onLinkClick: undefined as ((title: string) => void) | undefined,
+      checkLinkExists: undefined as ((title: string) => boolean) | undefined,
     };
   },
 
@@ -68,6 +72,8 @@ export const WikiLinkMark = Mark.create<WikiLinkMarkOptions>({
   },
 
   addProseMirrorPlugins() {
+    const options = this.options;
+    
     return [
       new Plugin({
         key: new PluginKey('wikilink-auto-detect'),
@@ -85,12 +91,22 @@ export const WikiLinkMark = Mark.create<WikiLinkMarkOptions>({
                 while ((match = regex.exec(node.text)) !== null) {
                   const from = pos + match.index;
                   const to = from + match[0].length;
+                  const title = match[1].trim();
+                  
+                  // Check if the link target exists
+                  const exists = options.checkLinkExists ? options.checkLinkExists(title) : true;
+                  
+                  // Different styling for existing vs broken links
+                  const baseStyle = 'padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;';
+                  const existingStyle = `${baseStyle} background-color: hsl(var(--primary) / 0.15); color: hsl(var(--primary)); text-decoration: underline; text-decoration-style: dotted;`;
+                  const brokenStyle = `${baseStyle} background-color: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); text-decoration: underline; text-decoration-style: dashed;`;
 
                   decorations.push(
                     Decoration.inline(from, to, {
-                      class: 'wikilink-highlight',
-                      style: 'background-color: #6366f120; color: #6366f1; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; text-decoration: underline; text-decoration-style: dotted; cursor: pointer;',
-                      'data-wikilink-title': match[1].trim(),
+                      class: exists ? 'wikilink-highlight wikilink-exists' : 'wikilink-highlight wikilink-broken',
+                      style: exists ? existingStyle : brokenStyle,
+                      'data-wikilink-title': title,
+                      'data-wikilink-exists': exists ? 'true' : 'false',
                     })
                   );
                 }
@@ -98,6 +114,23 @@ export const WikiLinkMark = Mark.create<WikiLinkMarkOptions>({
             });
 
             return DecorationSet.create(doc, decorations);
+          },
+          
+          // Handle clicks on wikilinks
+          handleDOMEvents: {
+            click: (view, event) => {
+              const target = event.target as HTMLElement;
+              const wikilinkTitle = target.getAttribute('data-wikilink-title');
+              
+              if (wikilinkTitle && options.onLinkClick) {
+                event.preventDefault();
+                event.stopPropagation();
+                options.onLinkClick(wikilinkTitle);
+                return true;
+              }
+              
+              return false;
+            },
           },
         },
       }),

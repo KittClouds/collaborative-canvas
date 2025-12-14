@@ -19,6 +19,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SchemaProvider } from '@/contexts/SchemaContext';
 import { SchemaManager } from '@/components/schema/SchemaManager';
+import { useLinkIndex } from '@/hooks/useLinkIndex';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,7 +39,10 @@ function NotesApp() {
     return saved !== null ? JSON.parse(saved) : true;
   });
 
-  const { selectedNote, updateNoteContent, deleteNote, createNote } = useNotes();
+  const { selectedNote, updateNoteContent, deleteNote, createNote, selectNote, state } = useNotes();
+  
+  // Link index for wikilink navigation
+  const { findNoteByTitle, noteExists } = useLinkIndex(state.notes);
 
   const handleToolbarVisibilityChange = useCallback((visible: boolean) => {
     setToolbarVisible(visible);
@@ -56,6 +60,23 @@ function NotesApp() {
       deleteNote(selectedNote.id);
     }
   };
+
+  // Handle wikilink click - navigate to existing note or create new one
+  const handleWikilinkClick = useCallback((title: string) => {
+    const existingNote = findNoteByTitle(title);
+    if (existingNote) {
+      selectNote(existingNote.id);
+    } else {
+      // Create a new note with this title
+      const newNote = createNote(undefined, title);
+      selectNote(newNote.id);
+    }
+  }, [findNoteByTitle, selectNote, createNote]);
+
+  // Check if a wikilink target exists
+  const checkWikilinkExists = useCallback((title: string): boolean => {
+    return noteExists(title);
+  }, [noteExists]);
 
   return (
     <SidebarProvider>
@@ -146,6 +167,8 @@ function NotesApp() {
                 toolbarVisible={toolbarVisible}
                 onToolbarVisibilityChange={handleToolbarVisibilityChange}
                 noteId={selectedNote.id}
+                onWikilinkClick={handleWikilinkClick}
+                checkWikilinkExists={checkWikilinkExists}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full bg-background">
