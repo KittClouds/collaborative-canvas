@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, RefObject } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode, RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { themeActions } from 'reactjs-tiptap-editor/theme';
 
@@ -6,8 +6,16 @@ type Theme = 'light' | 'dark';
 
 const THEME_KEY = 'networked-notes-theme';
 
-export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
+interface ThemeContextType {
+  theme: Theme;
+  toggleTheme: (ref?: RefObject<HTMLButtonElement | HTMLElement>) => Promise<void>;
+  setTheme: (theme: Theme) => void;
+}
+
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setThemeState] = useState<Theme>(() => {
     if (typeof window === 'undefined') return 'dark';
     
     const stored = localStorage.getItem(THEME_KEY);
@@ -38,7 +46,7 @@ export function useTheme() {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     if (!ref?.current || !supportsViewTransitions || prefersReducedMotion) {
-      setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+      setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
       return;
     }
 
@@ -52,7 +60,7 @@ export function useTheme() {
 
     const transition = (document as any).startViewTransition(() => {
       flushSync(() => {
-        setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+        setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
       });
     });
 
@@ -73,9 +81,21 @@ export function useTheme() {
     );
   }, []);
 
-  const setThemeValue = useCallback((newTheme: Theme) => {
-    setTheme(newTheme);
+  const setTheme = useCallback((newTheme: Theme) => {
+    setThemeState(newTheme);
   }, []);
 
-  return { theme, toggleTheme, setTheme: setThemeValue };
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
+  return context;
 }
