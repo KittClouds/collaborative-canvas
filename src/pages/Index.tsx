@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Menu, FileText, Trash2 } from 'lucide-react';
 import RichEditor from '@/components/RichEditor';
 import { useTheme } from '@/hooks/useTheme';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNotes, NotesProvider } from '@/contexts/NotesContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -44,6 +44,20 @@ function NotesApp() {
   // Link index for wikilink navigation
   const { findNoteByTitle, noteExists } = useLinkIndex(state.notes);
 
+  // Use refs to hold latest versions without changing callback references
+  const findNoteByTitleRef = useRef(findNoteByTitle);
+  const selectNoteRef = useRef(selectNote);
+  const createNoteRef = useRef(createNote);
+  const noteExistsRef = useRef(noteExists);
+
+  // Keep refs updated
+  useEffect(() => {
+    findNoteByTitleRef.current = findNoteByTitle;
+    selectNoteRef.current = selectNote;
+    createNoteRef.current = createNote;
+    noteExistsRef.current = noteExists;
+  });
+
   const handleToolbarVisibilityChange = useCallback((visible: boolean) => {
     setToolbarVisible(visible);
     localStorage.setItem('editor-toolbar-visible', JSON.stringify(visible));
@@ -61,22 +75,20 @@ function NotesApp() {
     }
   };
 
-  // Handle wikilink click - navigate to existing note or create new one
+  // STABLE callbacks using refs - no dependencies means reference never changes
   const handleWikilinkClick = useCallback((title: string) => {
-    const existingNote = findNoteByTitle(title);
+    const existingNote = findNoteByTitleRef.current(title);
     if (existingNote) {
-      selectNote(existingNote.id);
+      selectNoteRef.current(existingNote.id);
     } else {
-      // Create a new note with this title
-      const newNote = createNote(undefined, title);
-      selectNote(newNote.id);
+      const newNote = createNoteRef.current(undefined, title);
+      selectNoteRef.current(newNote.id);
     }
-  }, [findNoteByTitle, selectNote, createNote]);
+  }, []);
 
-  // Check if a wikilink target exists
   const checkWikilinkExists = useCallback((title: string): boolean => {
-    return noteExists(title);
-  }, [noteExists]);
+    return noteExistsRef.current(title);
+  }, []);
 
   return (
     <SidebarProvider>

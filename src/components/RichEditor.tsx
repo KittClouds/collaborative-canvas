@@ -260,13 +260,22 @@ const RichEditor = ({
   checkWikilinkExists,
 }: RichEditorProps) => {
   const previousContentRef = useRef<string>('');
+  const previousNoteIdRef = useRef<string | undefined>(noteId);
   
-  // Memoize extensions with link handlers
-  const extensions = useMemo(
-    () => createExtensions(onWikilinkClick, checkWikilinkExists),
-    [onWikilinkClick, checkWikilinkExists]
-  );
+  // Use refs for callbacks to keep extensions stable
+  const optionsRef = useRef({ onWikilinkClick, checkWikilinkExists });
+  useEffect(() => {
+    optionsRef.current = { onWikilinkClick, checkWikilinkExists };
+  });
 
+  // Create extensions ONCE - use refs for dynamic callback access
+  const extensions = useMemo(
+    () => createExtensions(
+      (title) => optionsRef.current.onWikilinkClick?.(title),
+      (title) => optionsRef.current.checkWikilinkExists?.(title) ?? true
+    ),
+    [] // Empty deps = never recreated
+  );
 
   const dimensions = useLayoutDimensions({
     includeToolbar: toolbarVisible,
@@ -318,27 +327,19 @@ const RichEditor = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [toolbarVisible, onToolbarVisibilityChange]);
 
-  // Handle content updates when switching notes
+  // ONLY update editor content when noteId changes (switching notes)
   useEffect(() => {
-    if (!editor) return;
-
-    const newContent = typeof content === 'string' ? content : JSON.stringify(content);
-
-    if (newContent !== previousContentRef.current) {
+    if (!editor || !noteId) return;
+    
+    // Only trigger on actual note switch, not on content updates
+    if (previousNoteIdRef.current !== noteId) {
       const parsedContent = parseContent(content);
       editor.commands.setContent(parsedContent, { emitUpdate: false });
-      previousContentRef.current = newContent;
+      previousContentRef.current = typeof content === 'string' ? content : JSON.stringify(content);
+      previousNoteIdRef.current = noteId;
     }
-  }, [content, editor, parseContent]);
-
-  // Update editor key when noteId changes to force remount
-  useEffect(() => {
-    if (editor && noteId) {
-      const parsedContent = parseContent(content);
-      editor.commands.setContent(parsedContent, { emitUpdate: false });
-      previousContentRef.current = content;
-    }
-  }, [noteId, editor, content, parseContent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteId, editor]);
 
   if (!editor) {
     return (
