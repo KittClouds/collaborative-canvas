@@ -16,6 +16,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useState, useCallback } from 'react';
 import { useNotes, NotesProvider } from '@/contexts/NotesContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -171,9 +172,11 @@ function NotesApp() {
 
 const Index = () => {
   return (
-    <NotesProvider>
-      <NotesApp />
-    </NotesProvider>
+    <ErrorBoundary>
+      <NotesProvider>
+        <NotesApp />
+      </NotesProvider>
+    </ErrorBoundary>
   );
 };
 
