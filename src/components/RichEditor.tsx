@@ -64,6 +64,10 @@ import 'katex/dist/katex.min.css';
 import 'easydrawer/styles.css';
 import 'react-image-crop/dist/ReactCrop.css';
 
+// Import editor components
+import EditorToolbar from './editor/EditorToolbar';
+import EditorBubbleMenus from './editor/EditorBubbleMenus';
+
 import { useLayoutDimensions } from '@/hooks/useLayoutDimensions';
 
 interface RichEditorProps {
@@ -309,14 +313,21 @@ const RichEditor = ({
   }
 
   return (
-    <div className="h-full flex flex-col min-h-0">
+    <div className="h-full flex flex-col min-h-0 reactjs-tiptap-editor">
       <RichTextProvider editor={editor} dark={isDarkMode}>
+        {/* Toolbar */}
+        {toolbarVisible && <EditorToolbar />}
+        
+        {/* Editor Content Area */}
         <div 
-          className="flex-1 overflow-auto custom-scrollbar bg-background"
+          className="flex-1 overflow-auto custom-scrollbar bg-background relative"
           style={{ maxHeight: dimensions.availableHeight }}
         >
           <EditorContent editor={editor} className="min-h-full" />
         </div>
+        
+        {/* Bubble Menus */}
+        <EditorBubbleMenus />
       </RichTextProvider>
     </div>
   );
