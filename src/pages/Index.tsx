@@ -17,6 +17,8 @@ import { useState, useCallback } from 'react';
 import { useNotes, NotesProvider } from '@/contexts/NotesContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { SchemaProvider } from '@/contexts/SchemaContext';
+import { SchemaManager } from '@/components/schema/SchemaManager';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,6 +90,7 @@ function NotesApp() {
 
             {/* Header Actions */}
             <div className="flex items-center gap-1">
+              <SchemaManager />
               {selectedNote && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -173,9 +176,11 @@ function NotesApp() {
 const Index = () => {
   return (
     <ErrorBoundary>
-      <NotesProvider>
-        <NotesApp />
-      </NotesProvider>
+      <SchemaProvider>
+        <NotesProvider>
+          <NotesApp />
+        </NotesProvider>
+      </SchemaProvider>
     </ErrorBoundary>
   );
 };
