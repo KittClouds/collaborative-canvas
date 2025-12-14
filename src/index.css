@@ -282,6 +282,35 @@
   --richtext-text: hsl(var(--foreground)) !important;
 }
 
+/* Force editor dark mode when .dark is on root */
+.dark .reactjs-tiptap-editor,
+.dark .reactjs-tiptap-editor *,
+.dark div[data-richtext-portal],
+.dark div[data-richtext-portal] * {
+  --background: 240 15% 6%;
+  --foreground: 45 20% 92%;
+  --card: 240 12% 9%;
+  --card-foreground: 45 20% 92%;
+  --popover: 240 15% 8%;
+  --popover-foreground: 45 20% 92%;
+  --primary: 38 100% 55%;
+  --primary-foreground: 240 15% 6%;
+  --secondary: 240 10% 14%;
+  --secondary-foreground: 45 15% 85%;
+  --muted: 240 10% 12%;
+  --muted-foreground: 240 5% 50%;
+  --accent: 240 10% 15%;
+  --accent-foreground: 38 95% 65%;
+  --border: 240 10% 14%;
+  --input: 240 10% 16%;
+  --ring: 38 100% 55%;
+}
+
+.dark .ProseMirror {
+  background-color: hsl(240 15% 6%) !important;
+  color: hsl(45 20% 92%) !important;
+}
+
 /* Ensure editor takes full height */
 .ProseMirror {
   min-height: 100%;
