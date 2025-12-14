@@ -19,6 +19,7 @@ export interface Note {
   connections?: DocumentConnections;
   // Entity properties
   entityKind?: EntityKind;
+  entitySubtype?: string;
   entityLabel?: string;
   isEntity?: boolean;
 }
@@ -31,9 +32,12 @@ export interface Folder {
   createdAt: Date;
   // Entity properties
   entityKind?: EntityKind;
+  entitySubtype?: string;
   entityLabel?: string;
   isTypedRoot?: boolean;
+  isSubtypeRoot?: boolean;
   inheritedKind?: EntityKind;
+  inheritedSubtype?: string;
 }
 
 // Helper type for building folder tree
@@ -371,12 +375,23 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     return undefined;
   }, [state.folders]);
 
+  // Helper to get inherited subtype from folder hierarchy
+  const getInheritedSubtypeFromFolder = useCallback((folderId: string): string | undefined => {
+    const folder = state.folders.find(f => f.id === folderId);
+    if (!folder) return undefined;
+    if (folder.entitySubtype) return folder.entitySubtype;
+    if (folder.inheritedSubtype) return folder.inheritedSubtype;
+    if (folder.parentId) return getInheritedSubtypeFromFolder(folder.parentId);
+    return undefined;
+  }, [state.folders]);
+
   const createNote = useCallback((folderId?: string, title?: string): Note => {
     dispatch({ type: 'PUSH_HISTORY' });
     
     // Determine title and entity properties
     let noteTitle = title || 'Untitled Note';
     let entityKind: EntityKind | undefined;
+    let entitySubtype: string | undefined;
     let entityLabel: string | undefined;
     let isEntity = false;
     
@@ -384,6 +399,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     const parsed = parseEntityFromTitle(noteTitle);
     if (parsed && parsed.label) {
       entityKind = parsed.kind;
+      entitySubtype = parsed.subtype;
       entityLabel = parsed.label;
       isEntity = true;
     } else if (folderId) {
@@ -408,6 +424,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       tags: [],
       isPinned: false,
       entityKind,
+      entitySubtype,
       entityLabel,
       isEntity,
     };
@@ -423,10 +440,12 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       const parsed = parseEntityFromTitle(updates.title);
       if (parsed && parsed.label) {
         updates.entityKind = parsed.kind;
+        updates.entitySubtype = parsed.subtype;
         updates.entityLabel = parsed.label;
         updates.isEntity = true;
       } else {
         updates.entityKind = undefined;
+        updates.entitySubtype = undefined;
         updates.entityLabel = undefined;
         updates.isEntity = false;
       }
@@ -458,10 +477,12 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     // Parse folder name for entity properties
     const parsed = parseFolderEntityFromName(name);
     let inheritedKind: EntityKind | undefined;
+    let inheritedSubtype: string | undefined;
     
-    // Get inherited kind from parent
+    // Get inherited kind/subtype from parent
     if (parentId) {
       inheritedKind = getInheritedKindFromFolder(parentId);
+      inheritedSubtype = getInheritedSubtypeFromFolder(parentId);
     }
     
     const newFolder: Folder = {
@@ -470,14 +491,17 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       parentId,
       createdAt: new Date(),
       entityKind: options?.entityKind ?? parsed?.kind,
+      entitySubtype: options?.entitySubtype ?? parsed?.subtype,
       entityLabel: options?.entityLabel ?? parsed?.label,
       isTypedRoot: options?.isTypedRoot ?? parsed?.isTypedRoot ?? false,
+      isSubtypeRoot: options?.isSubtypeRoot ?? parsed?.isSubtypeRoot ?? false,
       inheritedKind,
+      inheritedSubtype,
       color: options?.color,
     };
     dispatch({ type: 'ADD_FOLDER', payload: newFolder });
     return newFolder;
-  }, [getInheritedKindFromFolder]);
+  }, [getInheritedKindFromFolder, getInheritedSubtypeFromFolder]);
 
   const updateFolder = useCallback((id: string, updates: Partial<Folder>) => {
     // If name is being updated, re-parse entity properties
@@ -485,12 +509,16 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       const parsed = parseFolderEntityFromName(updates.name);
       if (parsed) {
         updates.entityKind = parsed.kind;
+        updates.entitySubtype = parsed.subtype;
         updates.entityLabel = parsed.label;
         updates.isTypedRoot = parsed.isTypedRoot;
+        updates.isSubtypeRoot = parsed.isSubtypeRoot;
       } else {
         updates.entityKind = undefined;
+        updates.entitySubtype = undefined;
         updates.entityLabel = undefined;
         updates.isTypedRoot = false;
+        updates.isSubtypeRoot = false;
       }
     }
     dispatch({ type: 'UPDATE_FOLDER', payload: { id, updates } });

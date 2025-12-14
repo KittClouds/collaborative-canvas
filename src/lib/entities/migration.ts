@@ -9,6 +9,7 @@ interface NoteForMigration {
   title: string;
   folderId?: string;
   entityKind?: EntityKind;
+  entitySubtype?: string;
   entityLabel?: string;
   isEntity?: boolean;
 }
@@ -21,9 +22,12 @@ interface FolderForMigration {
   name: string;
   parentId?: string;
   entityKind?: EntityKind;
+  entitySubtype?: string;
   entityLabel?: string;
   isTypedRoot?: boolean;
+  isSubtypeRoot?: boolean;
   inheritedKind?: EntityKind;
+  inheritedSubtype?: string;
 }
 
 /**
@@ -38,6 +42,7 @@ export function migrateExistingNotes<T extends NoteForMigration>(notes: T[]): T[
       return {
         ...note,
         entityKind: parsed.kind,
+        entitySubtype: parsed.subtype,
         entityLabel: parsed.label,
         isEntity: true,
       };
@@ -47,6 +52,7 @@ export function migrateExistingNotes<T extends NoteForMigration>(notes: T[]): T[
     return {
       ...note,
       entityKind: undefined,
+      entitySubtype: undefined,
       entityLabel: undefined,
       isEntity: false,
     };
@@ -67,8 +73,10 @@ export function migrateExistingFolders<T extends FolderForMigration>(folders: T[
       return {
         ...folder,
         entityKind: parsed.kind,
+        entitySubtype: parsed.subtype,
         entityLabel: parsed.label,
         isTypedRoot: parsed.isTypedRoot,
+        isSubtypeRoot: parsed.isSubtypeRoot,
       };
     }
     
@@ -76,26 +84,35 @@ export function migrateExistingFolders<T extends FolderForMigration>(folders: T[
     return {
       ...folder,
       entityKind: undefined,
+      entitySubtype: undefined,
       entityLabel: undefined,
       isTypedRoot: false,
+      isSubtypeRoot: false,
     };
   });
   
-  // Second pass: propagate inheritedKind from parent folders
+  // Second pass: propagate inheritedKind and inheritedSubtype from parent folders
   const folderMap = new Map(parsedFolders.map(f => [f.id, f]));
   
   function getInheritedKind(folder: FolderForMigration): EntityKind | undefined {
-    // If folder has its own kind, that's what children inherit
     if (folder.entityKind) return folder.entityKind;
-    
-    // Otherwise, check parent
     if (folder.parentId) {
       const parent = folderMap.get(folder.parentId);
       if (parent) {
         return parent.entityKind || getInheritedKind(parent);
       }
     }
-    
+    return undefined;
+  }
+  
+  function getInheritedSubtype(folder: FolderForMigration): string | undefined {
+    if (folder.entitySubtype) return folder.entitySubtype;
+    if (folder.parentId) {
+      const parent = folderMap.get(folder.parentId);
+      if (parent) {
+        return parent.entitySubtype || getInheritedSubtype(parent);
+      }
+    }
     return undefined;
   }
   
@@ -103,13 +120,13 @@ export function migrateExistingFolders<T extends FolderForMigration>(folders: T[
     if (folder.parentId) {
       const parent = folderMap.get(folder.parentId);
       if (parent) {
-        const inherited = getInheritedKind(parent);
-        if (inherited) {
-          return {
-            ...folder,
-            inheritedKind: inherited,
-          };
-        }
+        const inheritedKind = getInheritedKind(parent);
+        const inheritedSubtype = getInheritedSubtype(parent);
+        return {
+          ...folder,
+          inheritedKind: inheritedKind || folder.inheritedKind,
+          inheritedSubtype: inheritedSubtype || folder.inheritedSubtype,
+        };
       }
     }
     return folder;

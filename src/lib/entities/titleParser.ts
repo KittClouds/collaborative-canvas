@@ -1,10 +1,11 @@
-import { EntityKind, ENTITY_KINDS } from './entityTypes';
+import { EntityKind, ENTITY_KINDS, isValidSubtype } from './entityTypes';
 
 /**
  * Parsed entity from a title or folder name
  */
 export interface ParsedEntity {
   kind: EntityKind;
+  subtype?: string;
   label?: string;
 }
 
@@ -13,10 +14,11 @@ export interface ParsedEntity {
  */
 export interface ParsedFolderName extends ParsedEntity {
   isTypedRoot: boolean;
+  isSubtypeRoot?: boolean; // [CHARACTER:ALLY] is a subtype root
 }
 
 /**
- * Parse entity syntax from a title: [KIND|Label] or [KIND]
+ * Parse entity syntax from a title: [KIND:SUBTYPE|Label], [KIND|Label], [KIND:SUBTYPE], or [KIND]
  * Returns null if not entity syntax
  */
 export function parseEntityFromTitle(title: string): ParsedEntity | null {
@@ -24,19 +26,27 @@ export function parseEntityFromTitle(title: string): ParsedEntity | null {
   
   const trimmed = title.trim();
   
-  // Match [KIND|Label] or [KIND]
-  const match = trimmed.match(/^\[([A-Z_]+)(?:\|(.+))?\]$/);
+  // Match [KIND:SUBTYPE|Label], [KIND|Label], [KIND:SUBTYPE], or [KIND]
+  const match = trimmed.match(/^\[([A-Z_]+)(?::([A-Z_]+))?(?:\|(.+))?\]$/);
   if (!match) return null;
   
-  const [, kindStr, label] = match;
+  const [, kindStr, subtypeStr, label] = match;
   
   // Validate kind
   if (!ENTITY_KINDS.includes(kindStr as EntityKind)) {
     return null;
   }
   
+  const kind = kindStr as EntityKind;
+  
+  // Validate subtype if present
+  if (subtypeStr && !isValidSubtype(kind, subtypeStr)) {
+    return null;
+  }
+  
   return {
-    kind: kindStr as EntityKind,
+    kind,
+    subtype: subtypeStr,
     label: label?.trim(),
   };
 }
@@ -44,7 +54,9 @@ export function parseEntityFromTitle(title: string): ParsedEntity | null {
 /**
  * Parse folder name for entity typing
  * [KIND] = typed root folder (container for entities of this kind)
+ * [KIND:SUBTYPE] = subtype root folder (container for subtypes)
  * [KIND|Label] = typed subfolder that is also an entity
+ * [KIND:SUBTYPE|Label] = subtype entity folder
  */
 export function parseFolderEntityFromName(name: string): ParsedFolderName | null {
   const parsed = parseEntityFromTitle(name);
@@ -52,14 +64,18 @@ export function parseFolderEntityFromName(name: string): ParsedFolderName | null
   
   return {
     ...parsed,
-    isTypedRoot: !parsed.label, // [CHARACTER] is typed root, [CHARACTER|Stark Family] is not
+    isTypedRoot: !parsed.label && !parsed.subtype, // [CHARACTER] is typed root
+    isSubtypeRoot: !parsed.label && !!parsed.subtype, // [CHARACTER:ALLY] is subtype root
   };
 }
 
 /**
  * Format an entity as a title string
  */
-export function formatEntityTitle(kind: EntityKind, label: string): string {
+export function formatEntityTitle(kind: EntityKind, label: string, subtype?: string): string {
+  if (subtype) {
+    return `[${kind}:${subtype}|${label}]`;
+  }
   return `[${kind}|${label}]`;
 }
 
@@ -71,15 +87,24 @@ export function formatTypedFolderName(kind: EntityKind): string {
 }
 
 /**
+ * Format a subtype folder name
+ */
+export function formatSubtypeFolderName(kind: EntityKind, subtype: string): string {
+  return `[${kind}:${subtype}]`;
+}
+
+/**
  * Extract display name from entity title
+ * [CHARACTER:ALLY|Jon Snow] → "Jon Snow"
  * [CHARACTER|Jon Snow] → "Jon Snow"
+ * [CHARACTER:ALLY] → "ALLY"
  * [CHARACTER] → "CHARACTER"
  * "Regular Title" → "Regular Title"
  */
 export function getDisplayName(title: string): string {
   const parsed = parseEntityFromTitle(title);
   if (!parsed) return title;
-  return parsed.label || parsed.kind;
+  return parsed.label || parsed.subtype || parsed.kind;
 }
 
 /**
@@ -99,9 +124,17 @@ export function isTypedRootFolder(name: string): boolean {
 }
 
 /**
+ * Check if a folder name represents a subtype root folder
+ */
+export function isSubtypeRootFolder(name: string): boolean {
+  const parsed = parseFolderEntityFromName(name);
+  return parsed !== null && (parsed.isSubtypeRoot ?? false);
+}
+
+/**
  * Check if a folder name represents a typed subfolder (entity folder)
  */
 export function isTypedSubfolder(name: string): boolean {
   const parsed = parseFolderEntityFromName(name);
-  return parsed !== null && !parsed.isTypedRoot;
+  return parsed !== null && !parsed.isTypedRoot && !parsed.isSubtypeRoot;
 }
