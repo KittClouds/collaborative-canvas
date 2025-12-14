@@ -56,6 +56,12 @@ import { Mermaid } from 'reactjs-tiptap-editor/mermaid';
 import { Column } from 'reactjs-tiptap-editor/column';
 import { SlashCommand } from 'reactjs-tiptap-editor/slashcommand';
 
+// Custom entity extensions
+import { EntityMark } from '@/lib/extensions/EntityMark';
+import { TagMark } from '@/lib/extensions/TagMark';
+import { MentionMarkExt } from '@/lib/extensions/MentionMarkExt';
+import { WikiLinkMark } from '@/lib/extensions/WikiLinkMark';
+
 // Import CSS
 import 'reactjs-tiptap-editor/style.css';
 import 'prism-code-editor-lightweight/layout.css';
@@ -220,6 +226,12 @@ const extensions = [
   }),
   Twitter,
   SlashCommand,
+  
+  // Custom entity extensions for syntax highlighting
+  EntityMark,
+  TagMark,
+  MentionMarkExt,
+  WikiLinkMark,
 ];
 
 const RichEditor = ({

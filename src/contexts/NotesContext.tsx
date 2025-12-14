@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useMemo, ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { loadFromStorage, saveToStorage, exportNotes, importNotes } from '@/lib/storage';
+import type { DocumentConnections } from '@/lib/entities/entityTypes';
 
 // Types
 export interface Note {
@@ -13,6 +14,7 @@ export interface Note {
   tags: string[];
   isPinned: boolean;
   favorite?: boolean;
+  connections?: DocumentConnections;
 }
 
 export interface Folder {
