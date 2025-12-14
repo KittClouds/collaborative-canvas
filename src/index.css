@@ -117,7 +117,6 @@
 ::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
-  will-change: clip-path;
 }
 
 ::view-transition-image-pair(root) {
@@ -129,7 +128,7 @@
 }
 
 ::view-transition-new(root) {
-  z-index: 9999;
+  z-index: 999;
 }
 
 @layer base {
@@ -283,36 +282,11 @@
   --richtext-text: hsl(var(--foreground)) !important;
 }
 
-/* Force editor light mode when .dark is NOT on root */
-:root:not(.dark) .reactjs-tiptap-editor,
-:root:not(.dark) div[data-richtext-portal] {
-  --background: 45 30% 97%;
-  --foreground: 240 10% 12%;
-  --card: 45 25% 95%;
-  --card-foreground: 240 10% 12%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 12%;
-  --primary: 32 95% 48%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 45 20% 90%;
-  --secondary-foreground: 240 10% 20%;
-  --muted: 45 15% 92%;
-  --muted-foreground: 240 5% 46%;
-  --accent: 32 60% 94%;
-  --accent-foreground: 32 90% 30%;
-  --border: 45 20% 87%;
-  --input: 45 20% 87%;
-  --ring: 32 95% 48%;
-}
-
-:root:not(.dark) .ProseMirror {
-  background-color: hsl(45 35% 98%) !important;
-  color: hsl(240 10% 12%) !important;
-}
-
 /* Force editor dark mode when .dark is on root */
 .dark .reactjs-tiptap-editor,
-.dark div[data-richtext-portal] {
+.dark .reactjs-tiptap-editor *,
+.dark div[data-richtext-portal],
+.dark div[data-richtext-portal] * {
   --background: 240 15% 6%;
   --foreground: 45 20% 92%;
   --card: 240 12% 9%;
