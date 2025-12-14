@@ -1,9 +1,8 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useCallback } from 'react';
 import { useNotes } from '@/contexts/NotesContext';
 import { useEntitySelection } from '@/contexts/EntitySelectionContext';
 import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentParser';
-import { getSchemaForEntityKind } from '@/lib/entity-schemas';
-import type { ParsedEntity } from '@/types/factSheetTypes';
+import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 import { FileQuestion, Sparkles } from 'lucide-react';
 import {
@@ -14,55 +13,30 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-// Placeholder fact sheet components until Phase 4
-function PlaceholderFactSheet({ entity }: { entity: ParsedEntity }) {
-  const schema = getSchemaForEntityKind(entity.kind);
-  
-  return (
-    <div className="p-4 space-y-4">
-      <div className="rounded-lg border border-border bg-card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <span className="font-medium text-foreground">{entity.kind} Fact Sheet</span>
-        </div>
-        <p className="text-sm text-muted-foreground mb-2">
-          Entity: <span className="text-foreground font-medium">{entity.label}</span>
-        </p>
-        {entity.subtype && (
-          <p className="text-sm text-muted-foreground mb-2">
-            Subtype: <span className="text-foreground">{entity.subtype}</span>
-          </p>
-        )}
-        {schema && (
-          <p className="text-xs text-muted-foreground">
-            Schema loaded: {schema.cards.length} cards defined
-          </p>
-        )}
-      </div>
-      
-      {/* Show card previews */}
-      {schema?.cards.map((card) => (
-        <div
-          key={card.id}
-          className="rounded-lg border border-border bg-card/50 p-3"
-        >
-          <div className="flex items-center gap-2 text-sm">
-            <div 
-              className={`w-2 h-2 rounded-full bg-gradient-to-r ${card.gradient}`} 
-            />
-            <span className="text-muted-foreground">{card.title}</span>
-            <span className="text-xs text-muted-foreground/60 ml-auto">
-              {card.fields.length} fields
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+// Import all fact sheet components
+import { CharacterFactSheet } from './CharacterFactSheet';
+import { LocationFactSheet } from './LocationFactSheet';
+import { ItemFactSheet } from './ItemFactSheet';
+import { FactionFactSheet } from './FactionFactSheet';
+import { EventFactSheet } from './EventFactSheet';
+import { ConceptFactSheet } from './ConceptFactSheet';
+import { NPCFactSheet } from './NPCFactSheet';
+import { SceneFactSheet } from './SceneFactSheet';
+
+// Map entity kinds to their fact sheet components
+const factSheetComponents: Record<EntityKind, React.ComponentType<{ entity: ParsedEntity; onUpdate: (attributes: EntityAttributes) => void }>> = {
+  CHARACTER: CharacterFactSheet,
+  LOCATION: LocationFactSheet,
+  ITEM: ItemFactSheet,
+  FACTION: FactionFactSheet,
+  EVENT: EventFactSheet,
+  CONCEPT: ConceptFactSheet,
+  NPC: NPCFactSheet,
+  SCENE: SceneFactSheet,
+};
 
 export function FactSheetContainer() {
-  const { selectedNote } = useNotes();
+  const { selectedNote, updateNoteContent } = useNotes();
   const { 
     selectedEntity, 
     setSelectedEntity, 
@@ -130,6 +104,28 @@ export function FactSheetContainer() {
     }
   }, [allEntities, selectedEntity, setSelectedEntity, setEntitiesInCurrentNote]);
 
+  // Handle attribute updates - persist to note content
+  const handleAttributeUpdate = useCallback(
+    (attributes: EntityAttributes) => {
+      if (!selectedNote || !selectedEntity) return;
+      
+      // For now, we'll store entity attributes in a special section of the note content
+      // In a full implementation, this would update the entity's attributes in the content JSON
+      try {
+        const content = JSON.parse(selectedNote.content);
+        if (!content.entityAttributes) {
+          content.entityAttributes = {};
+        }
+        const entityKey = `${selectedEntity.kind}|${selectedEntity.label}`;
+        content.entityAttributes[entityKey] = attributes;
+        updateNoteContent(selectedNote.id, JSON.stringify(content));
+      } catch {
+        // Handle parse error
+      }
+    },
+    [selectedNote, selectedEntity, updateNoteContent]
+  );
+
   // No note selected
   if (!selectedNote) {
     return (
@@ -156,6 +152,11 @@ export function FactSheetContainer() {
       </div>
     );
   }
+
+  // Get the correct fact sheet component
+  const FactSheetComponent = selectedEntity 
+    ? factSheetComponents[selectedEntity.kind]
+    : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -195,7 +196,12 @@ export function FactSheetContainer() {
 
       {/* Fact sheet content */}
       <div className="flex-1 overflow-auto">
-        {selectedEntity && <PlaceholderFactSheet entity={selectedEntity} />}
+        {selectedEntity && FactSheetComponent && (
+          <FactSheetComponent 
+            entity={selectedEntity} 
+            onUpdate={handleAttributeUpdate}
+          />
+        )}
       </div>
     </div>
   );
