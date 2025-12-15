@@ -149,6 +149,11 @@ function buildAllDecorations(
       }
       if (hasOverlap) continue;
 
+      // Mark as processed
+      for (let i = match.index; i < match.index + match[0].length; i++) {
+        processed.add(i);
+      }
+
       decorations.push(
         Decoration.inline(from, to, {
           class: 'mention-highlight',
@@ -156,6 +161,59 @@ function buildAllDecorations(
           'data-mention': match[1],
         }, { inclusiveStart: false, inclusiveEnd: false })
       );
+    }
+
+    // 5. Temporal expressions: "three days later", "next morning", etc.
+    const temporalPatterns = [
+      // Relative time: "X days/weeks/hours later/before/after"
+      /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(second|minute|hour|day|week|month|year)s?\s+(later|before|after|earlier|ago)\b/gi,
+      // Next/last patterns: "next morning", "last night"
+      /\b(next|last|the following|the previous)\s+(morning|afternoon|evening|night|day|week|month|year|dawn|dusk|midnight|noon)\b/gi,
+      // Simple time words
+      /\b(yesterday|tomorrow|today|tonight|nowadays)\b/gi,
+      // Time of day patterns
+      /\b(at|by|before|after|around)\s+(dawn|dusk|midnight|noon|sunrise|sunset)\b/gi,
+      // Moments patterns
+      /\b(moments?|seconds?|minutes?|hours?)\s+(later|before|after|earlier)\b/gi,
+      // Meanwhile, eventually, etc.
+      /\b(meanwhile|eventually|suddenly|immediately|soon|later|afterwards|beforehand)\b/gi,
+      // "In the morning/evening"
+      /\b(in the|that)\s+(morning|afternoon|evening|night)\b/gi,
+      // Chapter/sequential time hints
+      /\b(the next day|the day after|the night before|the morning of|the evening of)\b/gi,
+    ];
+
+    for (const temporalRegex of temporalPatterns) {
+      // Reset regex state for each pattern
+      temporalRegex.lastIndex = 0;
+      
+      while ((match = temporalRegex.exec(text)) !== null) {
+        const from = pos + match.index;
+        const to = from + match[0].length;
+        
+        // Skip if overlaps
+        let hasOverlap = false;
+        for (let i = match.index; i < match.index + match[0].length; i++) {
+          if (processed.has(i)) {
+            hasOverlap = true;
+            break;
+          }
+        }
+        if (hasOverlap) continue;
+
+        // Mark as processed
+        for (let i = match.index; i < match.index + match[0].length; i++) {
+          processed.add(i);
+        }
+
+        decorations.push(
+          Decoration.inline(from, to, {
+            class: 'temporal-highlight',
+            style: 'background-color: hsl(var(--chart-4) / 0.15); color: hsl(var(--chart-4)); padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em;',
+            'data-temporal': match[0],
+          }, { inclusiveStart: false, inclusiveEnd: false })
+        );
+      }
     }
   });
 
