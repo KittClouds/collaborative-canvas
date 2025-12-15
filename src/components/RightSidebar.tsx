@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import { PanelRightClose, PanelRight, Sparkles, BarChart3 } from 'lucide-react';
+import { PanelRightClose, PanelRight, Sparkles, BarChart3, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { FactSheetContainer } from '@/components/fact-sheets/FactSheetContainer';
 import { AnalyticsPanel } from '@/components/analytics';
+import { TimelinePanel } from '@/components/timeline';
 
 // Right Sidebar Context (independent from left sidebar)
 interface RightSidebarContextType {
@@ -126,6 +127,13 @@ export function RightSidebar() {
                 <BarChart3 className="h-4 w-4" />
                 <span className="text-sm">Analytics</span>
               </TabsTrigger>
+              <TabsTrigger 
+                value="timeline" 
+                className="flex-1 h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent gap-2"
+              >
+                <Clock className="h-4 w-4" />
+                <span className="text-sm">Timeline</span>
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -135,6 +143,9 @@ export function RightSidebar() {
           </TabsContent>
           <TabsContent value="analytics" className="flex-1 overflow-auto mt-0">
             <AnalyticsPanel />
+          </TabsContent>
+          <TabsContent value="timeline" className="flex-1 overflow-auto mt-0">
+            <TimelinePanel />
           </TabsContent>
         </Tabs>
       )}
