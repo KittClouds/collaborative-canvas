@@ -86,6 +86,7 @@ interface RichEditorProps {
   onToolbarVisibilityChange?: (visible: boolean) => void;
   onWikilinkClick?: (title: string) => void;
   checkWikilinkExists?: (title: string) => boolean;
+  onTemporalClick?: (temporal: string) => void;
 }
 
 function convertBase64ToBlob(base64: string) {
@@ -103,7 +104,8 @@ function convertBase64ToBlob(base64: string) {
 // Create extensions factory function to allow dynamic configuration
 function createExtensions(
   onWikilinkClick?: (title: string) => void,
-  checkWikilinkExists?: (title: string) => boolean
+  checkWikilinkExists?: (title: string) => boolean,
+  onTemporalClick?: (temporal: string) => void
 ) {
   return [
     // Base Extensions
@@ -241,10 +243,11 @@ function createExtensions(
     MentionMarkExt,
     WikiLinkMark,
     
-    // Unified syntax highlighter for all decorations (entities, wikilinks, tags, mentions)
+    // Unified syntax highlighter for all decorations (entities, wikilinks, tags, mentions, temporal)
     UnifiedSyntaxHighlighter.configure({
       onWikilinkClick,
       checkWikilinkExists,
+      onTemporalClick,
     }),
   ];
 }
@@ -258,21 +261,23 @@ const RichEditor = ({
   onToolbarVisibilityChange,
   onWikilinkClick,
   checkWikilinkExists,
+  onTemporalClick,
 }: RichEditorProps) => {
   const previousContentRef = useRef<string>('');
   const previousNoteIdRef = useRef<string | undefined>(noteId);
   
   // Use refs for callbacks to keep extensions stable
-  const optionsRef = useRef({ onWikilinkClick, checkWikilinkExists });
+  const optionsRef = useRef({ onWikilinkClick, checkWikilinkExists, onTemporalClick });
   useEffect(() => {
-    optionsRef.current = { onWikilinkClick, checkWikilinkExists };
+    optionsRef.current = { onWikilinkClick, checkWikilinkExists, onTemporalClick };
   });
 
   // Create extensions ONCE - use refs for dynamic callback access
   const extensions = useMemo(
     () => createExtensions(
       (title) => optionsRef.current.onWikilinkClick?.(title),
-      (title) => optionsRef.current.checkWikilinkExists?.(title) ?? true
+      (title) => optionsRef.current.checkWikilinkExists?.(title) ?? true,
+      (temporal) => optionsRef.current.onTemporalClick?.(temporal)
     ),
     [] // Empty deps = never recreated
   );

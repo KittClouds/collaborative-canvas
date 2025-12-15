@@ -22,6 +22,7 @@ import { SchemaManager } from '@/components/schema/SchemaManager';
 import { useLinkIndex } from '@/hooks/useLinkIndex';
 import { EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
 import { RightSidebar, RightSidebarProvider, RightSidebarTrigger } from '@/components/RightSidebar';
+import { TemporalHighlightProvider, useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +43,7 @@ function NotesApp() {
   });
 
   const { selectedNote, updateNoteContent, deleteNote, createNote, selectNote, state } = useNotes();
+  const { activateTimelineWithTemporal } = useTemporalHighlight();
   
   // Link index for wikilink navigation
   const { findNoteByTitle, noteExists } = useLinkIndex(state.notes);
@@ -51,6 +53,7 @@ function NotesApp() {
   const selectNoteRef = useRef(selectNote);
   const createNoteRef = useRef(createNote);
   const noteExistsRef = useRef(noteExists);
+  const activateTimelineRef = useRef(activateTimelineWithTemporal);
 
   // Keep refs updated
   useEffect(() => {
@@ -58,6 +61,7 @@ function NotesApp() {
     selectNoteRef.current = selectNote;
     createNoteRef.current = createNote;
     noteExistsRef.current = noteExists;
+    activateTimelineRef.current = activateTimelineWithTemporal;
   });
 
   const handleToolbarVisibilityChange = useCallback((visible: boolean) => {
@@ -90,6 +94,10 @@ function NotesApp() {
 
   const checkWikilinkExists = useCallback((title: string): boolean => {
     return noteExistsRef.current(title);
+  }, []);
+
+  const handleTemporalClick = useCallback((temporal: string) => {
+    activateTimelineRef.current(temporal);
   }, []);
 
   return (
@@ -185,6 +193,7 @@ function NotesApp() {
                 noteId={selectedNote.id}
                 onWikilinkClick={handleWikilinkClick}
                 checkWikilinkExists={checkWikilinkExists}
+                onTemporalClick={handleTemporalClick}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full bg-background">
@@ -222,7 +231,9 @@ const Index = () => {
       <SchemaProvider>
         <NotesProvider>
           <EntitySelectionProvider>
-            <NotesApp />
+            <TemporalHighlightProvider>
+              <NotesApp />
+            </TemporalHighlightProvider>
           </EntitySelectionProvider>
         </NotesProvider>
       </SchemaProvider>
