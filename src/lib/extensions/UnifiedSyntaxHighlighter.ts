@@ -7,6 +7,7 @@ import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '../entities/entityTypes
 export interface UnifiedSyntaxOptions {
   onWikilinkClick?: (title: string) => void;
   checkWikilinkExists?: (title: string) => boolean;
+  onTemporalClick?: (temporal: string) => void;
 }
 
 const syntaxPluginKey = new PluginKey('unified-syntax-highlighter');
@@ -227,6 +228,7 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
     return {
       onWikilinkClick: undefined,
       checkWikilinkExists: undefined,
+      onTemporalClick: undefined,
     };
   },
 
@@ -266,6 +268,15 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
                 event.preventDefault();
                 event.stopPropagation();
                 options.onWikilinkClick(wikilinkTitle);
+                return true;
+              }
+
+              // Handle temporal expression clicks
+              const temporalText = target.getAttribute('data-temporal');
+              if (temporalText && options.onTemporalClick) {
+                event.preventDefault();
+                event.stopPropagation();
+                options.onTemporalClick(temporalText);
                 return true;
               }
 

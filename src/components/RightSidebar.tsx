@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { FactSheetContainer } from '@/components/fact-sheets/FactSheetContainer';
 import { AnalyticsPanel } from '@/components/analytics';
 import { TimelinePanel } from '@/components/timeline';
+import { useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
 
 // Right Sidebar Context (independent from left sidebar)
 interface RightSidebarContextType {
@@ -91,10 +92,19 @@ const RIGHT_TAB_STORAGE_KEY = 'right-sidebar:tab';
 
 // The actual right sidebar component
 export function RightSidebar() {
-  const { isOpen } = useRightSidebar();
+  const { isOpen, open } = useRightSidebar();
+  const { setOnActivateTimeline } = useTemporalHighlight();
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem(RIGHT_TAB_STORAGE_KEY) || 'entities';
   });
+
+  // Register callback to activate timeline tab from temporal clicks
+  useEffect(() => {
+    setOnActivateTimeline(() => {
+      open();
+      setActiveTab('timeline');
+    });
+  }, [setOnActivateTimeline, open]);
 
   // Persist tab state
   useEffect(() => {

@@ -1,12 +1,17 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { useNotes } from '@/contexts/NotesContext';
+import { useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
 import { StoryTimeline } from './StoryTimeline';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Clock, Calendar } from 'lucide-react';
+import { Clock, Calendar, Sparkles } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import type { SceneEntity, EventEntity } from '@/types/storyEntities';
+import { cn } from '@/lib/utils';
 
 export function TimelinePanel() {
-  const { selectedNote, state } = useNotes();
+  const { selectedNote } = useNotes();
+  const { highlightedTemporal, clearHighlight } = useTemporalHighlight();
+  const highlightRef = useRef<HTMLDivElement>(null);
   
   // Extract scene and event entities from the current note's connections
   const { scenes, events, entities } = useMemo(() => {
@@ -65,6 +70,13 @@ export function TimelinePanel() {
     
     return { scenes, events, entities: allEntities };
   }, [selectedNote]);
+
+  // Scroll to highlight when temporal is clicked
+  useEffect(() => {
+    if (highlightedTemporal && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [highlightedTemporal]);
   
   // Handle clicking on timeline items
   const handleItemClick = (entityId: string, entityKind: string) => {
@@ -92,6 +104,23 @@ export function TimelinePanel() {
         <p className="text-xs text-muted-foreground/70">
           Add [SCENE|Name] or [EVENT|Name] syntax to see them here
         </p>
+
+        {/* Show highlighted temporal expression when clicked from editor */}
+        {highlightedTemporal && (
+          <div 
+            ref={highlightRef}
+            className="mt-6 p-4 rounded-lg border border-primary/30 bg-primary/5 animate-pulse"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-xs font-medium text-primary">Temporal Reference</span>
+            </div>
+            <p className="text-sm font-medium text-foreground">"{highlightedTemporal}"</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Create a [SCENE|...] or [EVENT|...] to add this to the timeline
+            </p>
+          </div>
+        )}
       </div>
     );
   }
@@ -99,6 +128,43 @@ export function TimelinePanel() {
   return (
     <ScrollArea className="h-full">
       <div className="p-2">
+        {/* Show highlighted temporal expression at the top */}
+        {highlightedTemporal && (
+          <div 
+            ref={highlightRef}
+            className={cn(
+              "mb-4 p-3 rounded-lg border transition-all duration-300",
+              "border-primary/50 bg-primary/10 shadow-sm"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-primary" />
+                <span className="text-xs font-medium text-primary">Temporal Reference</span>
+              </div>
+              <button 
+                onClick={clearHighlight}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm font-medium text-foreground mt-1">"{highlightedTemporal}"</p>
+            <div className="flex gap-1 mt-2 flex-wrap">
+              {scenes.length > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  {scenes.length} scene{scenes.length !== 1 ? 's' : ''}
+                </Badge>
+              )}
+              {events.length > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  {events.length} event{events.length !== 1 ? 's' : ''}
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
+        
         <StoryTimeline
           scenes={scenes}
           events={events}
