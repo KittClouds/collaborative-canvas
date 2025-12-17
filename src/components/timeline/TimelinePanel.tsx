@@ -1,177 +1,211 @@
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { useNotes } from '@/contexts/NotesContext';
 import { useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
-import { StoryTimeline } from './StoryTimeline';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Clock, Calendar, Sparkles } from 'lucide-react';
+import { Clock, Calendar, Sparkles, SlidersHorizontal, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import type { SceneEntity, EventEntity } from '@/types/storyEntities';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { TimelineQueryEngine, TimelineQuery, TimelineItem } from '@/lib/timeline/timelineQueries';
+import { TimelineViewMode, TimelineViewModeSelector } from './TimelineViewModeSelector';
+import { TimelineContent } from './TimelineContent';
+import { NarrativeEntity } from '@/types/narrativeEntities';
+import { EntityKind } from '@/lib/entities/entityTypes';
+import { v4 as uuidv4 } from 'uuid';
 
 export function TimelinePanel() {
-  const { selectedNote } = useNotes();
+  const { selectedNote, createNote, state, selectNote } = useNotes();
   const { highlightedTemporal, clearHighlight } = useTemporalHighlight();
   const highlightRef = useRef<HTMLDivElement>(null);
-  
-  // Extract scene and event entities from the current note's connections
-  const { scenes, events, entities } = useMemo(() => {
-    if (!selectedNote?.connections) {
-      return { scenes: [], events: [], entities: [] };
+
+  const [viewMode, setViewMode] = useState<TimelineViewMode>('cards');
+  const [showFilters, setShowFilters] = useState(false);
+  const [query, setQuery] = useState<TimelineQuery | null>(null);
+
+  // 1. Get all entities from store (flattened)
+  // In a real app with database, we'd query via ID. Here we aggregate from note connections.
+  const allEntities = useMemo(() => {
+    // Map all connections from all notes to NarrativeEntity-like objects
+    // This is a simplified "Entity Store" derived from notes
+    const entities: NarrativeEntity[] = [];
+
+    state.notes.forEach(note => {
+      if (note.connections?.entities) {
+        note.connections.entities.forEach((ref, idx) => {
+          // Convert ref to NarrativeEntity
+          const entity: any = {
+            id: ref.noteId || `${note.id}-entity-${idx}`,
+            kind: ref.kind,
+            label: ref.label,
+            sourceNoteId: note.id,
+            // Synthesize temporal data if missing (mock for now)
+            temporal: {
+              start: {
+                timestamp: new Date(), // Mock date
+                granularity: 'precise',
+                confidence: 1
+              }
+            },
+            // Add minimal metadata to satisfy interface
+            narrativeMetadata: { status: 'drafting' },
+            sceneMetadata: ref.kind === 'SCENE' ? { location: 'Unknown', purpose: 'setup' } : undefined,
+            eventMetadata: ref.kind === 'EVENT' ? { impact: 'minor' } : undefined,
+          };
+          entities.push(entity as NarrativeEntity);
+        });
+      }
+    });
+    return entities;
+  }, [state.notes]);
+
+  // 2. Identify Current Context Layer
+  // What are we looking at? A character note? An Arc note? Or just general?
+  const contextEntity = useMemo(() => {
+    if (!selectedNote) return null;
+    if (selectedNote.isEntity && selectedNote.entityKind) {
+      return {
+        id: selectedNote.id,
+        kind: selectedNote.entityKind,
+        label: selectedNote.title, // or parsed label
+      };
     }
-    
-    const allEntities = selectedNote.connections.entities || [];
-    
-    // Convert entity references to SceneEntity/EventEntity format
-    const scenes: SceneEntity[] = allEntities
-      .filter(e => e.kind === 'SCENE')
-      .map((e, idx) => ({
-        id: e.noteId || `scene-${idx}`,
-        kind: 'SCENE' as const,
-        label: e.label,
-        subtype: e.subtype,
-        temporal: {
-          start: {
-            id: `temporal-${idx}`,
-            granularity: 'sequential' as const,
-            sequence: idx + 1,
-            displayText: `Scene ${idx + 1}`,
-            confidence: 1,
-            source: 'inferred' as const,
-          }
-        },
-        events: [],
-        participants: [],
-        cardTitle: e.label,
-      }));
-    
-    const events: EventEntity[] = allEntities
-      .filter(e => e.kind === 'EVENT')
-      .map((e, idx) => ({
-        id: e.noteId || `event-${idx}`,
-        kind: 'EVENT' as const,
-        label: e.label,
-        subtype: e.subtype,
-        temporal: {
-          start: {
-            id: `temporal-event-${idx}`,
-            granularity: 'sequential' as const,
-            sequence: idx + 1,
-            displayText: `Event ${idx + 1}`,
-            confidence: 1,
-            source: 'inferred' as const,
-          }
-        },
-        actors: [],
-        affectedEntities: [],
-        importance: 'major' as const,
-        tags: [],
-        cardTitle: e.label,
-      }));
-    
-    return { scenes, events, entities: allEntities };
+    return null;
   }, [selectedNote]);
 
-  // Scroll to highlight when temporal is clicked
+  // 3. Initialize/Update Query based on Context
   useEffect(() => {
-    if (highlightedTemporal && highlightRef.current) {
-      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const newQuery = TimelineQueryEngine.fromContext(
+      contextEntity?.kind,
+      contextEntity?.id
+    );
+    setQuery(newQuery);
+  }, [contextEntity]);
+
+  // 4. Execute Query
+  const timelineItems = useMemo(() => {
+    if (!query) return [];
+    return TimelineQueryEngine.execute(query, allEntities);
+  }, [query, allEntities]);
+
+  // Handlers
+  const handleItemClick = (entityId: string) => {
+    // In our mock store, entityId might be a noteId or generated.
+    // We stored sourceNoteId in the entity.
+    const item = timelineItems.find(i => i.id === entityId);
+    if (item && item.entity.sourceNoteId) {
+      selectNote(item.entity.sourceNoteId);
     }
-  }, [highlightedTemporal]);
-  
-  // Handle clicking on timeline items
-  const handleItemClick = (entityId: string, entityKind: string) => {
-    console.log('Timeline item clicked:', entityId, entityKind);
   };
-  
+
+  const handleQuickAdd = (parentId: string, type: string) => {
+    console.log('Quick add:', type, 'to', parentId);
+    // Logic to create a new note with link to parent
+  };
+
   if (!selectedNote) {
+    // Empty state / Master timeline prompt
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <Clock className="h-12 w-12 text-muted-foreground/30 mb-4" />
-        <p className="text-sm text-muted-foreground">
-          Select a note to view its timeline
-        </p>
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
+        <Clock className="mb-4 h-12 w-12 opacity-20" />
+        <p className="text-sm">Select a note to view context timeline</p>
+        <p className="text-xs mt-2 opacity-60">or explore the master timeline</p>
       </div>
     );
   }
-  
-  if (scenes.length === 0 && events.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <Calendar className="h-12 w-12 text-muted-foreground/30 mb-4" />
-        <p className="text-sm text-muted-foreground mb-2">
-          No timeline events found
-        </p>
-        <p className="text-xs text-muted-foreground/70">
-          Add [SCENE|Name] or [EVENT|Name] syntax to see them here
-        </p>
 
-        {/* Show highlighted temporal expression when clicked from editor */}
-        {highlightedTemporal && (
-          <div 
-            ref={highlightRef}
-            className="mt-6 p-4 rounded-lg border border-primary/30 bg-primary/5 animate-pulse"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-xs font-medium text-primary">Temporal Reference</span>
-            </div>
-            <p className="text-sm font-medium text-foreground">"{highlightedTemporal}"</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Create a [SCENE|...] or [EVENT|...] to add this to the timeline
+  return (
+    <div className="flex flex-col h-full bg-background/50">
+      {/* Header */}
+      <div className="border-b bg-muted/20 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              {contextEntity ? (
+                <>
+                  <Badge variant="outline" className="text-[10px] h-5 rounded-sm px-1">
+                    {contextEntity.kind}
+                  </Badge>
+                  <span className="truncate">{contextEntity.label}</span>
+                </>
+              ) : (
+                <>
+                  <Clock className="w-4 h-4" />
+                  <span>Timeline</span>
+                </>
+              )}
+            </h3>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {timelineItems.length} items found
             </p>
           </div>
-        )}
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowFilters(!showFilters)}>
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <TimelineViewModeSelector mode={viewMode} onModeChange={setViewMode} />
+
+          {query && (
+            <Select
+              value={query.sortBy}
+              onValueChange={(v: any) => setQuery({ ...query, sortBy: v })}
+            >
+              <SelectTrigger className="h-7 w-[90px] text-[10px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="temporal">Time</SelectItem>
+                <SelectItem value="narrative">Sequence</SelectItem>
+                <SelectItem value="importance">Impact</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
-    );
-  }
-  
-  return (
-    <ScrollArea className="h-full">
-      <div className="p-2">
-        {/* Show highlighted temporal expression at the top */}
-        {highlightedTemporal && (
-          <div 
-            ref={highlightRef}
-            className={cn(
-              "mb-4 p-3 rounded-lg border transition-all duration-300",
-              "border-primary/50 bg-primary/10 shadow-sm"
+
+      {/* Filters Area (Collapsible) */}
+      {showFilters && (
+        <div className="p-3 border-b bg-muted/30 text-xs">
+          Filters placeholder (Status, Impact, Date Range)
+        </div>
+      )}
+
+      {/* Content */}
+      <ScrollArea className="flex-1">
+        {timelineItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <Calendar className="h-10 w-10 text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground font-medium">No timeline items</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
+              Entities linked to this note with temporal tags will appear here.
+            </p>
+            {contextEntity && (
+              <Button size="sm" variant="outline" className="mt-4 h-7 text-xs" onClick={() => handleQuickAdd(contextEntity.id, 'SCENE')}>
+                <Plus className="h-3 w-3 mr-1.5" />
+                Add Scene
+              </Button>
             )}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-primary" />
-                <span className="text-xs font-medium text-primary">Temporal Reference</span>
-              </div>
-              <button 
-                onClick={clearHighlight}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-sm font-medium text-foreground mt-1">"{highlightedTemporal}"</p>
-            <div className="flex gap-1 mt-2 flex-wrap">
-              {scenes.length > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {scenes.length} scene{scenes.length !== 1 ? 's' : ''}
-                </Badge>
-              )}
-              {events.length > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {events.length} event{events.length !== 1 ? 's' : ''}
-                </Badge>
-              )}
-            </div>
           </div>
+        ) : (
+          query && (
+            <TimelineContent
+              items={timelineItems}
+              viewMode={viewMode}
+              query={query}
+              onNavigate={handleItemClick}
+              onEdit={() => { }}
+              onQuickAdd={handleQuickAdd}
+            />
+          )
         )}
-        
-        <StoryTimeline
-          scenes={scenes}
-          events={events}
-          entities={entities}
-          onItemClick={handleItemClick}
-        />
+      </ScrollArea>
+
+      {/* Footer Stats */}
+      <div className="border-t p-2 text-[10px] text-center text-muted-foreground bg-muted/10">
+        Timeline Context: {query?.contextType}
       </div>
-    </ScrollArea>
+    </div>
   );
 }

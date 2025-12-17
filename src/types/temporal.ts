@@ -3,16 +3,19 @@
  * Supports everything from precise timestamps to fuzzy narrative time
  */
 
-export type TimeGranularity = 
+export type TimeGranularity =
   | 'precise'      // "3:47 PM, March 15, 2024"
   | 'datetime'     // "Morning, Spring 2024"
+  | 'date'         // "March 15, 2024"
   | 'relative'     // "Three days after the battle"
   | 'sequential'   // "Chapter 3, Scene 2"
   | 'abstract';    // "In another life" | "Meanwhile"
 
-export type TimeSource = 'explicit' | 'inferred' | 'contextual';
+export type TimeSource = 'explicit' | 'inferred' | 'contextual' | 'manual' | 'parsed';
 
 export type DurationUnit = 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years';
+
+export type TimeOfDay = 'dawn' | 'morning' | 'afternoon' | 'evening' | 'night' | 'midnight';
 
 /**
  * A single point in time within a story
@@ -20,26 +23,39 @@ export type DurationUnit = 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 
 export interface TemporalPoint {
   id: string;
   granularity: TimeGranularity;
-  
+
   // Absolute time (when available)
   timestamp?: Date;
-  
+
   // Relative references
   relativeToEventId?: string;
   offsetDays?: number;
   offsetHours?: number;
-  
+  offsetValue?: number;
+  offsetUnit?: DurationUnit;
+  offsetDirection?: 'before' | 'after';
+
   // Sequential positioning
   chapter?: number;
   act?: number;
+  scene?: number;
   sequence?: number;
-  
+
+  // Time of day (for imprecise times)
+  timeOfDay?: TimeOfDay;
+
   // Natural language representation
   displayText: string;
-  
+  originalText?: string;
+
   // Parsing metadata
   confidence: number; // 0-1, how confident we are in the timing
   source: TimeSource;
+  locked?: boolean; // prevents auto-updates from parsing
+  parsedFrom?: {
+    noteId: string;
+    textOffset: number;
+  };
 }
 
 /**

@@ -1,10 +1,10 @@
-import React, { useMemo, useEffect, useCallback } from 'react';
+import React, { useMemo, useEffect, useCallback, useState } from 'react';
 import { useNotes } from '@/contexts/NotesContext';
 import { useEntitySelection } from '@/contexts/EntitySelectionContext';
 import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentParser';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
-import { FileQuestion, Sparkles } from 'lucide-react';
+import { FileQuestion, Sparkles, BrainCircuit } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { getSupportedModels, getDefaultModel } from '@/lib/cozo/extraction/extractionConfig';
 
 // Import all fact sheet components
 import { CharacterFactSheet } from './CharacterFactSheet';
@@ -44,7 +45,11 @@ export function FactSheetContainer() {
     setEntitiesInCurrentNote 
   } = useEntitySelection();
 
-  // Parse entities from note content and note itself
+  // Extraction Model State
+  const [extProvider, setExtProvider] = useState<'openai' | 'google' | 'anthropic'>('openai');
+  const [extModel, setExtModel] = useState(getDefaultModel('openai'));
+
+  // ... (rest of the component)
   const allEntities = useMemo(() => {
     const entities: ParsedEntity[] = [];
 
@@ -160,6 +165,27 @@ export function FactSheetContainer() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Extraction Model Selector */}
+      <div className="p-2 border-b border-border bg-muted/20 flex items-center gap-2">
+        <BrainCircuit className="h-4 w-4 text-muted-foreground shrink-0" title="Extraction Model" />
+        <Select value={extModel} onValueChange={setExtModel}>
+          <SelectTrigger className="h-7 text-xs w-full bg-background">
+             <SelectValue placeholder="Select Extraction Model" />
+          </SelectTrigger>
+          <SelectContent>
+             {(['openai', 'google', 'anthropic'] as const).map(provider => (
+                <React.Fragment key={provider}>
+                   {getSupportedModels(provider).map(model => (
+                      <SelectItem key={model} value={model} className="text-xs">
+                        {model}
+                      </SelectItem>
+                   ))}
+                </React.Fragment>
+             ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Entity selector (shown when multiple entities) */}
       {allEntities.length > 1 && (
         <div className="p-3 border-b border-border">

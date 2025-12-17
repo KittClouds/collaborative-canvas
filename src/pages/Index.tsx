@@ -1,4 +1,5 @@
 import { AppSidebar } from '@/components/app-sidebar';
+import { FooterLinksPanel } from '@/components/FooterLinksPanel';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Menu, FileText, Trash2 } from 'lucide-react';
 import RichEditor from '@/components/RichEditor';
 import { useTheme } from '@/hooks/useTheme';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNotes, NotesProvider } from '@/contexts/NotesContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -23,6 +24,7 @@ import { useLinkIndex } from '@/hooks/useLinkIndex';
 import { EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
 import { RightSidebar, RightSidebarProvider, RightSidebarTrigger } from '@/components/RightSidebar';
 import { TemporalHighlightProvider, useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
+import { SearchProvider } from '@/contexts/SearchContext';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,9 +46,30 @@ function NotesApp() {
 
   const { selectedNote, updateNoteContent, deleteNote, createNote, selectNote, state } = useNotes();
   const { activateTimelineWithTemporal } = useTemporalHighlight();
-  
-  // Link index for wikilink navigation
-  const { findNoteByTitle, noteExists } = useLinkIndex(state.notes);
+
+  // Link index for wikilink navigation and footer links panel
+  const { findNoteByTitle, noteExists, getBacklinks, getOutgoingLinks } = useLinkIndex(state.notes);
+
+  const backlinks = useMemo(() =>
+    selectedNote ? getBacklinks(selectedNote) : [],
+    [selectedNote, getBacklinks]
+  );
+
+  const outgoingLinks = useMemo(() =>
+    selectedNote ? getOutgoingLinks(selectedNote.id) : [],
+    [selectedNote, getOutgoingLinks]
+  );
+
+  // Navigate to a note by title (for footer links panel)
+  const handleNavigateToNote = useCallback((title: string, createIfNotExists?: boolean) => {
+    const existingNote = findNoteByTitleRef.current(title);
+    if (existingNote) {
+      selectNoteRef.current(existingNote.id);
+    } else if (createIfNotExists) {
+      const newNote = createNoteRef.current(undefined, title);
+      selectNoteRef.current(newNote.id);
+    }
+  }, []);
 
   // Use refs to hold latest versions without changing callback references
   const findNoteByTitleRef = useRef(findNoteByTitle);
@@ -132,95 +155,103 @@ function NotesApp() {
                 </BreadcrumbList>
               </Breadcrumb>
 
-            {/* Header Actions */}
-            <div className="flex items-center gap-1">
-              <SchemaManager />
-              {selectedNote && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      title="Delete note"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete note?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently delete "{selectedNote.title}". This action cannot be
-                        undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleDeleteNote}
-                        className="bg-destructive hover:bg-destructive/90"
+              {/* Header Actions */}
+              <div className="flex items-center gap-1">
+                <SchemaManager />
+                {selectedNote && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        title="Delete note"
                       >
-                        Delete
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleToolbarVisibilityChange(!toolbarVisible)}
-                title={toolbarVisible ? 'Hide toolbar (Ctrl+\\)' : 'Show toolbar (Ctrl+\\)'}
-                className="h-8 w-8"
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
-              <RightSidebarTrigger />
-              <ThemeToggle />
-            </div>
-          </header>
-
-          {/* Editor Area */}
-          <main className="flex-1 min-h-0 overflow-hidden">
-            {selectedNote ? (
-              <RichEditor
-                content={selectedNote.content}
-                onChange={handleEditorChange}
-                isDarkMode={theme === 'dark'}
-                toolbarVisible={toolbarVisible}
-                onToolbarVisibilityChange={handleToolbarVisibilityChange}
-                noteId={selectedNote.id}
-                onWikilinkClick={handleWikilinkClick}
-                checkWikilinkExists={checkWikilinkExists}
-                onTemporalClick={handleTemporalClick}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full bg-background">
-                <div className="text-center space-y-6 max-w-md mx-auto px-6 animate-fade-in">
-                  <div className="w-20 h-20 rounded-2xl bg-accent flex items-center justify-center mx-auto">
-                    <FileText className="h-10 w-10 text-accent-foreground" />
-                  </div>
-                  <div className="space-y-3">
-                    <h2 className="text-2xl font-semibold text-foreground">No note selected</h2>
-                    <p className="text-muted-foreground leading-relaxed">
-                      Select a note from the sidebar or create a new one to start writing
-                    </p>
-                  </div>
-                  <Button onClick={() => createNote()} className="gap-2">
-                    <FileText className="h-4 w-4" />
-                    Create new note
-                  </Button>
-                </div>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete note?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete "{selectedNote.title}". This action cannot be
+                          undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleDeleteNote}
+                          className="bg-destructive hover:bg-destructive/90"
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleToolbarVisibilityChange(!toolbarVisible)}
+                  title={toolbarVisible ? 'Hide toolbar (Ctrl+\\)' : 'Show toolbar (Ctrl+\\)'}
+                  className="h-8 w-8"
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+                <RightSidebarTrigger />
+                <ThemeToggle />
               </div>
-            )}
-          </main>
+            </header>
+
+            {/* Editor Area */}
+            <main className="flex-1 min-h-0 overflow-hidden pb-16">
+              {selectedNote ? (
+                <RichEditor
+                  content={selectedNote.content}
+                  onChange={handleEditorChange}
+                  isDarkMode={theme === 'dark'}
+                  toolbarVisible={toolbarVisible}
+                  onToolbarVisibilityChange={handleToolbarVisibilityChange}
+                  noteId={selectedNote.id}
+                  onWikilinkClick={handleWikilinkClick}
+                  checkWikilinkExists={checkWikilinkExists}
+                  onTemporalClick={handleTemporalClick}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full bg-background">
+                  <div className="text-center space-y-6 max-w-md mx-auto px-6 animate-fade-in">
+                    <div className="w-20 h-20 rounded-2xl bg-accent flex items-center justify-center mx-auto">
+                      <FileText className="h-10 w-10 text-accent-foreground" />
+                    </div>
+                    <div className="space-y-3">
+                      <h2 className="text-2xl font-semibold text-foreground">No note selected</h2>
+                      <p className="text-muted-foreground leading-relaxed">
+                        Select a note from the sidebar or create a new one to start writing
+                      </p>
+                    </div>
+                    <Button onClick={() => createNote()} className="gap-2">
+                      <FileText className="h-4 w-4" />
+                      Create new note
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </main>
+          </div>
+
+          {/* Right Sidebar */}
+          <RightSidebar />
         </div>
 
-        {/* Right Sidebar */}
-        <RightSidebar />
-      </div>
-    </SidebarProvider>
+        {/* Footer Links Panel */}
+        <FooterLinksPanel
+          backlinks={selectedNote ? backlinks : []}
+          outgoingLinks={selectedNote ? outgoingLinks : []}
+          notes={state.notes}
+          onNavigate={handleNavigateToNote}
+        />
+      </SidebarProvider>
     </RightSidebarProvider>
   );
 }
@@ -230,11 +261,13 @@ const Index = () => {
     <ErrorBoundary>
       <SchemaProvider>
         <NotesProvider>
-          <EntitySelectionProvider>
-            <TemporalHighlightProvider>
-              <NotesApp />
-            </TemporalHighlightProvider>
-          </EntitySelectionProvider>
+          <SearchProvider>
+            <EntitySelectionProvider>
+              <TemporalHighlightProvider>
+                <NotesApp />
+              </TemporalHighlightProvider>
+            </EntitySelectionProvider>
+          </SearchProvider>
         </NotesProvider>
       </SchemaProvider>
     </ErrorBoundary>

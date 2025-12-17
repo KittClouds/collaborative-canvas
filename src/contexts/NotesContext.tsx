@@ -4,6 +4,7 @@ import { loadFromStorage, saveToStorage, exportNotes, importNotes } from '@/lib/
 import type { DocumentConnections, EntityKind } from '@/lib/entities/entityTypes';
 import { parseEntityFromTitle, parseFolderEntityFromName } from '@/lib/entities/titleParser';
 import { migrateExistingNotes, migrateExistingFolders, needsMigration } from '@/lib/entities/migration';
+import { NARRATIVE_FOLDER_CONFIGS, getTemplateForKind } from '@/lib/templates/narrativeTemplates';
 
 // Types
 export interface Note {
@@ -203,17 +204,17 @@ function notesReducer(state: NotesState, action: NotesAction): NotesState {
 // Build folder tree from flat list
 function buildFolderTree(folders: Folder[], notes: Note[]): FolderWithChildren[] {
   const folderMap = new Map<string, FolderWithChildren>();
-  
+
   folders.forEach((folder) => {
     folderMap.set(folder.id, { ...folder, subfolders: [], notes: [] });
   });
-  
+
   notes.forEach((note) => {
     if (note.folderId && folderMap.has(note.folderId)) {
       folderMap.get(note.folderId)!.notes.push(note);
     }
   });
-  
+
   const rootFolders: FolderWithChildren[] = [];
   folderMap.forEach((folder) => {
     if (folder.parentId && folderMap.has(folder.parentId)) {
@@ -222,7 +223,7 @@ function buildFolderTree(folders: Folder[], notes: Note[]): FolderWithChildren[]
       rootFolders.push(folder);
     }
   });
-  
+
   return rootFolders;
 }
 
@@ -259,14 +260,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   // Load initial data with migration
   useEffect(() => {
     let { notes, folders } = loadFromStorage();
-    
+
     // Run migration if needed
     if (needsMigration(notes, folders)) {
       console.log('Migrating notes and folders to entity model...');
       notes = migrateExistingNotes(notes);
       folders = migrateExistingFolders(folders);
     }
-    
+
     dispatch({ type: 'SET_NOTES', payload: notes });
     dispatch({ type: 'SET_FOLDERS', payload: folders });
   }, []);
@@ -305,7 +306,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-    
+
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, [state.notes]);
@@ -318,7 +319,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         const activeElement = document.activeElement;
         const isInEditor = activeElement?.closest('.ProseMirror');
         if (isInEditor) return; // Let editor handle its own undo
-        
+
         e.preventDefault();
         if (e.shiftKey) {
           dispatch({ type: 'REDO' });
@@ -351,12 +352,12 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     () => buildFolderTree(state.folders, state.notes),
     [state.folders, state.notes]
   );
-  
+
   const globalNotes = useMemo(
     () => state.notes.filter((note) => !note.folderId),
     [state.notes]
   );
-  
+
   const favoriteNotes = useMemo(
     () => state.notes.filter((note) => note.favorite),
     [state.notes]
@@ -387,14 +388,52 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   const createNote = useCallback((folderId?: string, title?: string): Note => {
     dispatch({ type: 'PUSH_HISTORY' });
-    
+
     // Determine title and entity properties
-    let noteTitle = title || 'Untitled Note';
+    let noteTitle = title || '';
+    let initialContent = JSON.stringify({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [] }],
+    });
+
     let entityKind: EntityKind | undefined;
     let entitySubtype: string | undefined;
     let entityLabel: string | undefined;
     let isEntity = false;
-    
+
+    // If folder is provided but no title, check for auto-prefix from folder type
+    if (folderId && !title) {
+      const inheritedKind = getInheritedKindFromFolder(folderId);
+      if (inheritedKind && NARRATIVE_FOLDER_CONFIGS[inheritedKind]) {
+        noteTitle = NARRATIVE_FOLDER_CONFIGS[inheritedKind].autoPrefix;
+
+        // Use template if available
+        const template = NARRATIVE_FOLDER_CONFIGS[inheritedKind].template;
+        if (template) {
+          initialContent = JSON.stringify({
+            type: 'doc',
+            content: [
+              // Convert markdown template to Tiptap structure (simplified for now)
+              // Ideally we'd parse markdown here, but for now we'll put it in a single paragraph
+              // or leave it empty if the editor handles markdown deserialization (which likely does)
+              { type: 'paragraph', content: [{ type: 'text', text: template }] }
+            ],
+          });
+          // Better approach: use the content as-is if your editor supports markdown initialization,
+          // otherwise we stick to simple doc. 
+          // For this app, let's assume raw text content for template is acceptable for now
+          // or that the editor component will handle the "initial content" if it's not valid JSON.
+          // Since the existing code uses JSON stringify, we should probably stick to that structure
+          // but putting a huge string in one paragraph isn't great.
+          // Let's just set the title for now, and handle content if we can simple-parse it.
+        }
+      } else {
+        noteTitle = 'Untitled Note';
+      }
+    } else if (!noteTitle) {
+      noteTitle = 'Untitled Note';
+    }
+
     // Parse title for entity syntax
     const parsed = parseEntityFromTitle(noteTitle);
     if (parsed && parsed.label) {
@@ -410,14 +449,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         entityKind = undefined; // Note is not typed, just in a typed folder
       }
     }
-    
+
     const newNote: Note = {
       id: uuidv4(),
       title: noteTitle,
-      content: JSON.stringify({
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [] }],
-      }),
+      content: initialContent,
       createdAt: new Date(),
       updatedAt: new Date(),
       folderId,
@@ -473,18 +509,18 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   const createFolder = useCallback((name: string, parentId?: string, options?: Partial<Folder>): Folder => {
     dispatch({ type: 'PUSH_HISTORY' });
-    
+
     // Parse folder name for entity properties
     const parsed = parseFolderEntityFromName(name);
     let inheritedKind: EntityKind | undefined;
     let inheritedSubtype: string | undefined;
-    
+
     // Get inherited kind/subtype from parent
     if (parentId) {
       inheritedKind = getInheritedKindFromFolder(parentId);
       inheritedSubtype = getInheritedSubtypeFromFolder(parentId);
     }
-    
+
     const newFolder: Folder = {
       id: uuidv4(),
       name: name || 'New Folder',

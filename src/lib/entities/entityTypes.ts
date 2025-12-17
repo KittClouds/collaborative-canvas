@@ -7,9 +7,39 @@ export const ENTITY_KINDS = [
   "SCENE",
   "EVENT",
   "CONCEPT",
+  "ARC",
+  "ACT",
+  "CHAPTER",
+  "BEAT",
+  "EVENT",
+  "TIMELINE",
+  "NARRATIVE",
 ] as const;
 
 export type EntityKind = typeof ENTITY_KINDS[number];
+
+/**
+ * Narrative entity kinds - story structure entities
+ */
+export const NARRATIVE_ENTITY_KINDS = [
+  "ARC",
+  "ACT",
+  "CHAPTER",
+  "SCENE",
+  "BEAT",
+  "EVENT",
+  "TIMELINE",
+  "NARRATIVE",
+] as const;
+
+export type NarrativeEntityKind = typeof NARRATIVE_ENTITY_KINDS[number];
+
+/**
+ * Check if a kind is a narrative entity kind
+ */
+export function isNarrativeEntityKind(kind: string): kind is NarrativeEntityKind {
+  return NARRATIVE_ENTITY_KINDS.includes(kind as NarrativeEntityKind);
+}
 
 /**
  * Subtypes for each entity kind - storytelling focused
@@ -20,9 +50,15 @@ export const ENTITY_SUBTYPES: Record<EntityKind, readonly string[]> = {
   NPC: ["MERCHANT", "GUARD", "NOBLE", "COMMONER", "MYSTIC", "WARRIOR"] as const,
   ITEM: ["WEAPON", "ARMOR", "ARTIFACT", "CONSUMABLE", "KEY", "TREASURE"] as const,
   FACTION: ["GUILD", "KINGDOM", "ORDER", "CULT", "TRIBE", "ALLIANCE"] as const,
-  SCENE: ["OPENING", "CLIMAX", "RESOLUTION", "FLASHBACK", "BEAT", "TRANSITION"] as const,
-  EVENT: ["BATTLE", "CEREMONY", "DISCOVERY", "BETRAYAL", "MEETING", "DEATH"] as const,
+  SCENE: ["OPENING", "CLIMAX", "RESOLUTION", "FLASHBACK", "TRANSITION", "DISCOVERY"] as const,
+  EVENT: ["BATTLE", "CEREMONY", "DISCOVERY", "BETRAYAL", "MEETING", "DEATH", "PLOT", "HISTORICAL", "PERSONAL", "WORLD", "BACKGROUND"] as const,
   CONCEPT: ["MAGIC", "PROPHECY", "CURSE", "LAW", "CUSTOM", "LEGEND"] as const,
+  ARC: ["MAIN", "SUBPLOT", "BACKSTORY", "ROMANCE", "MYSTERY", "REDEMPTION"] as const,
+  ACT: ["SETUP", "CONFRONTATION", "RESOLUTION", "RISING", "FALLING", "CLIMAX"] as const,
+  CHAPTER: ["OPENING", "MIDDLE", "CLOSING", "INTERLUDE", "EPILOGUE", "PROLOGUE"] as const,
+  BEAT: ["ACTION", "DIALOGUE", "DESCRIPTION", "INTERNAL", "REVELATION", "DECISION"] as const,
+  TIMELINE: ["MASTER", "ARC", "CHARACTER", "LOCATION", "CUSTOM"] as const,
+  NARRATIVE: ["MASTER", "SERIES", "BOOK", "FILM", "GAME"] as const,
 };
 
 export type EntitySubtype = typeof ENTITY_SUBTYPES[EntityKind][number];
@@ -66,8 +102,14 @@ export const ENTITY_COLORS: Record<EntityKind, string> = {
   ITEM: '#10b981', // Green
   FACTION: '#ef4444', // Red
   SCENE: '#ec4899', // Pink
-  EVENT: '#14b8a6', // Teal
+  EVENT: '#06b6d4', // Cyan
   CONCEPT: '#6366f1', // Indigo
+  ARC: '#a855f7', // Violet
+  ACT: '#2563eb', // Royal Blue
+  CHAPTER: '#14b8a6', // Teal
+  BEAT: '#f97316', // Orange
+  TIMELINE: '#eab308', // Gold
+  NARRATIVE: '#4f46e5', // Indigo/Deep Purple
 };
 
 /**

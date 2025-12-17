@@ -1,11 +1,18 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import { PanelRightClose, PanelRight, Sparkles, BarChart3, Clock } from 'lucide-react';
+import { PanelRightClose, PanelRight, Sparkles, BarChart3, Clock, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { FactSheetContainer } from '@/components/fact-sheets/FactSheetContainer';
 import { AnalyticsPanel } from '@/components/analytics';
 import { TimelinePanel } from '@/components/timeline';
+import { AgentSidebar } from '@/components/ai/AgentSidebar';
 import { useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
 
 // Right Sidebar Context (independent from left sidebar)
@@ -119,45 +126,50 @@ export function RightSidebar() {
       )}
     >
       {isOpen && (
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-          {/* Header with Tabs */}
-          <div className="shrink-0 border-b border-border">
-            <TabsList className="w-full h-12 bg-transparent rounded-none p-0">
-              <TabsTrigger 
-                value="entities" 
-                className="flex-1 h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent gap-2"
-              >
-                <Sparkles className="h-4 w-4" />
-                <span className="text-sm">Entities</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="analytics" 
-                className="flex-1 h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent gap-2"
-              >
-                <BarChart3 className="h-4 w-4" />
-                <span className="text-sm">Analytics</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="timeline" 
-                className="flex-1 h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent gap-2"
-              >
-                <Clock className="h-4 w-4" />
-                <span className="text-sm">Timeline</span>
-              </TabsTrigger>
-            </TabsList>
+        <div className="flex flex-col h-full">
+          {/* Header with View Selector */}
+          <div className="shrink-0 border-b border-border p-2">
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select view" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="entities">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    <span>Entities</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="analytics">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    <span>Analytics</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="timeline">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    <span>Timeline</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="agent">
+                  <div className="flex items-center gap-2">
+                    <Bot className="h-4 w-4" />
+                    <span>Agent</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Content */}
-          <TabsContent value="entities" className="flex-1 overflow-auto mt-0">
-            <FactSheetContainer />
-          </TabsContent>
-          <TabsContent value="analytics" className="flex-1 overflow-auto mt-0">
-            <AnalyticsPanel />
-          </TabsContent>
-          <TabsContent value="timeline" className="flex-1 overflow-auto mt-0">
-            <TimelinePanel />
-          </TabsContent>
-        </Tabs>
+          <div className={cn("flex-1", activeTab === 'agent' ? "overflow-hidden flex flex-col" : "overflow-auto")}>
+            {activeTab === 'entities' && <FactSheetContainer />}
+            {activeTab === 'analytics' && <AnalyticsPanel />}
+            {activeTab === 'timeline' && <TimelinePanel />}
+            {activeTab === 'agent' && <AgentSidebar />}
+          </div>
+        </div>
       )}
     </aside>
   );
