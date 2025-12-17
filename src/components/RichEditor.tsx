@@ -62,6 +62,7 @@ import { TagMark } from '@/lib/extensions/TagMark';
 import { MentionMarkExt } from '@/lib/extensions/MentionMarkExt';
 import { WikiLinkMark } from '@/lib/extensions/WikiLinkMark';
 import { UnifiedSyntaxHighlighter } from '@/lib/extensions/UnifiedSyntaxHighlighter';
+import { useNER } from '@/contexts/NERContext';
 
 // Import CSS
 import 'reactjs-tiptap-editor/style.css';
@@ -105,7 +106,8 @@ function convertBase64ToBlob(base64: string) {
 function createExtensions(
   onWikilinkClick?: (title: string) => void,
   checkWikilinkExists?: (title: string) => boolean,
-  onTemporalClick?: (temporal: string) => void
+  onTemporalClick?: (temporal: string) => void,
+  getNEREntities?: () => any[]
 ) {
   return [
     // Base Extensions
@@ -236,18 +238,19 @@ function createExtensions(
     }),
     Twitter,
     SlashCommand,
-    
+
     // Custom entity extensions - marks for commands/parsing
     EntityMark,
     TagMark,
     MentionMarkExt,
     WikiLinkMark,
-    
+
     // Unified syntax highlighter for all decorations (entities, wikilinks, tags, mentions, temporal)
     UnifiedSyntaxHighlighter.configure({
       onWikilinkClick,
       checkWikilinkExists,
       onTemporalClick,
+      nerEntities: getNEREntities,
     }),
   ];
 }
@@ -265,7 +268,14 @@ const RichEditor = ({
 }: RichEditorProps) => {
   const previousContentRef = useRef<string>('');
   const previousNoteIdRef = useRef<string | undefined>(noteId);
-  
+  const { entities } = useNER();
+  const nerEntitiesRef = useRef(entities);
+
+  // Keep NER entities ref updated
+  useEffect(() => {
+    nerEntitiesRef.current = entities;
+  }, [entities]);
+
   // Use refs for callbacks to keep extensions stable
   const optionsRef = useRef({ onWikilinkClick, checkWikilinkExists, onTemporalClick });
   useEffect(() => {
@@ -277,7 +287,8 @@ const RichEditor = ({
     () => createExtensions(
       (title) => optionsRef.current.onWikilinkClick?.(title),
       (title) => optionsRef.current.checkWikilinkExists?.(title) ?? true,
-      (temporal) => optionsRef.current.onTemporalClick?.(temporal)
+      (temporal) => optionsRef.current.onTemporalClick?.(temporal),
+      () => nerEntitiesRef.current
     ),
     [] // Empty deps = never recreated
   );
@@ -304,7 +315,7 @@ const RichEditor = ({
     onUpdate: ({ editor }) => {
       const json = editor.getJSON();
       const jsonString = JSON.stringify(json);
-      
+
       if (jsonString !== previousContentRef.current) {
         previousContentRef.current = jsonString;
         onChange(jsonString);
@@ -335,7 +346,7 @@ const RichEditor = ({
   // ONLY update editor content when noteId changes (switching notes)
   useEffect(() => {
     if (!editor || !noteId) return;
-    
+
     // Only trigger on actual note switch, not on content updates
     if (previousNoteIdRef.current !== noteId) {
       const parsedContent = parseContent(content);
@@ -345,6 +356,14 @@ const RichEditor = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, editor]);
+
+  // Force editor update when NER entities change to refresh decorations
+  useEffect(() => {
+    if (editor && entities.length > 0) {
+      // Create a transaction that doesn't change doc but triggers plugin updates
+      editor.view.dispatch(editor.state.tr.setMeta('nerUpdate', true));
+    }
+  }, [entities, editor]);
 
   if (!editor) {
     return (
@@ -359,15 +378,15 @@ const RichEditor = ({
       <RichTextProvider editor={editor} dark={isDarkMode}>
         {/* Toolbar */}
         {toolbarVisible && <EditorToolbar />}
-        
+
         {/* Editor Content Area */}
-        <div 
+        <div
           className="flex-1 overflow-auto custom-scrollbar bg-background relative"
           style={{ maxHeight: dimensions.availableHeight }}
         >
           <EditorContent editor={editor} className="min-h-full" />
         </div>
-        
+
         {/* Bubble Menus */}
         <EditorBubbleMenus />
       </RichTextProvider>

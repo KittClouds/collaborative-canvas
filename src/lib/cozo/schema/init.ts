@@ -15,8 +15,18 @@ import {
   SCOPE_PROCESSING_STATE_SCHEMA,
   SCHEMA_VERSION_SCHEMA 
 } from './layer2-analytics';
+import {
+  BLUEPRINT_META_SCHEMA,
+  BLUEPRINT_VERSION_SCHEMA,
+  BLUEPRINT_ENTITY_TYPE_SCHEMA,
+  BLUEPRINT_FIELD_SCHEMA,
+  BLUEPRINT_RELATIONSHIP_TYPE_SCHEMA,
+  BLUEPRINT_ATTRIBUTE_SCHEMA,
+  BLUEPRINT_VIEW_TEMPLATE_SCHEMA,
+  BLUEPRINT_MOC_SCHEMA,
+} from './layer3-blueprints';
 
-export const SCHEMA_VERSION = '1.0.0';
+export const SCHEMA_VERSION = '1.1.0';
 
 const ALL_SCHEMAS = [
   { name: 'note', schema: NOTE_SCHEMA },
@@ -37,6 +47,14 @@ const ALL_SCHEMAS = [
   { name: 'graph_stats', schema: GRAPH_STATS_SCHEMA },
   { name: 'scope_processing_state', schema: SCOPE_PROCESSING_STATE_SCHEMA },
   { name: 'schema_version', schema: SCHEMA_VERSION_SCHEMA },
+  { name: 'blueprint_meta', schema: BLUEPRINT_META_SCHEMA },
+  { name: 'blueprint_version', schema: BLUEPRINT_VERSION_SCHEMA },
+  { name: 'blueprint_entity_type', schema: BLUEPRINT_ENTITY_TYPE_SCHEMA },
+  { name: 'blueprint_field', schema: BLUEPRINT_FIELD_SCHEMA },
+  { name: 'blueprint_relationship_type', schema: BLUEPRINT_RELATIONSHIP_TYPE_SCHEMA },
+  { name: 'blueprint_attribute', schema: BLUEPRINT_ATTRIBUTE_SCHEMA },
+  { name: 'blueprint_view_template', schema: BLUEPRINT_VIEW_TEMPLATE_SCHEMA },
+  { name: 'blueprint_moc', schema: BLUEPRINT_MOC_SCHEMA },
 ];
 
 export interface SchemaInitResult {

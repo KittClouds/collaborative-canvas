@@ -7,6 +7,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { cozoDb } from "@/lib/cozo/db";
+import { BlueprintHubProvider } from "@/features/blueprint-hub/context/BlueprintHubContext";
+import { BlueprintHub } from "@/features/blueprint-hub/components/BlueprintHub";
+import { NERProvider } from "@/contexts/NERContext";
 
 const queryClient = new QueryClient();
 
@@ -27,17 +30,22 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+      <BlueprintHubProvider>
+        <NERProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+            <BlueprintHub />
+          </TooltipProvider>
+        </NERProvider>
+      </BlueprintHubProvider>
     </QueryClientProvider>
   );
 };

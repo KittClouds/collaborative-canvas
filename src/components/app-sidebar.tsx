@@ -32,9 +32,17 @@ import {
   Drama,
   Book,
   Sparkles,
+  Boxes,
 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SemanticSearchPanel } from "@/components/search/SemanticSearchPanel";
+import { EntitiesPanel } from "@/components/EntitiesPanel";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -64,6 +72,7 @@ import { cn } from "@/lib/utils";
 import { useNotes, FolderWithChildren, Note } from "@/contexts/NotesContext";
 import { ENTITY_COLORS, ENTITY_SUBTYPES, EntityKind, getSubtypesForKind } from "@/lib/entities/entityTypes";
 import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName, formatSubtypeFolderName } from "@/lib/entities/titleParser";
+import { useBlueprintHub } from "@/features/blueprint-hub/hooks/useBlueprintHub";
 
 
 // Entity kind icons mapping
@@ -904,6 +913,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setSearchQuery,
   } = useNotes();
 
+  const { openHub } = useBlueprintHub();
+
   const [activeTab, setActiveTab] = React.useState(() => {
     return localStorage.getItem('sidebar-tab') || 'folders';
   });
@@ -923,18 +934,31 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <span className="font-serif font-semibold text-lg text-sidebar-foreground">Inklings</span>
         </div>
 
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 h-9">
-            <TabsTrigger value="folders" className="text-xs gap-1">
-              <FolderIcon className="h-3 w-3" />
-              Folders
-            </TabsTrigger>
-            <TabsTrigger value="semantic" className="text-xs gap-1">
-              <Sparkles className="h-3 w-3" />
-              Semantic
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <Select value={activeTab} onValueChange={handleTabChange}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select view" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="folders">
+              <div className="flex items-center gap-2">
+                <FolderIcon className="h-4 w-4" />
+                <span>Folders</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="semantic">
+              <div className="flex items-center gap-2">
+                <Search className="h-4 w-4" />
+                <span>Semantic</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="entities">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                <span>Entities</span>
+              </div>
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </SidebarHeader>
 
       <SidebarContent className="gap-0 px-2">
@@ -1019,12 +1043,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </SidebarGroup>
             </div>
           </>
-        ) : (
+        ) : activeTab === 'semantic' ? (
           <SemanticSearchPanel />
-        )}
+        ) : activeTab === 'entities' ? (
+          <EntitiesPanel />
+        ) : null}
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-sidebar-border">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full mb-3 gap-2"
+          onClick={openHub}
+        >
+          <Boxes className="h-4 w-4" />
+          Blueprint Hub
+        </Button>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{state.notes.length} notes</span>
           {state.isSaving ? (
