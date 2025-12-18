@@ -1,0 +1,499 @@
+/**
+ * ResoRank: Resonance-Based Hybrid Scoring System
+ * A Quantum-BM25F implementation with IDF-weighted proximity and adaptive segmentation.
+ * @version 1.0.0
+ * @license MIT
+ */
+
+type f32 = number;
+type u32 = number;
+type usize = number;
+type Key = string | number;
+type FieldId = number;
+
+// =============================================================================
+// Configuration
+// =============================================================================
+
+export interface FieldParams {
+    weight: f32;
+    b: f32;
+}
+
+export interface ResoRankConfig {
+    /** BM25 k1 parameter (term saturation). Default: 1.2 */
+    k1: f32;
+    /** Strength of proximity boosting. Default: 0.5 */
+    proximityAlpha: f32;
+    /** Maximum number of segments for proximity masks (max 32). Default: 16 */
+    maxSegments: u32;
+    /** Decay factor for document length in proximity calc. Default: 0.5 */
+    proximityDecayLambda: f32;
+    /** Configuration for individual fields (id -> params) */
+    fieldParams: Map<FieldId, FieldParams>;
+    /** IDF scaling factor for proximity weighting. Default: 5.0 */
+    idfProximityScale: f32;
+    /** Enable exact phrase detection boost. Default: true */
+    enablePhraseBoost: boolean;
+    /** Multiplier for phrase matches. Default: 1.5 */
+    phraseBoostMultiplier: f32;
+}
+
+export const RESORANK_DEFAULT_CONFIG: ResoRankConfig = {
+    k1: 1.2,
+    proximityAlpha: 0.5,
+    maxSegments: 16,
+    proximityDecayLambda: 0.5,
+    fieldParams: new Map([
+        [0, { weight: 2.0, b: 0.75 }], // e.g., Title
+        [1, { weight: 1.0, b: 0.75 }], // e.g., Body
+    ]),
+    idfProximityScale: 5.0,
+    enablePhraseBoost: true,
+    phraseBoostMultiplier: 1.5,
+};
+
+/**
+ * Production-optimized configuration.
+ * Use with ProximityStrategy.Pairwise for best speed/precision ratio.
+ */
+export const RESORANK_PRODUCTION_CONFIG: ResoRankConfig = {
+    k1: 1.2,
+    proximityAlpha: 0.5,
+    maxSegments: 16,
+    proximityDecayLambda: 0.5,
+    fieldParams: new Map([
+        [0, { weight: 2.0, b: 0.75 }], // Title - higher weight
+        [1, { weight: 1.0, b: 0.75 }], // Content - standard weight
+    ]),
+    idfProximityScale: 5.0,
+    enablePhraseBoost: true,
+    phraseBoostMultiplier: 1.5,
+};
+
+// =============================================================================
+// Production Monitoring & Capacity Planning
+// =============================================================================
+
+export interface ResoRankMetrics {
+    queryLatencyP50: f32;
+    queryLatencyP99: f32;
+    cacheHitRate: f32;
+    indexingRate: f32;
+    documentCount: usize;
+    termCount: usize;
+    idfCacheSize: usize;
+}
+
+export interface CapacityEstimate {
+    maxQps: f32;
+    sustainedQps: f32;
+    p99LatencyMs: f32;
+    recommendedHeadroom: f32;
+}
+
+/**
+ * Estimate capacity based on corpus size.
+ * Based on benchmark results:
+ * - 100 docs: ~155K single-term searches/sec
+ * - 1000 docs: ~8.6K single-term searches/sec
+ * - 10000 docs: ~437 single-term searches/sec
+ */
+export function estimateCapacity(documentCount: usize, avgTermsPerQuery: f32 = 1.5): CapacityEstimate {
+    // Base QPS for single-term on reference hardware (from benchmarks)
+    const baseQps = documentCount <= 100 ? 155000 :
+        documentCount <= 1000 ? 8600 :
+            documentCount <= 10000 ? 437 :
+                437 * (10000 / documentCount); // Linear extrapolation
+
+    // Multi-term penalty (from benchmarks: 2-term is ~6x slower, 3-term is ~9x slower)
+    const multiTermPenalty = Math.pow(avgTermsPerQuery, 1.5);
+
+    const maxQps = baseQps / multiTermPenalty;
+    const sustainedQps = maxQps * 0.5; // 50% headroom
+
+    // P99 latency estimate (ms)
+    const p99LatencyMs = (1000 / maxQps) * 2; // ~2x median
+
+    return {
+        maxQps,
+        sustainedQps,
+        p99LatencyMs,
+        recommendedHeadroom: 0.5,
+    };
+}
+
+/**
+ * Factory function to create a production-ready scorer with optimal defaults.
+ * 
+ * @example
+ * ```typescript
+ * const scorer = createProductionScorer(corpusStats);
+ * scorer.indexDocument(...);
+ * scorer.warmIdfCache();
+ * const results = scorer.search(query, 10);
+ * ```
+ */
+export function createProductionScorer<K extends Key = string>(
+    corpusStats: CorpusStatistics,
+    options?: {
+        config?: Partial<ResoRankConfig>;
+        strategy?: ProximityStrategy;
+    }
+): ResoRankScorer<K> {
+    const config = options?.config ?? RESORANK_PRODUCTION_CONFIG;
+    const strategy = options?.strategy ?? ProximityStrategy.Pairwise;
+
+    return new ResoRankScorer<K>(config, corpusStats, strategy);
+}
+
+/**
+ * Create a precision-optimized scorer for when ranking quality is more important than speed.
+ * Uses IdfWeighted strategy with ~2% overhead for better rare-term handling.
+ */
+export function createPrecisionScorer<K extends Key = string>(
+    corpusStats: CorpusStatistics,
+    config?: Partial<ResoRankConfig>
+): ResoRankScorer<K> {
+    return new ResoRankScorer<K>(
+        config ?? RESORANK_PRODUCTION_CONFIG,
+        corpusStats,
+        ProximityStrategy.IdfWeighted
+    );
+}
+
+/**
+ * Create a latency-optimized scorer for real-time applications.
+ * Uses Pairwise strategy with phrase boost disabled for minimum overhead.
+ */
+export function createLatencyScorer<K extends Key = string>(
+    corpusStats: CorpusStatistics,
+    config?: Partial<ResoRankConfig>
+): ResoRankScorer<K> {
+    const latencyConfig: ResoRankConfig = {
+        ...RESORANK_PRODUCTION_CONFIG,
+        ...config,
+        enablePhraseBoost: false, // Skip phrase detection overhead
+    };
+
+    return new ResoRankScorer<K>(
+        latencyConfig,
+        corpusStats,
+        ProximityStrategy.Pairwise
+    );
+}
+
+// =============================================================================
+// Data Structures
+// =============================================================================
+
+export interface TokenMetadata {
+    fieldOccurrences: Map<FieldId, { tf: u32; fieldLength: u32 }>;
+    segmentMask: u32;
+    corpusDocFrequency: usize;
+}
+
+export interface DocumentMetadata {
+    fieldLengths: Map<FieldId, u32>;
+    totalTokenCount: u32;
+}
+
+export interface CorpusStatistics {
+    totalDocuments: usize;
+    averageFieldLengths: Map<FieldId, f32>;
+    averageDocumentLength: f32;
+}
+
+interface TermWithIdf {
+    mask: u32;
+    idf: f32;
+}
+
+interface DocumentAccumulator {
+    bm25Score: f32;
+    termMasks: u32[];
+    termIdfs: f32[];
+    fieldMasks: Map<FieldId, u32[]>;
+    documentLength: u32;
+}
+
+interface FieldAccumulator {
+    tf: u32;
+    fieldLength: u32;
+    segmentMask: u32;
+}
+
+interface IncrementalDocumentAccumulator {
+    bm25Score: f32;
+    termMasks: u32[];
+    termIdfs: f32[];
+    fieldMasks: Map<FieldId, u32[]>;
+    documentLength: u32;
+    fieldContributions: Array<Map<FieldId, FieldAccumulator>>;
+}
+
+// =============================================================================
+// Score Explanation Types
+// =============================================================================
+
+export interface ResoRankTermBreakdown {
+    term: string;
+    idf: f32;
+    aggregatedS: f32;
+    saturatedScore: f32;
+    segmentMask: string;
+    fieldContributions: Array<{
+        fieldId: FieldId;
+        tf: u32;
+        fieldLength: u32;
+        normalizedTf: f32;
+        weightedContribution: f32;
+    }>;
+}
+
+export interface ResoRankExplanation {
+    totalScore: f32;
+    bm25Component: f32;
+    proximityMultiplier: f32;
+    idfProximityBoost: f32;
+    lengthDecay: f32;
+    phraseBoost: f32;
+    overlapCount: u32;
+    termBreakdown: ResoRankTermBreakdown[];
+    strategy: ProximityStrategy;
+}
+
+// =============================================================================
+// Math Utilities
+// =============================================================================
+
+function calculateIdf(totalDocuments: f32, docFrequency: usize): f32 {
+    if (docFrequency <= 0) return 0;
+    const ratio = (totalDocuments - docFrequency + 0.5) / (docFrequency + 0.5);
+    return Math.log1p(Math.max(0, ratio));
+}
+
+function normalizedTermFrequency(
+    tf: u32,
+    fieldLength: u32,
+    averageFieldLength: f32,
+    b: f32
+): f32 {
+    if (averageFieldLength <= 0 || tf <= 0) return 0;
+    const denominator = 1.0 - b + b * (fieldLength / averageFieldLength);
+    return denominator > 0 ? tf / denominator : 0;
+}
+
+function saturate(aggregatedScore: f32, k1: f32): f32 {
+    if (!isFinite(aggregatedScore) || aggregatedScore <= 0) return 0;
+    if (k1 <= 0) return aggregatedScore;
+    return ((k1 + 1.0) * aggregatedScore) / (k1 + aggregatedScore);
+}
+
+function popCount(n: u32): u32 {
+    n = n - ((n >>> 1) & 0x55555555);
+    n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);
+    return (((n + (n >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+}
+
+function adaptiveSegmentCount(docLength: u32, tokensPerSegment: u32 = 50): u32 {
+    return Math.max(8, Math.min(32, Math.ceil(docLength / tokensPerSegment)));
+}
+
+function formatBinary(n: u32, bits: u32 = 16): string {
+    return n.toString(2).padStart(bits, '0');
+}
+
+// =============================================================================
+// Proximity Strategies
+// =============================================================================
+
+export enum ProximityStrategy {
+    Global = 'global',
+    PerTerm = 'per-term',
+    Pairwise = 'pairwise',
+    IdfWeighted = 'idf-weighted',
+}
+
+/** Standard global proximity multiplier */
+function globalProximityMultiplier(
+    termMasks: u32[],
+    alpha: f32,
+    maxSegments: u32,
+    documentLength: u32,
+    averageDocLength: f32,
+    decayLambda: f32
+): { multiplier: f32; overlapCount: u32; decay: f32 } {
+    if (termMasks.length < 2) {
+        return { multiplier: 1.0, overlapCount: 0, decay: 1.0 };
+    }
+
+    const commonMask = termMasks.reduce((a, b) => a & b, 0xffffffff);
+    const overlapCount = popCount(commonMask);
+    const maxPossibleOverlap = Math.min(termMasks.length, maxSegments);
+
+    if (maxPossibleOverlap === 0) {
+        return { multiplier: 1.0, overlapCount: 0, decay: 1.0 };
+    }
+
+    const baseMultiplier = overlapCount / maxPossibleOverlap;
+    const lengthRatio = averageDocLength > 0 ? documentLength / averageDocLength : 1;
+    const decay = Math.exp(-decayLambda * lengthRatio);
+
+    return {
+        multiplier: 1.0 + alpha * baseMultiplier * decay,
+        overlapCount,
+        decay,
+    };
+}
+
+/** IDF-weighted proximity: rare term clusters get stronger boost */
+function idfWeightedProximityMultiplier(
+    termData: TermWithIdf[],
+    alpha: f32,
+    maxSegments: u32,
+    documentLength: u32,
+    averageDocLength: f32,
+    decayLambda: f32,
+    idfScale: f32
+): { multiplier: f32; overlapCount: u32; decay: f32; idfBoost: f32 } {
+    if (termData.length < 2) {
+        return { multiplier: 1.0, overlapCount: 0, decay: 1.0, idfBoost: 1.0 };
+    }
+
+    const totalIdf = termData.reduce((sum, t) => sum + t.idf, 0);
+    const avgIdf = totalIdf / termData.length;
+
+    const commonMask = termData.reduce((a, b) => a & b.mask, 0xffffffff);
+    const overlapCount = popCount(commonMask);
+    const maxPossibleOverlap = Math.min(termData.length, maxSegments);
+
+    if (maxPossibleOverlap === 0) {
+        return { multiplier: 1.0, overlapCount: 0, decay: 1.0, idfBoost: 1.0 };
+    }
+
+    const baseMultiplier = overlapCount / maxPossibleOverlap;
+    const idfBoost = 1 + avgIdf / idfScale;
+    const lengthRatio = averageDocLength > 0 ? documentLength / averageDocLength : 1;
+    const decay = Math.exp(-decayLambda * lengthRatio);
+
+    return {
+        multiplier: 1.0 + alpha * baseMultiplier * idfBoost * decay,
+        overlapCount,
+        decay,
+        idfBoost,
+    };
+}
+
+/** Per-term proximity multiplier */
+function perTermProximityMultiplier(
+    termMask: u32,
+    otherMasks: u32[],
+    alpha: f32,
+    maxSegments: u32
+): f32 {
+    if (otherMasks.length === 0) return 1.0;
+
+    let totalOverlap = 0;
+    for (const other of otherMasks) {
+        totalOverlap += popCount(termMask & other);
+    }
+
+    const averageOverlap = totalOverlap / otherMasks.length;
+    const normalizedOverlap = maxSegments > 0 ? averageOverlap / maxSegments : 0;
+
+    return 1.0 + alpha * normalizedOverlap;
+}
+
+/** Pairwise proximity bonus */
+function pairwiseProximityBonus(termMasks: u32[], alpha: f32, maxSegments: u32): f32 {
+    if (termMasks.length < 2 || maxSegments === 0) return 0;
+
+    let totalProximity = 0;
+    let pairCount = 0;
+
+    for (let i = 0; i < termMasks.length; i++) {
+        for (let j = i + 1; j < termMasks.length; j++) {
+            const overlap = popCount(termMasks[i] & termMasks[j]);
+            totalProximity += overlap / maxSegments;
+            pairCount++;
+        }
+    }
+
+    return pairCount > 0 ? alpha * (totalProximity / pairCount) : 0;
+}
+
+/**
+ * Detect if consecutive query terms appear in adjacent segments.
+ * Enforces strict order: term[i] must be in segment N, term[i+1] in segment N+1.
+ */
+function detectPhraseMatch(queryTerms: string[], docTermMasks: Map<string, u32>): boolean {
+    if (queryTerms.length < 2) return false;
+
+    for (let i = 0; i < queryTerms.length - 1; i++) {
+        const mask1 = docTermMasks.get(queryTerms[i]);
+        const mask2 = docTermMasks.get(queryTerms[i + 1]);
+
+        if (mask1 === undefined || mask2 === undefined) return false;
+
+        // Shift mask1 left: 0001 -> 0010. If mask2 has bit at 0010, they are adjacent.
+        const strictOrderAdjacent = (mask1 << 1) & mask2;
+
+        // If any pair is NOT adjacent, it's not a phrase match
+        if (strictOrderAdjacent === 0) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// =============================================================================
+// Main Scorer Implementation
+// =============================================================================
+
+export class ResoRankScorer<K extends Key = string> {
+    private config: ResoRankConfig;
+    private corpusStats: CorpusStatistics;
+    private documentIndex: Map<K, DocumentMetadata> = new Map();
+    private tokenIndex: Map<string, Map<K, TokenMetadata>> = new Map();
+    private idfCache: Map<string, f32> = new Map();
+    private proximityStrategy: ProximityStrategy;
+
+    constructor(
+        config: Partial<ResoRankConfig> = {},
+        corpusStats: CorpusStatistics,
+        proximityStrategy: ProximityStrategy = ProximityStrategy.IdfWeighted
+    ) {
+        this.config = { ...RESORANK_DEFAULT_CONFIG, ...config };
+        this.corpusStats = corpusStats;
+        this.proximityStrategy = proximityStrategy;
+    }
+
+    /**
+     * Calculate IDF or retrieve from cache.
+     * Note: IDF depends only on document frequency and total docs,
+     * so cache key is just the frequency count.
+     */
+    private getOrCalculateIdf(corpusDocFreq: usize): f32 {
+        const cacheKey = `${corpusDocFreq}`;
+        const cached = this.idfCache.get(cacheKey);
+        if (cached !== undefined) return cached;
+
+        const idf = calculateIdf(this.corpusStats.totalDocuments, corpusDocFreq);
+        this.idfCache.set(cacheKey, idf);
+        return idf;
+    }
+
+    /**
+     * Pre-compute IDF values for all currently indexed terms.
+     * Call this after bulk indexing is complete.
+     */
+    warmIdfCache(): void {
+        const uniqueFrequencies = new Set<usize>();
+        for (const termDocs of this.tokenIndex.values()) {
+            for (const meta of termDocs.values()) {
+                uniqueFrequencies.add(meta.corpusDocFrequency);
+            }
+        }
+        for (const freq of uniqueFrequencies) {

@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { 
-  FileText, 
-  Clock, 
-  MessageSquare, 
+import {
+  FileText,
+  Clock,
+  MessageSquare,
   BookOpen,
   TrendingUp,
   Hash
@@ -14,6 +14,7 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { FlowScoreSection } from './FlowScoreSection';
 
 export function AnalyticsPanel() {
   const { state } = useNotes();
@@ -78,38 +79,29 @@ export function AnalyticsPanel() {
               {analytics.readingLevel}
             </Badge>
           </div>
-          <StatRow 
-            label="Reading Time" 
+          <StatRow
+            label="Reading Time"
             value={formatTime(analytics.readingTimeMinutes, analytics.readingTimeSeconds)}
             icon={Clock}
           />
-          <StatRow 
-            label="Speaking Time" 
+          <StatRow
+            label="Speaking Time"
             value={formatTime(analytics.speakingTimeMinutes, analytics.speakingTimeSeconds)}
             icon={MessageSquare}
           />
-          <StatRow 
-            label="Avg. Sentence Length" 
+          <StatRow
+            label="Avg. Sentence Length"
             value={`${analytics.averageSentenceLength} words`}
           />
         </Section>
 
-        {/* Flow Score */}
-        <Section title="Flow Score" icon={TrendingUp}>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Sentence Variation</span>
-              <span className="text-sm font-medium">{analytics.flowScore}%</span>
-            </div>
-            <Progress value={analytics.flowScore} className="h-2" />
-            <p className="text-xs text-muted-foreground italic">
-              {analytics.flowScore < 40 
-                ? "Try varying your sentence lengths for better flow."
-                : analytics.flowScore < 70
-                ? "Good sentence variation. Keep it up!"
-                : "Excellent writing flow with dynamic sentences."}
-            </p>
-          </div>
+        {/* Enhanced Flow Score */}
+        <Section title="" icon={() => null}>
+          <FlowScoreSection
+            score={analytics.flowScore}
+            distribution={analytics.sentenceLengthDistribution}
+            insights={analytics.flowInsights}
+          />
         </Section>
 
         {/* Keyword Density */}
@@ -138,7 +130,7 @@ export function AnalyticsPanel() {
                 </p>
               ) : (
                 filteredKeywords.map((item, index) => (
-                  <div 
+                  <div
                     key={item.word}
                     className="flex items-center justify-between py-1 text-sm"
                   >
@@ -170,6 +162,11 @@ interface SectionProps {
 }
 
 function Section({ title, icon: Icon, children }: SectionProps) {
+  if (!title) {
+    // For Flow Score section, just return children without section wrapper
+    return <>{children}</>;
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-sm font-medium">
