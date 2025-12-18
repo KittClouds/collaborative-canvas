@@ -10,15 +10,13 @@ export function ThemeToggle() {
 
   return (
     <div ref={buttonRef as React.RefObject<HTMLDivElement>} className="flex items-center">
+      {/* @ts-expect-error: Library types require props that cause React warnings, so we suppress the missing prop error */}
       <Around
         toggled={isDark}
         toggle={() => toggleTheme(buttonRef)}
         duration={750}
         className="text-foreground hover:text-primary transition-colors text-2xl p-1"
         aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
-        placeholder=""
-        onPointerEnterCapture={() => {}}
-        onPointerLeaveCapture={() => {}}
       />
     </div>
   );

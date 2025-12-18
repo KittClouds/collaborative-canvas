@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { cozoDb } from "@/lib/cozo/db";
+import { initBlueprintHubSchema } from "@/features/blueprint-hub/api/schema";
 import { BlueprintHubProvider } from "@/features/blueprint-hub/context/BlueprintHubContext";
 import { BlueprintHub } from "@/features/blueprint-hub/components/BlueprintHub";
 import { NERProvider } from "@/contexts/NERContext";
@@ -14,19 +15,42 @@ import { NERProvider } from "@/contexts/NERContext";
 const queryClient = new QueryClient();
 
 const App = () => {
+  const [dbReady, setDbReady] = useState(false);
+
   useEffect(() => {
     const initDB = async () => {
       try {
         await cozoDb.init();
         console.log("CozoDB Initialized");
+
+        // Test query
         const res = cozoDb.runQuery('?[] <- [["hello", "cozo"]]');
         console.log("CozoDB Test Query Result:", res);
+
+        // Initialize Blueprint Hub schema
+        await initBlueprintHubSchema(cozoDb);
+        console.log("Blueprint Hub schema initialized");
+
+        setDbReady(true);
       } catch (e) {
-        console.error("CozoDB Init Failed:", e);
+        console.error("Database initialization failed:", e);
+        // Still set ready to prevent infinite loading
+        setDbReady(true);
       }
     };
     initDB();
   }, []);
+
+  if (!dbReady) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Initializing database...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -35,7 +59,12 @@ const App = () => {
           <TooltipProvider>
             <Toaster />
             <Sonner />
-            <BrowserRouter>
+            <BrowserRouter
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true,
+              }}
+            >
               <Routes>
                 <Route path="/" element={<Index />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

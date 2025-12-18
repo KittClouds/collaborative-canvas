@@ -75,7 +75,12 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
   }, [state.notes]);
 
   useEffect(() => {
-    healthTracker.getHealth().then(setEmbeddingHealth);
+    healthTracker.getHealth()
+      .then(setEmbeddingHealth)
+      .catch((error) => {
+        console.warn('Failed to get initial health, will retry:', error);
+        // Use default health state until DB is ready
+      });
   }, [state.notes.length]);
 
   useEffect(() => {

@@ -4,7 +4,7 @@ import { useEntitySelection } from '@/contexts/EntitySelectionContext';
 import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentParser';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
-import { FileQuestion, Sparkles, BrainCircuit } from 'lucide-react';
+import { FileQuestion, Sparkles, BrainCircuit, LayoutGrid, List } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getSupportedModels, getDefaultModel } from '@/lib/cozo/extraction/extractionConfig';
+import { Button } from '@/components/ui/button';
 
 // Import all fact sheet components
 import { CharacterFactSheet } from './CharacterFactSheet';
@@ -23,6 +24,7 @@ import { EventFactSheet } from './EventFactSheet';
 import { ConceptFactSheet } from './ConceptFactSheet';
 import { NPCFactSheet } from './NPCFactSheet';
 import { SceneFactSheet } from './SceneFactSheet';
+import { BlueprintCardsPanel } from './BlueprintCardsPanel';
 
 // Map entity kinds to their fact sheet components
 const factSheetComponents: Record<EntityKind, React.ComponentType<{ entity: ParsedEntity; onUpdate: (attributes: EntityAttributes) => void }>> = {
@@ -36,6 +38,19 @@ const factSheetComponents: Record<EntityKind, React.ComponentType<{ entity: Pars
   SCENE: SceneFactSheet,
 };
 
+type PanelMode = 'standard' | 'blueprint';
+
+const PANEL_MODE_STORAGE_KEY = 'entities-panel:mode';
+
+function getPanelMode(): PanelMode {
+  const stored = localStorage.getItem(PANEL_MODE_STORAGE_KEY);
+  return stored === 'blueprint' ? 'blueprint' : 'standard';
+}
+
+function setPanelMode(mode: PanelMode) {
+  localStorage.setItem(PANEL_MODE_STORAGE_KEY, mode);
+}
+
 export function FactSheetContainer() {
   const { selectedNote, updateNoteContent } = useNotes();
   const { 
@@ -45,9 +60,17 @@ export function FactSheetContainer() {
     setEntitiesInCurrentNote 
   } = useEntitySelection();
 
+  // Panel Mode State
+  const [panelMode, setPanelModeState] = useState<PanelMode>(getPanelMode());
+
   // Extraction Model State
   const [extProvider, setExtProvider] = useState<'openai' | 'google' | 'anthropic'>('openai');
   const [extModel, setExtModel] = useState(getDefaultModel('openai'));
+
+  const handlePanelModeChange = useCallback((mode: PanelMode) => {
+    setPanelModeState(mode);
+    setPanelMode(mode);
+  }, []);
 
   // ... (rest of the component)
   const allEntities = useMemo(() => {
@@ -186,6 +209,30 @@ export function FactSheetContainer() {
         </Select>
       </div>
 
+      {/* Panel Mode Toggle */}
+      <div className="p-2 border-b border-border bg-muted/10 flex items-center gap-2 justify-center">
+        <div className="inline-flex rounded-md border border-border bg-background p-0.5">
+          <Button
+            variant={panelMode === 'standard' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-7 px-3 text-xs"
+            onClick={() => handlePanelModeChange('standard')}
+          >
+            <List className="h-3 w-3 mr-1.5" />
+            Standard
+          </Button>
+          <Button
+            variant={panelMode === 'blueprint' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-7 px-3 text-xs"
+            onClick={() => handlePanelModeChange('blueprint')}
+          >
+            <LayoutGrid className="h-3 w-3 mr-1.5" />
+            Blueprint
+          </Button>
+        </div>
+      </div>
+
       {/* Entity selector (shown when multiple entities) */}
       {allEntities.length > 1 && (
         <div className="p-3 border-b border-border">
@@ -222,9 +269,15 @@ export function FactSheetContainer() {
 
       {/* Fact sheet content */}
       <div className="flex-1 overflow-auto">
-        {selectedEntity && FactSheetComponent && (
+        {selectedEntity && panelMode === 'standard' && FactSheetComponent && (
           <FactSheetComponent 
             entity={selectedEntity} 
+            onUpdate={handleAttributeUpdate}
+          />
+        )}
+        {selectedEntity && panelMode === 'blueprint' && (
+          <BlueprintCardsPanel
+            entity={selectedEntity}
             onUpdate={handleAttributeUpdate}
           />
         )}

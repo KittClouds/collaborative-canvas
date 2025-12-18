@@ -24,6 +24,9 @@ import {
   BLUEPRINT_ATTRIBUTE_SCHEMA,
   BLUEPRINT_VIEW_TEMPLATE_SCHEMA,
   BLUEPRINT_MOC_SCHEMA,
+  EXTRACTION_PROFILE_SCHEMA,
+  EXTRACTION_LABEL_MAPPING_SCHEMA,
+  EXTRACTION_IGNORE_LIST_SCHEMA,
 } from './layer3-blueprints';
 
 export const SCHEMA_VERSION = '1.1.0';
@@ -55,6 +58,9 @@ const ALL_SCHEMAS = [
   { name: 'blueprint_attribute', schema: BLUEPRINT_ATTRIBUTE_SCHEMA },
   { name: 'blueprint_view_template', schema: BLUEPRINT_VIEW_TEMPLATE_SCHEMA },
   { name: 'blueprint_moc', schema: BLUEPRINT_MOC_SCHEMA },
+  { name: 'extraction_profile', schema: EXTRACTION_PROFILE_SCHEMA },
+  { name: 'extraction_label_mapping', schema: EXTRACTION_LABEL_MAPPING_SCHEMA },
+  { name: 'extraction_ignore_list', schema: EXTRACTION_IGNORE_LIST_SCHEMA },
 ];
 
 export interface SchemaInitResult {

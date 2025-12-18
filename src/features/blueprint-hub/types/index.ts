@@ -332,6 +332,10 @@ export interface CompiledBlueprint {
   relationshipTypes: CompiledRelationshipType[];
   viewTemplates: ViewTemplateDef[];
   mocs: MOCDef[];
+  extractionProfile?: ExtractionProfile & {
+    labelMappings: LabelMapping[];
+    ignoreList: IgnoreEntry[];
+  };
 }
 
 // ==================== Query Result Types ====================
@@ -447,3 +451,55 @@ export interface MOCRow {
 export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
 export type RequiredBy<T, K extends keyof T> = T & Required<Pick<T, K>>;
+
+// ==================== Extraction Profile Types ====================
+
+export type ResolutionPolicy = 'entity_on_accept' | 'mention_first';
+
+export interface ExtractionProfile {
+  profile_id: string;
+  version_id: string;
+  enabled: boolean;
+  model_id: string;
+  confidence_threshold: number;
+  resolution_policy: ResolutionPolicy;
+  created_at: number;
+}
+
+export interface CreateExtractionProfileInput {
+  version_id: string;
+  enabled?: boolean;
+  model_id?: string;
+  confidence_threshold?: number;
+  resolution_policy?: ResolutionPolicy;
+}
+
+export interface LabelMapping {
+  mapping_id: string;
+  profile_id: string;
+  ner_label: string;
+  target_entity_kinds: string[];
+  priority: number;
+  created_at: number;
+}
+
+export interface CreateLabelMappingInput {
+  profile_id: string;
+  ner_label: string;
+  target_entity_kinds: string[];
+  priority?: number;
+}
+
+export interface IgnoreEntry {
+  ignore_id: string;
+  profile_id: string;
+  surface_form?: string;
+  ner_label?: string;
+  created_at: number;
+}
+
+export interface CreateIgnoreEntryInput {
+  profile_id: string;
+  surface_form?: string;
+  ner_label?: string;
+}

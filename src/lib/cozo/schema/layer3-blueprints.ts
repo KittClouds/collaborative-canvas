@@ -123,6 +123,39 @@ export const BLUEPRINT_MOC_SCHEMA = `
 }
 `;
 
+export const EXTRACTION_PROFILE_SCHEMA = `
+:create extraction_profile {
+    profile_id: Uuid,
+    version_id: Uuid,
+    enabled: Bool default true,
+    model_id: String default "onnx-community/NeuroBERT-NER-ONNX",
+    confidence_threshold: Float default 0.4,
+    resolution_policy: String default "mention_first",
+    created_at: Float default now()
+}
+`;
+
+export const EXTRACTION_LABEL_MAPPING_SCHEMA = `
+:create extraction_label_mapping {
+    mapping_id: Uuid,
+    profile_id: Uuid,
+    ner_label: String,
+    target_entity_kinds: [String],
+    priority: Int default 0,
+    created_at: Float default now()
+}
+`;
+
+export const EXTRACTION_IGNORE_LIST_SCHEMA = `
+:create extraction_ignore_list {
+    ignore_id: Uuid,
+    profile_id: Uuid,
+    surface_form: String? default null,
+    ner_label: String? default null,
+    created_at: Float default now()
+}
+`;
+
 // Query templates for Blueprint Hub operations
 export const BLUEPRINT_QUERIES = {
   // Blueprint Meta queries
@@ -343,5 +376,80 @@ export const BLUEPRINT_QUERIES = {
   deleteMOC: `
     ?[moc_id] <- [[$moc_id]]
     :rm blueprint_moc { moc_id }
+  `,
+
+  // Extraction Profile queries
+  upsertExtractionProfile: `
+    ?[profile_id, version_id, enabled, model_id, confidence_threshold, resolution_policy, created_at] <- 
+      [[$profile_id, $version_id, $enabled, $model_id, $confidence_threshold, $resolution_policy, $created_at]]
+    :put extraction_profile {
+      profile_id, version_id, enabled, model_id, confidence_threshold, resolution_policy, created_at
+    }
+  `,
+
+  getExtractionProfileByVersion: `
+    ?[profile_id, version_id, enabled, model_id, confidence_threshold, resolution_policy, created_at] := 
+      *extraction_profile{profile_id, version_id, enabled, model_id, confidence_threshold, resolution_policy, created_at},
+      version_id == $version_id
+  `,
+
+  deleteExtractionProfile: `
+    ?[profile_id] <- [[$profile_id]]
+    :rm extraction_profile { profile_id }
+  `,
+
+  // Extraction Label Mapping queries
+  upsertLabelMapping: `
+    ?[mapping_id, profile_id, ner_label, target_entity_kinds, priority, created_at] <- 
+      [[$mapping_id, $profile_id, $ner_label, $target_entity_kinds, $priority, $created_at]]
+    :put extraction_label_mapping {
+      mapping_id, profile_id, ner_label, target_entity_kinds, priority, created_at
+    }
+  `,
+
+  getLabelMappingsByProfile: `
+    ?[mapping_id, profile_id, ner_label, target_entity_kinds, priority, created_at] := 
+      *extraction_label_mapping{mapping_id, profile_id, ner_label, target_entity_kinds, priority, created_at},
+      profile_id == $profile_id
+    :order priority
+  `,
+
+  deleteLabelMapping: `
+    ?[mapping_id] <- [[$mapping_id]]
+    :rm extraction_label_mapping { mapping_id }
+  `,
+
+  deleteLabelMappingsByProfile: `
+    ?[profile_id, mapping_id] := 
+      *extraction_label_mapping{mapping_id, profile_id},
+      profile_id == $profile_id
+    :rm extraction_label_mapping { mapping_id }
+  `,
+
+  // Extraction Ignore List queries
+  addToIgnoreList: `
+    ?[ignore_id, profile_id, surface_form, ner_label, created_at] <- 
+      [[$ignore_id, $profile_id, $surface_form, $ner_label, $created_at]]
+    :put extraction_ignore_list {
+      ignore_id, profile_id, surface_form, ner_label, created_at
+    }
+  `,
+
+  getIgnoreListByProfile: `
+    ?[ignore_id, profile_id, surface_form, ner_label, created_at] := 
+      *extraction_ignore_list{ignore_id, profile_id, surface_form, ner_label, created_at},
+      profile_id == $profile_id
+  `,
+
+  removeFromIgnoreList: `
+    ?[ignore_id] <- [[$ignore_id]]
+    :rm extraction_ignore_list { ignore_id }
+  `,
+
+  deleteIgnoreListByProfile: `
+    ?[profile_id, ignore_id] := 
+      *extraction_ignore_list{ignore_id, profile_id},
+      profile_id == $profile_id
+    :rm extraction_ignore_list { ignore_id }
   `,
 };

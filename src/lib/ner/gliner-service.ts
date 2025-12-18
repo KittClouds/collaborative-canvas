@@ -1,5 +1,5 @@
 import { pipeline } from '@huggingface/transformers';
-import type { NEREntity } from './types';
+import type { NEREntity, NERSpan } from './types';
 
 type Pipeline = any;
 
@@ -99,3 +99,42 @@ class GLiNERService {
 
 // Singleton instance
 export const glinerService = new GLiNERService();
+
+// ==================== Clean NER API ====================
+
+export interface RunNEROptions {
+    threshold?: number;
+}
+
+/**
+ * Clean NER API - returns raw NER model output without hardcoded label mapping
+ */
+export async function runNer(
+    text: string,
+    options: RunNEROptions = {}
+): Promise<NERSpan[]> {
+    const threshold = options.threshold ?? 0.4;
+
+    if (!glinerService.isLoaded()) {
+        await glinerService.initialize();
+    }
+
+    try {
+        const results = await (glinerService as any).pipelineInstance(text, {
+            ignore_labels: ['O'],
+            score_threshold: threshold,
+            aggregation_strategy: 'simple',
+        });
+
+        return (results as any[]).map((r: any) => ({
+            text: r.word || r.text || text.slice(r.start, r.end),
+            start: r.start,
+            end: r.end,
+            nerLabel: (r.entity || r.entity_group || r.label || 'unknown').toUpperCase(),
+            confidence: r.score || 0,
+        }));
+    } catch (error) {
+        console.error('NER extraction failed:', error);
+        return [];
+    }
+}

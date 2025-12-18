@@ -37,3 +37,30 @@ export {
   handleGetComponents,
   handleDetectPlotHoles,
 } from './graphAlgorithms';
+
+export {
+  createMention,
+  updateMentionStatus,
+  getMentionsByNoteId,
+  getMentionsByEntityId,
+  deleteMention,
+  type Mention,
+  type CreateMentionInput,
+} from './mentions';
+
+export {
+  upsertEntity,
+  getEntityById,
+  findEntityByName,
+  deleteEntity,
+  type Entity,
+  type CreateEntityInput,
+} from './entities';
+
+export {
+  createMentionEdge,
+  getEdgesBySourceId,
+  deleteEdge,
+  type EntityEdge,
+  type CreateEdgeInput,
+} from './edges';

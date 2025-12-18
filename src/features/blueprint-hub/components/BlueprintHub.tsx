@@ -10,6 +10,7 @@ import { RelationshipTypesTab } from './tabs/RelationshipTypesTab';
 import { AttributeBlueprintsTab } from './tabs/AttributeBlueprintsTab';
 import { ViewTemplatesTab } from './ViewTemplatesTab';
 import { MocsTab } from './MocsTab';
+import { ExtractionTab } from './tabs/ExtractionTab';
 import { seedStarterBlueprint } from '../api/seedBlueprint';
 import { publishVersion, createVersion, getVersionById } from '../api/storage';
 import { toast } from '@/hooks/use-toast';
@@ -140,13 +141,14 @@ export function BlueprintHub() {
         </DialogHeader>
 
         <Tabs defaultValue="entity-types" className="flex-1 flex flex-col">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="entity-types">Entity Types</TabsTrigger>
             <TabsTrigger value="fields">Fields</TabsTrigger>
             <TabsTrigger value="relationships">Relationships</TabsTrigger>
             <TabsTrigger value="attributes">Attributes</TabsTrigger>
             <TabsTrigger value="views">View Templates</TabsTrigger>
             <TabsTrigger value="mocs">MOCs</TabsTrigger>
+            <TabsTrigger value="extraction">Extraction (NER)</TabsTrigger>
             <TabsTrigger value="help">How to Use</TabsTrigger>
           </TabsList>
 
@@ -173,6 +175,10 @@ export function BlueprintHub() {
 
             <TabsContent value="mocs" className="h-full">
               <MocsTab isLoading={isLoading} />
+            </TabsContent>
+
+            <TabsContent value="extraction" className="h-full">
+              <ExtractionTab isLoading={isLoading} />
             </TabsContent>
 
             <TabsContent value="help" className="h-full">

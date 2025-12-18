@@ -1,3 +1,13 @@
+// Raw output from NER model
+export interface NERSpan {
+    text: string;
+    start: number;
+    end: number;
+    nerLabel: string;
+    confidence: number;
+}
+
+// Deprecated - kept for backward compatibility
 export interface NEREntity {
     entity_type: string;
     word: string;

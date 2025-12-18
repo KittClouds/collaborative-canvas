@@ -10,6 +10,9 @@ import {
   getAllRelationshipAttributesByType,
   getAllViewTemplatesByVersion,
   getAllMOCsByVersion,
+  getExtractionProfile,
+  getLabelMappings,
+  getIgnoreList,
 } from '../api/storage';
 import type {
   CompiledBlueprint,
@@ -98,6 +101,21 @@ export async function compileBlueprint(versionId: string): Promise<CompiledBluep
   const viewTemplates = await getAllViewTemplatesByVersion(versionId);
   const mocs = await getAllMOCsByVersion(versionId);
 
+  // Fetch extraction profile with label mappings and ignore list
+  const extractionProfile = await getExtractionProfile(versionId);
+  let enrichedProfile;
+  
+  if (extractionProfile) {
+    const labelMappings = await getLabelMappings(extractionProfile.profile_id);
+    const ignoreList = await getIgnoreList(extractionProfile.profile_id);
+    
+    enrichedProfile = {
+      ...extractionProfile,
+      labelMappings,
+      ignoreList,
+    };
+  }
+
   const compiled: CompiledBlueprint = {
     meta,
     version,
@@ -105,6 +123,7 @@ export async function compileBlueprint(versionId: string): Promise<CompiledBluep
     relationshipTypes: compiledRelationshipTypes,
     viewTemplates,
     mocs,
+    extractionProfile: enrichedProfile ?? undefined,
   };
 
   return compiled;

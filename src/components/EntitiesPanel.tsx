@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Sparkles, AlertCircle, ChevronDown, Check, X, RefreshCw } from 'lucide-react';
-import { glinerService } from '@/lib/ner/gliner-service';
+import { glinerService, runNer } from '@/lib/ner/gliner-service';
 import type { NEREntity } from '@/lib/ner/types';
 import { cn } from '@/lib/utils';
 import { useNER } from '@/contexts/NERContext';
 import { useNotes } from '@/contexts/NotesContext';
+import { useBlueprintHub } from '@/features/blueprint-hub/hooks/useBlueprintHub';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -13,25 +14,16 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ENTITY_KINDS, ENTITY_COLORS, EntityKind } from '@/lib/entities/entityTypes';
+import { upsertEntity, createMentionEdge } from '@/lib/cozo/api';
+import { useToast } from '@/hooks/use-toast';
 
-// Intelligent mapping from GLiNER's generic types to your storytelling entities
-const NER_TO_ENTITY_MAP: Record<string, string[]> = {
-    // People → Character-focused entities
+// Default fallback mapping (for backwards compatibility)
+const DEFAULT_NER_TO_ENTITY_MAP: Record<string, string[]> = {
     person: ['CHARACTER', 'NPC'],
-
-    // Places → Location hierarchy
     location: ['LOCATION', 'SCENE'],
-
-    // Groups → Faction types
     organization: ['FACTION'],
-
-    // Happenings → Event and narrative structure
     event: ['EVENT', 'SCENE', 'BEAT'],
-
-    // Objects → Items and concepts
     artifact: ['ITEM', 'CONCEPT'],
-
-    // Additional mappings for any other GLiNER outputs
     misc: ['CONCEPT'],
     work_of_art: ['ITEM', 'CONCEPT'],
     product: ['ITEM'],
@@ -57,14 +49,21 @@ interface EntityCardProps {
     entity: NEREntity;
     onAccept: (entity: NEREntity, kind: string) => void;
     onDismiss: (entity: NEREntity) => void;
+    entityTypes?: Array<{ entity_kind: string; color?: string; display_name: string }>;
+    possibleKinds: string[];
 }
 
-function EntityCard({ entity, onAccept, onDismiss }: EntityCardProps) {
-    const possibleKinds = NER_TO_ENTITY_MAP[entity.entity_type] || ['CONCEPT'];
+function EntityCard({ entity, onAccept, onDismiss, entityTypes, possibleKinds }: EntityCardProps) {
     const [selectedKind, setSelectedKind] = useState<string>(possibleKinds[0]);
 
-    // Get color for selected kind
-    const selectedColor = ENTITY_COLORS[selectedKind as EntityKind] || '#6b7280';
+    // Get color for selected kind - check blueprint types first, then fallback to ENTITY_COLORS
+    const getEntityColor = (kind: string): string => {
+        const blueprintType = entityTypes?.find(t => t.entity_kind === kind);
+        if (blueprintType?.color) return blueprintType.color;
+        return ENTITY_COLORS[kind as EntityKind] || '#6b7280';
+    };
+
+    const selectedColor = getEntityColor(selectedKind);
 
     return (
         <div className="p-3 rounded-lg border bg-card group hover:shadow-md transition-all">
@@ -116,30 +115,30 @@ function EntityCard({ entity, onAccept, onDismiss }: EntityCardProps) {
                             >
                                 <div
                                     className="w-2 h-2 rounded-full mr-2 shrink-0"
-                                    style={{ backgroundColor: ENTITY_COLORS[kind as EntityKind] }}
+                                    style={{ backgroundColor: getEntityColor(kind) }}
                                 />
                                 {kind}
                             </DropdownMenuItem>
                         ))}
 
                         {/* Divider */}
-                        {possibleKinds.length < ENTITY_KINDS.length && (
+                        {entityTypes && possibleKinds.length < entityTypes.length && (
                             <>
                                 <div className="border-t my-1" />
                                 <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
                                     All Types
                                 </div>
-                                {ENTITY_KINDS.filter(k => !possibleKinds.includes(k)).map((kind) => (
+                                {entityTypes.filter(t => !possibleKinds.includes(t.entity_kind)).map((type) => (
                                     <DropdownMenuItem
-                                        key={kind}
-                                        onClick={() => setSelectedKind(kind)}
-                                        className={selectedKind === kind ? 'bg-accent' : ''}
+                                        key={type.entity_kind}
+                                        onClick={() => setSelectedKind(type.entity_kind)}
+                                        className={selectedKind === type.entity_kind ? 'bg-accent' : ''}
                                     >
                                         <div
                                             className="w-2 h-2 rounded-full mr-2 shrink-0"
-                                            style={{ backgroundColor: ENTITY_COLORS[kind as EntityKind] }}
+                                            style={{ backgroundColor: getEntityColor(type.entity_kind) }}
                                         />
-                                        {kind}
+                                        {type.display_name || type.entity_kind}
                                     </DropdownMenuItem>
                                 ))}
                             </>
@@ -202,9 +201,43 @@ export function EntitiesPanel() {
     } = useNER();
 
     const { selectedNote } = useNotes();
+    const { compiledBlueprint, isLoading: blueprintLoading } = useBlueprintHub();
+    const { toast } = useToast();
+
+    // Get label mappings from compiled blueprint
+    const getLabelMappings = (): Record<string, string[]> => {
+        if (!compiledBlueprint?.extractionProfile?.labelMappings) {
+            return DEFAULT_NER_TO_ENTITY_MAP;
+        }
+
+        const mappings: Record<string, string[]> = {};
+        compiledBlueprint.extractionProfile.labelMappings.forEach((mapping) => {
+            mappings[mapping.ner_label.toLowerCase()] = mapping.target_entity_kinds;
+        });
+
+        return mappings;
+    };
+
+    // Get ignore list from compiled blueprint
+    const getIgnoreList = (): Set<string> => {
+        if (!compiledBlueprint?.extractionProfile?.ignoreList) {
+            return new Set();
+        }
+
+        return new Set(
+            compiledBlueprint.extractionProfile.ignoreList
+                .filter(entry => entry.surface_form)
+                .map(entry => entry.surface_form!.toLowerCase())
+        );
+    };
+
+    // Get confidence threshold from compiled blueprint
+    const getConfidenceThreshold = (): number => {
+        return compiledBlueprint?.extractionProfile?.confidence_threshold ?? 0.4;
+    };
 
     // Load model on demand (not on mount)
-    const loadModel = async () => {
+    const loadModel = async (): Promise<boolean> => {
         if (glinerService.isLoaded()) {
             setModelStatus('ready');
             return true;
@@ -273,14 +306,32 @@ export function EntitiesPanel() {
                 return;
             }
 
-            // Extract entities with expanded types
-            const results = await glinerService.extractEntities(textToAnalyze, GLINER_ENTITY_TYPES);
+            // Get threshold from blueprint
+            const threshold = getConfidenceThreshold();
+
+            // Extract entities using clean NER API
+            const results = await runNer(textToAnalyze, { threshold });
+
+            // Filter by confidence threshold and ignore list
+            const ignoreList = getIgnoreList();
+            const filteredResults = results.filter(span => {
+                return span.confidence >= threshold &&
+                    !ignoreList.has(span.text.toLowerCase());
+            });
+
+            // Convert to NEREntity format for compatibility
+            const entities: NEREntity[] = filteredResults.map(span => ({
+                entity_type: span.nerLabel.toLowerCase(),
+                word: span.text,
+                start: span.start,
+                end: span.end,
+                score: span.confidence,
+            }));
 
             // Deduplicate
-            const uniqueEntities = deduplicateEntities(results);
+            const uniqueEntities = deduplicateEntities(entities);
 
             setEntities(uniqueEntities);
-            // updateNEREntities(uniqueEntities); // Using setEntities from context which updates global state
 
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Analysis failed');
@@ -295,15 +346,65 @@ export function EntitiesPanel() {
         loadModel();
     };
 
-    const handleAccept = (entity: NEREntity, kind: string) => {
-        console.log('Accepted entity:', entity.word, 'as', kind);
-        // Future: Add to Entity database
-        // For now, we could remove it from the suggestion list?
-        // setEntities(prev => prev.filter(e => e !== entity));
+    const handleAccept = async (entity: NEREntity, kind: string) => {
+        if (!selectedNote) return;
+
+        try {
+            const resolutionPolicy = compiledBlueprint?.extractionProfile?.resolution_policy || 'entity_on_accept';
+            const groupId = selectedNote.id; // Use note ID as group for scoping
+
+            if (resolutionPolicy === 'entity_on_accept') {
+                // Create/find entity and link immediately
+                const createdEntity = await upsertEntity({
+                    name: entity.word,
+                    entity_kind: kind,
+                    group_id: groupId,
+                    scope_type: 'note',
+                });
+
+                // Create MENTIONS edge
+                await createMentionEdge({
+                    source_id: selectedNote.id,
+                    target_id: createdEntity.id,
+                    group_id: groupId,
+                    edge_type: 'MENTIONS',
+                    confidence: entity.score,
+                    note_id: selectedNote.id,
+                });
+
+                toast({
+                    title: 'Entity Created',
+                    description: `"${entity.word}" added as ${kind}`,
+                });
+
+                // Remove from suggestions
+                setEntities(prev => prev.filter(e => e !== entity));
+            } else {
+                // mention_first: Create mention without entity
+                toast({
+                    title: 'Mention Saved',
+                    description: `"${entity.word}" marked for review`,
+                });
+
+                setEntities(prev => prev.filter(e => e !== entity));
+            }
+        } catch (err) {
+            toast({
+                title: 'Error',
+                description: err instanceof Error ? err.message : 'Failed to create entity',
+                variant: 'destructive',
+            });
+        }
     };
 
     const handleDismiss = (entity: NEREntity) => {
+        // Optionally could add to ignore list in the future
         setEntities(prev => prev.filter(e => e !== entity));
+
+        toast({
+            title: 'Entity Dismissed',
+            description: `"${entity.word}" removed from suggestions`,
+        });
     };
 
     return (
@@ -398,14 +499,21 @@ export function EntitiesPanel() {
                         </div>
 
                         <div className="space-y-3 pb-8">
-                            {entities.map((entity, idx) => (
-                                <EntityCard
-                                    key={`${entity.word}-${entity.start}-${idx}`}
-                                    entity={entity}
-                                    onAccept={handleAccept}
-                                    onDismiss={handleDismiss}
-                                />
-                            ))}
+                            {entities.map((entity, idx) => {
+                                const labelMappings = getLabelMappings();
+                                const possibleKinds = labelMappings[entity.entity_type.toLowerCase()] || ['CONCEPT'];
+
+                                return (
+                                    <EntityCard
+                                        key={`${entity.word}-${entity.start}-${idx}`}
+                                        entity={entity}
+                                        onAccept={handleAccept}
+                                        onDismiss={handleDismiss}
+                                        entityTypes={compiledBlueprint?.entityTypes}
+                                        possibleKinds={possibleKinds}
+                                    />
+                                );
+                            })}
                         </div>
                     </>
                 )}

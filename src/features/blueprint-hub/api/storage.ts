@@ -55,7 +55,7 @@ export async function createBlueprintMeta(
   const now = Date.now();
   const blueprint_id = uuidv4();
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertBlueprintMeta, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertBlueprintMeta, {
     blueprint_id,
     name: input.name,
     description: input.description ?? null,
@@ -94,7 +94,7 @@ export async function updateBlueprintMeta(
   }
 
   const now = Date.now();
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertBlueprintMeta, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertBlueprintMeta, {
     blueprint_id,
     name: updates.name ?? existing.name,
     description: updates.description ?? existing.description ?? null,
@@ -126,7 +126,7 @@ export async function updateBlueprintMeta(
 export async function getBlueprintMetaById(
   blueprint_id: string
 ): Promise<BlueprintMeta | null> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getBlueprintMetaById, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getBlueprintMetaById, {
     blueprint_id,
   });
 
@@ -147,7 +147,7 @@ export async function getBlueprintMetaById(
 }
 
 export async function getAllBlueprintMetas(): Promise<BlueprintMeta[]> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getAllBlueprintMetas);
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getAllBlueprintMetas);
   
   const rows = parseRows<[string, string, string | null, string | null, string | null, string[], boolean, number, number]>(result);
   return rows.map(row => ({
@@ -164,7 +164,7 @@ export async function getAllBlueprintMetas(): Promise<BlueprintMeta[]> {
 }
 
 export async function deleteBlueprintMeta(blueprint_id: string): Promise<void> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteBlueprintMeta, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteBlueprintMeta, {
     blueprint_id,
   });
 
@@ -191,7 +191,7 @@ export async function createVersion(
     version_number = (maxVersionResult.rows[0][0] as number) + 1;
   }
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.createVersion, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.createVersion, {
     version_id,
     blueprint_id: input.blueprint_id,
     version_number,
@@ -217,7 +217,7 @@ export async function createVersion(
 }
 
 export async function getVersionById(version_id: string): Promise<BlueprintVersion | null> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getVersionById, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getVersionById, {
     version_id,
   });
 
@@ -238,7 +238,7 @@ export async function getVersionById(version_id: string): Promise<BlueprintVersi
 export async function getVersionsByBlueprintId(
   blueprint_id: string
 ): Promise<BlueprintVersion[]> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getVersionsByBlueprintId, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getVersionsByBlueprintId, {
     blueprint_id,
   });
 
@@ -257,7 +257,7 @@ export async function getVersionsByBlueprintId(
 export async function getLatestPublishedVersion(
   blueprint_id: string
 ): Promise<BlueprintVersion | null> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getLatestPublishedVersion, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getLatestPublishedVersion, {
     blueprint_id,
   });
 
@@ -276,7 +276,7 @@ export async function getLatestPublishedVersion(
 
 export async function publishVersion(version_id: string): Promise<BlueprintVersion> {
   const now = Date.now();
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.updateVersionStatus, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.updateVersionStatus, {
     version_id,
     status: 'published',
     published_at: now,
@@ -295,7 +295,7 @@ export async function publishVersion(version_id: string): Promise<BlueprintVersi
 }
 
 export async function deleteVersion(version_id: string): Promise<void> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteVersion, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteVersion, {
     version_id,
   });
 
@@ -312,7 +312,7 @@ export async function createEntityType(
   const now = Date.now();
   const entity_type_id = uuidv4();
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertEntityType, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertEntityType, {
     entity_type_id,
     version_id: input.version_id,
     entity_kind: input.entity_kind,
@@ -354,7 +354,7 @@ export async function updateEntityType(
     throw new Error(`Entity type not found: ${entity_type_id}`);
   }
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertEntityType, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertEntityType, {
     entity_type_id,
     version_id: existing.version_id,
     entity_kind: updates.entity_kind ?? existing.entity_kind,
@@ -390,7 +390,7 @@ export async function updateEntityType(
 export async function getEntityTypeById(
   entity_type_id: string
 ): Promise<EntityTypeDef | null> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getEntityTypeById, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getEntityTypeById, {
     entity_type_id,
   });
 
@@ -415,7 +415,7 @@ export async function getEntityTypeById(
 export async function getAllEntityTypesByVersion(
   version_id: string
 ): Promise<EntityTypeDef[]> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getEntityTypesByVersionId, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getEntityTypesByVersionId, {
     version_id,
   });
 
@@ -441,7 +441,7 @@ export async function deleteEntityType(entity_type_id: string): Promise<void> {
     entity_type_id,
   });
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteEntityType, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteEntityType, {
     entity_type_id,
   });
 
@@ -456,7 +456,7 @@ export async function createField(input: CreateFieldInput): Promise<FieldDef> {
   const now = Date.now();
   const field_id = uuidv4();
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertField, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertField, {
     field_id,
     entity_type_id: input.entity_type_id,
     field_name: input.field_name,
@@ -504,7 +504,7 @@ export async function updateField(
     throw new Error(`Field not found: ${field_id}`);
   }
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertField, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertField, {
     field_id,
     entity_type_id: existing.entity_type_id,
     field_name: updates.field_name ?? existing.field_name,
@@ -544,7 +544,7 @@ export async function updateField(
 }
 
 export async function getFieldById(field_id: string): Promise<FieldDef | null> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getFieldById, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getFieldById, {
     field_id,
   });
 
@@ -572,7 +572,7 @@ export async function getFieldById(field_id: string): Promise<FieldDef | null> {
 export async function getAllFieldsByEntityType(
   entity_type_id: string
 ): Promise<FieldDef[]> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getFieldsByEntityTypeId, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getFieldsByEntityTypeId, {
     entity_type_id,
   });
 
@@ -598,7 +598,7 @@ export async function getAllFieldsByEntityType(
 export async function getAllFieldsByVersion(
   version_id: string
 ): Promise<FieldDef[]> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getFieldsByVersionId, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getFieldsByVersionId, {
     version_id,
   });
 
@@ -622,7 +622,7 @@ export async function getAllFieldsByVersion(
 }
 
 export async function deleteField(field_id: string): Promise<void> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteField, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteField, {
     field_id,
   });
 
@@ -639,7 +639,7 @@ export async function createRelationshipType(
   const now = Date.now();
   const relationship_type_id = uuidv4();
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertRelationshipType, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertRelationshipType, {
     relationship_type_id,
     version_id: input.version_id,
     relationship_name: input.relationship_name,
@@ -683,7 +683,7 @@ export async function updateRelationshipType(
     throw new Error(`Relationship type not found: ${relationship_type_id}`);
   }
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertRelationshipType, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertRelationshipType, {
     relationship_type_id,
     version_id: existing.version_id,
     relationship_name: updates.relationship_name ?? existing.relationship_name,
@@ -721,7 +721,7 @@ export async function updateRelationshipType(
 export async function getRelationshipTypeById(
   relationship_type_id: string
 ): Promise<RelationshipTypeDef | null> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getRelationshipTypeById, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getRelationshipTypeById, {
     relationship_type_id,
   });
 
@@ -747,7 +747,7 @@ export async function getRelationshipTypeById(
 export async function getAllRelationshipTypesByVersion(
   version_id: string
 ): Promise<RelationshipTypeDef[]> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getRelationshipTypesByVersionId, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getRelationshipTypesByVersionId, {
     version_id,
   });
 
@@ -774,7 +774,7 @@ export async function deleteRelationshipType(relationship_type_id: string): Prom
     relationship_type_id,
   });
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteRelationshipType, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteRelationshipType, {
     relationship_type_id,
   });
 
@@ -791,7 +791,7 @@ export async function createRelationshipAttribute(
   const now = Date.now();
   const attribute_id = uuidv4();
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertRelationshipAttribute, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertRelationshipAttribute, {
     attribute_id,
     relationship_type_id: input.relationship_type_id,
     attribute_name: input.attribute_name,
@@ -823,7 +823,7 @@ export async function createRelationshipAttribute(
 export async function getRelationshipAttributeById(
   attribute_id: string
 ): Promise<RelationshipAttributeDef | null> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getRelationshipAttributeById, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getRelationshipAttributeById, {
     attribute_id,
   });
 
@@ -846,7 +846,7 @@ export async function getRelationshipAttributeById(
 export async function getAllRelationshipAttributesByType(
   relationship_type_id: string
 ): Promise<RelationshipAttributeDef[]> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getRelationshipAttributesByTypeId, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getRelationshipAttributesByTypeId, {
     relationship_type_id,
   });
 
@@ -865,7 +865,7 @@ export async function getAllRelationshipAttributesByType(
 }
 
 export async function deleteRelationshipAttribute(attribute_id: string): Promise<void> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteRelationshipAttribute, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteRelationshipAttribute, {
     attribute_id,
   });
 
@@ -882,7 +882,7 @@ export async function createViewTemplate(
   const now = Date.now();
   const view_id = uuidv4();
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertViewTemplate, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertViewTemplate, {
     view_id,
     version_id: input.version_id,
     view_name: input.view_name,
@@ -914,7 +914,7 @@ export async function createViewTemplate(
 }
 
 export async function getViewTemplateById(view_id: string): Promise<ViewTemplateDef | null> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getViewTemplateById, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getViewTemplateById, {
     view_id,
   });
 
@@ -938,7 +938,7 @@ export async function getViewTemplateById(view_id: string): Promise<ViewTemplate
 export async function getAllViewTemplatesByVersion(
   version_id: string
 ): Promise<ViewTemplateDef[]> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getViewTemplatesByVersionId, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getViewTemplatesByVersionId, {
     version_id,
   });
 
@@ -958,7 +958,7 @@ export async function getAllViewTemplatesByVersion(
 }
 
 export async function deleteViewTemplate(view_id: string): Promise<void> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteViewTemplate, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteViewTemplate, {
     view_id,
   });
 
@@ -973,7 +973,7 @@ export async function createMOC(input: CreateMOCInput): Promise<MOCDef> {
   const now = Date.now();
   const moc_id = uuidv4();
 
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertMOC, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertMOC, {
     moc_id,
     version_id: input.version_id,
     moc_name: input.moc_name,
@@ -1005,7 +1005,7 @@ export async function createMOC(input: CreateMOCInput): Promise<MOCDef> {
 }
 
 export async function getMOCById(moc_id: string): Promise<MOCDef | null> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getMOCById, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getMOCById, {
     moc_id,
   });
 
@@ -1027,7 +1027,7 @@ export async function getMOCById(moc_id: string): Promise<MOCDef | null> {
 }
 
 export async function getAllMOCsByVersion(version_id: string): Promise<MOCDef[]> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getMOCsByVersionId, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getMOCsByVersionId, {
     version_id,
   });
 
@@ -1047,7 +1047,7 @@ export async function getAllMOCsByVersion(version_id: string): Promise<MOCDef[]>
 }
 
 export async function deleteMOC(moc_id: string): Promise<void> {
-  const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteMOC, {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteMOC, {
     moc_id,
   });
 
@@ -1128,4 +1128,169 @@ export async function getCompiledBlueprint(
     viewTemplates,
     mocs,
   };
+}
+
+// ==================== Extraction Profile Operations ====================
+
+export async function getExtractionProfile(
+  version_id: string
+): Promise<import('../types').ExtractionProfile | null> {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getExtractionProfileByVersion, {
+    version_id,
+  });
+
+  const row = parseSingleRow<[string, string, boolean, string, number, string, number]>(result);
+  if (!row) return null;
+
+  return {
+    profile_id: row[0],
+    version_id: row[1],
+    enabled: row[2],
+    model_id: row[3],
+    confidence_threshold: row[4],
+    resolution_policy: row[5] as import('../types').ResolutionPolicy,
+    created_at: row[6],
+  };
+}
+
+export async function upsertExtractionProfile(
+  profile: import('../types').CreateExtractionProfileInput & { profile_id?: string }
+): Promise<import('../types').ExtractionProfile> {
+  const now = Date.now();
+  const profile_id = profile.profile_id ?? uuidv4();
+
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertExtractionProfile, {
+    profile_id,
+    version_id: profile.version_id,
+    enabled: profile.enabled ?? true,
+    model_id: profile.model_id ?? 'onnx-community/NeuroBERT-NER-ONNX',
+    confidence_threshold: profile.confidence_threshold ?? 0.4,
+    resolution_policy: profile.resolution_policy ?? 'mention_first',
+    created_at: now,
+  });
+
+  if (!result.ok) {
+    throw new Error(`Failed to upsert extraction profile: ${result.message}`);
+  }
+
+  return {
+    profile_id,
+    version_id: profile.version_id,
+    enabled: profile.enabled ?? true,
+    model_id: profile.model_id ?? 'onnx-community/NeuroBERT-NER-ONNX',
+    confidence_threshold: profile.confidence_threshold ?? 0.4,
+    resolution_policy: profile.resolution_policy ?? 'mention_first',
+    created_at: now,
+  };
+}
+
+export async function getLabelMappings(
+  profile_id: string
+): Promise<import('../types').LabelMapping[]> {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getLabelMappingsByProfile, {
+    profile_id,
+  });
+
+  const rows = parseRows<[string, string, string, string[], number, number]>(result);
+  return rows.map(row => ({
+    mapping_id: row[0],
+    profile_id: row[1],
+    ner_label: row[2],
+    target_entity_kinds: row[3],
+    priority: row[4],
+    created_at: row[5],
+  }));
+}
+
+export async function upsertLabelMapping(
+  mapping: import('../types').CreateLabelMappingInput & { mapping_id?: string }
+): Promise<import('../types').LabelMapping> {
+  const now = Date.now();
+  const mapping_id = mapping.mapping_id ?? uuidv4();
+
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertLabelMapping, {
+    mapping_id,
+    profile_id: mapping.profile_id,
+    ner_label: mapping.ner_label,
+    target_entity_kinds: mapping.target_entity_kinds,
+    priority: mapping.priority ?? 0,
+    created_at: now,
+  });
+
+  if (!result.ok) {
+    throw new Error(`Failed to upsert label mapping: ${result.message}`);
+  }
+
+  return {
+    mapping_id,
+    profile_id: mapping.profile_id,
+    ner_label: mapping.ner_label,
+    target_entity_kinds: mapping.target_entity_kinds,
+    priority: mapping.priority ?? 0,
+    created_at: now,
+  };
+}
+
+export async function deleteLabelMapping(mapping_id: string): Promise<void> {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.deleteLabelMapping, {
+    mapping_id,
+  });
+
+  if (!result.ok) {
+    throw new Error(`Failed to delete label mapping: ${result.message}`);
+  }
+}
+
+export async function getIgnoreList(
+  profile_id: string
+): Promise<import('../types').IgnoreEntry[]> {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getIgnoreListByProfile, {
+    profile_id,
+  });
+
+  const rows = parseRows<[string, string, string | null, string | null, number]>(result);
+  return rows.map(row => ({
+    ignore_id: row[0],
+    profile_id: row[1],
+    surface_form: row[2] ?? undefined,
+    ner_label: row[3] ?? undefined,
+    created_at: row[4],
+  }));
+}
+
+export async function addToIgnoreList(
+  input: import('../types').CreateIgnoreEntryInput
+): Promise<import('../types').IgnoreEntry> {
+  const now = Date.now();
+  const ignore_id = uuidv4();
+
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.addToIgnoreList, {
+    ignore_id,
+    profile_id: input.profile_id,
+    surface_form: input.surface_form ?? null,
+    ner_label: input.ner_label ?? null,
+    created_at: now,
+  });
+
+  if (!result.ok) {
+    throw new Error(`Failed to add to ignore list: ${result.message}`);
+  }
+
+  return {
+    ignore_id,
+    profile_id: input.profile_id,
+    surface_form: input.surface_form,
+    ner_label: input.ner_label,
+    created_at: now,
+  };
+}
+
+export async function removeFromIgnoreList(ignore_id: string): Promise<void> {
+  const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.removeFromIgnoreList, {
+    ignore_id,
+  });
+
+  if (!result.ok) {
+    throw new Error(`Failed to remove from ignore list: ${result.message}`);
+  }
 }

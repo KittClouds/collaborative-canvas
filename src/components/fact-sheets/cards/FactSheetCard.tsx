@@ -10,6 +10,7 @@ interface FactSheetCardProps {
   defaultOpen?: boolean;
   children: ReactNode;
   className?: string;
+  actions?: ReactNode;
 }
 
 export function FactSheetCard({
@@ -19,6 +20,7 @@ export function FactSheetCard({
   defaultOpen = true,
   children,
   className,
+  actions,
 }: FactSheetCardProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
@@ -36,6 +38,11 @@ export function FactSheetCard({
           >
             {Icon && <Icon className="h-4 w-4 text-white/90" />}
             <span className="text-sm font-medium text-white flex-1 text-left">{title}</span>
+            {actions && (
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                {actions}
+              </div>
+            )}
             <ChevronDown
               className={cn(
                 'h-4 w-4 text-white/70 transition-transform duration-200',

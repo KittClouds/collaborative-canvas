@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, ChevronDown } from 'lucide-react';
 import { ENTITY_KINDS, ENTITY_COLORS } from '@/lib/entities/entityTypes';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 interface EntityTypesTabProps {
   isLoading: boolean;
@@ -29,6 +30,7 @@ const formatEntityKind = (value: string): string => {
 export function EntityTypesTab({ isLoading: contextLoading }: EntityTypesTabProps) {
   const { versionId } = useBlueprintHubContext();
   const { entityTypes, isLoading: hookLoading, create, remove } = useEntityTypes(versionId);
+  const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [showKindSuggestions, setShowKindSuggestions] = useState(false);
   const kindInputRef = useRef<HTMLInputElement>(null);
@@ -87,8 +89,8 @@ export function EntityTypesTab({ isLoading: contextLoading }: EntityTypesTabProp
       await create({
         entity_kind: formData.entity_kind,
         display_name: formData.display_name,
-        color: formData.color || undefined,
-        description: formData.description || undefined,
+        color: formData.color || null,
+        description: formData.description || '', // Use empty string instead of null to avoid binding issues
         is_abstract: false,
       });
 
@@ -100,8 +102,17 @@ export function EntityTypesTab({ isLoading: contextLoading }: EntityTypesTabProp
         description: '',
       });
       setIsCreateDialogOpen(false);
+      toast({
+        title: 'Success',
+        description: 'Entity type created successfully',
+      });
     } catch (err) {
       console.error('Failed to create entity type:', err);
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to create entity type',
+        variant: 'destructive',
+      });
     }
   };
 

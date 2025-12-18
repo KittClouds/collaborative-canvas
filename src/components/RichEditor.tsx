@@ -209,7 +209,19 @@ function createExtensions(
       },
     }),
     Katex,
-    Excalidraw,
+    Excalidraw.configure({
+      willReadFrequently: true,
+      upload: (file: any) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            const blob = convertBase64ToBlob(reader.result as string);
+            resolve(URL.createObjectURL(blob));
+          }, 300);
+        });
+      },
+    }),
     Mermaid.configure({
       upload: (file: any) => {
         const reader = new FileReader();
@@ -224,6 +236,8 @@ function createExtensions(
       },
     }),
     Drawer.configure({
+      // @ts-expect-error: willReadFrequently is not in the type definition but is required for performance
+      willReadFrequently: true,
       upload: (file: any) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
