@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Sparkles, AlertCircle, ChevronDown, Check, X, RefreshCw } from 'lucide-react';
 import { glinerService, runNer } from '@/lib/ner/gliner-service';
@@ -16,6 +16,12 @@ import {
 import { ENTITY_KINDS, ENTITY_COLORS, EntityKind } from '@/lib/entities/entityTypes';
 import { upsertEntity, createMentionEdge } from '@/lib/cozo/api';
 import { useToast } from '@/hooks/use-toast';
+import { useSyncEngine } from '@/lib/sync';
+import {
+    entityReconciliationCoordinator,
+    resultNormalizer,
+    userCorrectionStore,
+} from '@/lib/sync/extraction';
 
 // Default fallback mapping (for backwards compatibility)
 const DEFAULT_NER_TO_ENTITY_MAP: Record<string, string[]> = {
@@ -201,8 +207,33 @@ export function EntitiesPanel() {
     } = useNER();
 
     const { selectedNote } = useNotes();
+    const syncEngine = useSyncEngine();
     const { compiledBlueprint, isLoading: blueprintLoading } = useBlueprintHub();
     const { toast } = useToast();
+
+    useEffect(() => {
+        userCorrectionStore.initialize();
+
+        entityReconciliationCoordinator.registerEntityHandlers(
+            (payload) => syncEngine.upsertEntity({
+                ...payload,
+                name: payload.name,
+                entityKind: payload.entityKind,
+                entitySubtype: payload.entitySubtype ?? null,
+                groupId: payload.groupId,
+                scopeType: payload.scopeType,
+                frequency: payload.frequency,
+                extractionMethod: payload.extractionMethod,
+            }),
+            (name, entityKind) => {
+                const allEntities = syncEngine.getEntities();
+                return allEntities.find(e =>
+                    e.name.toLowerCase() === name.toLowerCase() &&
+                    e.entityKind === entityKind
+                );
+            }
+        );
+    }, [syncEngine]);
 
     // Get label mappings from compiled blueprint
     const getLabelMappings = (): Record<string, string[]> => {
@@ -351,36 +382,47 @@ export function EntitiesPanel() {
 
         try {
             const resolutionPolicy = compiledBlueprint?.extractionProfile?.resolution_policy || 'entity_on_accept';
-            const groupId = selectedNote.id; // Use note ID as group for scoping
+            const groupId = selectedNote.id;
+
+            const extractionResult = resultNormalizer.normalizeNERResults(
+                [{
+                    word: entity.word,
+                    entity_type: entity.entity_type,
+                    score: entity.score,
+                    start: entity.start,
+                    end: entity.end,
+                }],
+                selectedNote.id,
+                selectedNote.title,
+                ''
+            )[0];
+
+            extractionResult.entityType = kind;
 
             if (resolutionPolicy === 'entity_on_accept') {
-                // Create/find entity and link immediately
-                const createdEntity = await upsertEntity({
-                    name: entity.word,
-                    entity_kind: kind,
-                    group_id: groupId,
-                    scope_type: 'note',
-                });
+                const report = await entityReconciliationCoordinator.reconcile(
+                    {
+                        noteId: selectedNote.id,
+                        noteTitle: selectedNote.title,
+                        results: [extractionResult],
+                    },
+                    { mergeWithExisting: true }
+                );
 
-                // Create MENTIONS edge
-                await createMentionEdge({
-                    source_id: selectedNote.id,
-                    target_id: createdEntity.id,
-                    group_id: groupId,
-                    edge_type: 'MENTIONS',
-                    confidence: entity.score,
-                    note_id: selectedNote.id,
-                });
+                if (report.created.length > 0) {
+                    toast({
+                        title: 'Entity Created',
+                        description: `"${entity.word}" added as ${kind}`,
+                    });
+                } else if (report.merged.length > 0) {
+                    toast({
+                        title: 'Entity Merged',
+                        description: `"${entity.word}" merged with existing ${kind}`,
+                    });
+                }
 
-                toast({
-                    title: 'Entity Created',
-                    description: `"${entity.word}" added as ${kind}`,
-                });
-
-                // Remove from suggestions
                 setEntities(prev => prev.filter(e => e !== entity));
             } else {
-                // mention_first: Create mention without entity
                 toast({
                     title: 'Mention Saved',
                     description: `"${entity.word}" marked for review`,

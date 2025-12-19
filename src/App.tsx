@@ -6,47 +6,51 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import { cozoDb } from "@/lib/cozo/db";
 import { initBlueprintHubSchema } from "@/features/blueprint-hub/api/schema";
 import { BlueprintHubProvider } from "@/features/blueprint-hub/context/BlueprintHubContext";
 import { BlueprintHub } from "@/features/blueprint-hub/components/BlueprintHub";
 import { NERProvider } from "@/contexts/NERContext";
+import { syncEngine, SyncEngineProvider, migrateLocalStorageToCozoDB } from "@/lib/sync";
+import { cozoDb } from "@/lib/cozo/db";
 
 const queryClient = new QueryClient();
 
 const App = () => {
-  const [dbReady, setDbReady] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("Initializing...");
 
   useEffect(() => {
-    const initDB = async () => {
+    const init = async () => {
       try {
-        await cozoDb.init();
-        console.log("CozoDB Initialized");
+        setLoadingMessage("Initializing database...");
+        await syncEngine.initialize();
+        console.log("SyncEngine initialized");
 
-        // Test query
-        const res = cozoDb.runQuery('?[] <- [["hello", "cozo"]]');
-        console.log("CozoDB Test Query Result:", res);
+        setLoadingMessage("Migrating data...");
+        const migrationResult = await migrateLocalStorageToCozoDB(syncEngine);
+        if (migrationResult.migrated > 0) {
+          console.log(`Migrated ${migrationResult.migrated} items from localStorage`);
+        }
 
-        // Initialize Blueprint Hub schema
+        setLoadingMessage("Loading schemas...");
         await initBlueprintHubSchema(cozoDb);
         console.log("Blueprint Hub schema initialized");
 
-        setDbReady(true);
+        setReady(true);
       } catch (e) {
-        console.error("Database initialization failed:", e);
-        // Still set ready to prevent infinite loading
-        setDbReady(true);
+        console.error("Initialization failed:", e);
+        setReady(true);
       }
     };
-    initDB();
+    init();
   }, []);
 
-  if (!dbReady) {
+  if (!ready) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Initializing database...</p>
+          <p className="text-muted-foreground">{loadingMessage}</p>
         </div>
       </div>
     );
@@ -54,27 +58,28 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BlueprintHubProvider>
-        <NERProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter
-              future={{
-                v7_startTransition: true,
-                v7_relativeSplatPath: true,
-              }}
-            >
-              <Routes>
-                <Route path="/" element={<Index />} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-            <BlueprintHub />
-          </TooltipProvider>
-        </NERProvider>
-      </BlueprintHubProvider>
+      <SyncEngineProvider engine={syncEngine}>
+        <BlueprintHubProvider>
+          <NERProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter
+                future={{
+                  v7_startTransition: true,
+                  v7_relativeSplatPath: true,
+                }}
+              >
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </BrowserRouter>
+              <BlueprintHub />
+            </TooltipProvider>
+          </NERProvider>
+        </BlueprintHubProvider>
+      </SyncEngineProvider>
     </QueryClientProvider>
   );
 };
