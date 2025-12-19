@@ -1,7 +1,7 @@
 // Blueprint Hub Storage API
 // TypeScript functions to perform CRUD operations for blueprint entities
 
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 import { cozoDb } from '../../../lib/cozo/db';
 import { BLUEPRINT_STORAGE_QUERIES } from './queries';
 import type {
@@ -53,7 +53,7 @@ export async function createBlueprintMeta(
   input: CreateBlueprintMetaInput
 ): Promise<BlueprintMeta> {
   const now = Date.now();
-  const blueprint_id = uuidv4();
+  const blueprint_id = generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertBlueprintMeta, {
     blueprint_id,
@@ -179,7 +179,7 @@ export async function createVersion(
   input: CreateVersionInput
 ): Promise<BlueprintVersion> {
   const now = Date.now();
-  const version_id = uuidv4();
+  const version_id = generateId();
 
   // Get the max version number for this blueprint
   const maxVersionResult = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.getMaxVersionNumber, {
@@ -310,7 +310,7 @@ export async function createEntityType(
   input: CreateEntityTypeInput
 ): Promise<EntityTypeDef> {
   const now = Date.now();
-  const entity_type_id = uuidv4();
+  const entity_type_id = generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertEntityType, {
     entity_type_id,
@@ -454,7 +454,7 @@ export async function deleteEntityType(entity_type_id: string): Promise<void> {
 
 export async function createField(input: CreateFieldInput): Promise<FieldDef> {
   const now = Date.now();
-  const field_id = uuidv4();
+  const field_id = generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertField, {
     field_id,
@@ -637,7 +637,7 @@ export async function createRelationshipType(
   input: CreateRelationshipTypeInput
 ): Promise<RelationshipTypeDef> {
   const now = Date.now();
-  const relationship_type_id = uuidv4();
+  const relationship_type_id = generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertRelationshipType, {
     relationship_type_id,
@@ -789,7 +789,7 @@ export async function createRelationshipAttribute(
   input: CreateRelationshipAttributeInput
 ): Promise<RelationshipAttributeDef> {
   const now = Date.now();
-  const attribute_id = uuidv4();
+  const attribute_id = generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertRelationshipAttribute, {
     attribute_id,
@@ -880,7 +880,7 @@ export async function createViewTemplate(
   input: CreateViewTemplateInput
 ): Promise<ViewTemplateDef> {
   const now = Date.now();
-  const view_id = uuidv4();
+  const view_id = generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertViewTemplate, {
     view_id,
@@ -971,7 +971,7 @@ export async function deleteViewTemplate(view_id: string): Promise<void> {
 
 export async function createMOC(input: CreateMOCInput): Promise<MOCDef> {
   const now = Date.now();
-  const moc_id = uuidv4();
+  const moc_id = generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertMOC, {
     moc_id,
@@ -1157,7 +1157,7 @@ export async function upsertExtractionProfile(
   profile: import('../types').CreateExtractionProfileInput & { profile_id?: string }
 ): Promise<import('../types').ExtractionProfile> {
   const now = Date.now();
-  const profile_id = profile.profile_id ?? uuidv4();
+  const profile_id = profile.profile_id ?? generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertExtractionProfile, {
     profile_id,
@@ -1206,7 +1206,7 @@ export async function upsertLabelMapping(
   mapping: import('../types').CreateLabelMappingInput & { mapping_id?: string }
 ): Promise<import('../types').LabelMapping> {
   const now = Date.now();
-  const mapping_id = mapping.mapping_id ?? uuidv4();
+  const mapping_id = mapping.mapping_id ?? generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertLabelMapping, {
     mapping_id,
@@ -1262,7 +1262,7 @@ export async function addToIgnoreList(
   input: import('../types').CreateIgnoreEntryInput
 ): Promise<import('../types').IgnoreEntry> {
   const now = Date.now();
-  const ignore_id = uuidv4();
+  const ignore_id = generateId();
 
   const result = await cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.addToIgnoreList, {
     ignore_id,

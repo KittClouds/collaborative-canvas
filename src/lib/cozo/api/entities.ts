@@ -1,6 +1,6 @@
 import { cozoDb } from '../db';
 import { ENTITY_QUERIES } from '../schema/layer2-entities';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export interface Entity {
   id: string;
@@ -72,7 +72,7 @@ export async function upsertEntity(input: CreateEntityInput): Promise<Entity> {
   }
 
   // Create new entity
-  const id = uuidv4();
+  const id = generateId();
   const created_at = Date.now();
 
   const result = await cozoDb.runQuery(ENTITY_QUERIES.upsert, {

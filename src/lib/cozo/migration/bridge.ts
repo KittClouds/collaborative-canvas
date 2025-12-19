@@ -10,7 +10,7 @@ import type {
   GraphScope 
 } from '../types';
 import { buildScopeIdentifier } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export interface MigrationResult {
   success: boolean;
@@ -169,7 +169,7 @@ export function extractWikilinks(noteId: string, content: string): CozoWikilink[
     const context = getContext(plainText, match.index, match[0].length);
     
     links.push({
-      id: uuidv4(),
+      id: generateId(),
       sourceNoteId: noteId,
       targetTitle,
       displayText,
@@ -186,7 +186,7 @@ export function extractWikilinks(noteId: string, content: string): CozoWikilink[
     const context = getContext(plainText, match.index, match[0].length);
     
     links.push({
-      id: uuidv4(),
+      id: generateId(),
       sourceNoteId: noteId,
       targetTitle: entityLabel,
       linkType: 'entity',

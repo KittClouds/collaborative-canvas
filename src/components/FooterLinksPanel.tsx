@@ -13,7 +13,7 @@ interface FooterLinksPanelProps {
   backlinks: BacklinkInfo[];
   outgoingLinks: WikiLink[];
   notes: Note[];
-  onNavigate: (title: string, createIfNotExists?: boolean) => void;
+  onNavigate: (title: string, createIfNotExists?: boolean, link?: WikiLink) => void;
 }
 
 export const FooterLinksPanel = ({ 

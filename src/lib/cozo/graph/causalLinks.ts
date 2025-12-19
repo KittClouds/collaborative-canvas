@@ -1,6 +1,6 @@
 import { cozoDb } from '../db';
 import type { GraphScope } from '../types';
-import { v4 as uuid } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export type CausalType = 'TRIGGERS' | 'PREVENTS' | 'ENABLES';
 
@@ -234,7 +234,7 @@ async function insertCausalLinks(links: CausalLink[]): Promise<void> {
           id, trigger_event_id, caused_event_id, causal_type, confidence, created_at
         }
       `, {
-        id: uuid(),
+        id: generateId(),
         trigger_id: link.triggerId,
         caused_id: link.causedId,
         causal_type: link.causalType,

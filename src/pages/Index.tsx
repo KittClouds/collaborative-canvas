@@ -25,6 +25,8 @@ import { EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
 import { RightSidebar, RightSidebarProvider, RightSidebarTrigger } from '@/components/RightSidebar';
 import { TemporalHighlightProvider, useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
 import { SearchProvider } from '@/contexts/SearchContext';
+import { formatEntityTitle, getDisplayName } from '@/lib/entities/titleParser';
+import type { WikiLink } from '@/lib/linking/LinkIndex';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,12 +63,24 @@ function NotesApp() {
   );
 
   // Navigate to a note by title (for footer links panel)
-  const handleNavigateToNote = useCallback((title: string, createIfNotExists?: boolean) => {
+  const handleNavigateToNote = useCallback((
+    title: string, 
+    createIfNotExists?: boolean,
+    link?: WikiLink
+  ) => {
     const existingNote = findNoteByTitleRef.current(title);
     if (existingNote) {
       selectNoteRef.current(existingNote.id);
     } else if (createIfNotExists) {
-      const newNote = createNoteRef.current(undefined, title);
+      // Build proper entity title if this is an entity link
+      let noteTitle = title;
+      if (link?.linkType === 'entity' && link.entityKind) {
+        noteTitle = formatEntityTitle(link.entityKind, link.targetTitle);
+      }
+      
+      // Pass source note ID for backlink creation
+      const sourceNoteId = selectedNoteRef.current?.id;
+      const newNote = createNoteRef.current(undefined, noteTitle, sourceNoteId);
       selectNoteRef.current(newNote.id);
     }
   }, []);
@@ -77,6 +91,7 @@ function NotesApp() {
   const createNoteRef = useRef(createNote);
   const noteExistsRef = useRef(noteExists);
   const activateTimelineRef = useRef(activateTimelineWithTemporal);
+  const selectedNoteRef = useRef(selectedNote);
 
   // Keep refs updated
   useEffect(() => {
@@ -85,6 +100,7 @@ function NotesApp() {
     createNoteRef.current = createNote;
     noteExistsRef.current = noteExists;
     activateTimelineRef.current = activateTimelineWithTemporal;
+    selectedNoteRef.current = selectedNote;
   });
 
   const handleToolbarVisibilityChange = useCallback((visible: boolean) => {
@@ -123,6 +139,24 @@ function NotesApp() {
     activateTimelineRef.current(temporal);
   }, []);
 
+  // Handle backlink clicks - parse entity syntax from backlink title if present
+  const handleBacklinkClick = useCallback((backlinkTitle: string) => {
+    // Check if backlink contains entity syntax like [KIND|Label]
+    const entityMatch = backlinkTitle.match(/^\[([A-Z_]+)(?::[A-Z_]+)?\|([^\]]+)\]$/);
+    const searchTitle = entityMatch ? entityMatch[2] : backlinkTitle;
+    
+    const existingNote = findNoteByTitleRef.current(searchTitle);
+    if (existingNote) {
+      selectNoteRef.current(existingNote.id);
+    } else {
+      // Try to find by full title (entity syntax)
+      const fullMatch = findNoteByTitleRef.current(backlinkTitle);
+      if (fullMatch) {
+        selectNoteRef.current(fullMatch.id);
+      }
+    }
+  }, []);
+
   return (
     <RightSidebarProvider>
       <SidebarProvider>
@@ -149,7 +183,7 @@ function NotesApp() {
                   <BreadcrumbSeparator className="hidden md:block" />
                   <BreadcrumbItem>
                     <BreadcrumbPage className="text-foreground font-medium">
-                      {selectedNote ? selectedNote.title : 'Select a note'}
+                      {selectedNote ? getDisplayName(selectedNote.title) : 'Select a note'}
                     </BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>
@@ -217,6 +251,7 @@ function NotesApp() {
                   onWikilinkClick={handleWikilinkClick}
                   checkWikilinkExists={checkWikilinkExists}
                   onTemporalClick={handleTemporalClick}
+                  onBacklinkClick={handleBacklinkClick}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full bg-background">

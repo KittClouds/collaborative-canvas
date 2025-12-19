@@ -1,6 +1,6 @@
 import type { CozoEntity, CozoMention } from '../types';
 import { ENTITY_KINDS } from '@/lib/entities/entityTypes';
-import { v4 as uuid } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export interface EntityMatch {
     kind: string;
@@ -85,7 +85,7 @@ export function extractEntitiesFromText(
         const key = `${match.kind}:${match.subtype || ''}:${match.label}`;
 
         if (!entityMap.has(key)) {
-            const entityId = uuid();
+            const entityId = generateId();
             const entity: CozoEntity = {
                 id: entityId,
                 name: match.label,
@@ -107,7 +107,7 @@ export function extractEntitiesFromText(
         // Create mention record
         const { entity } = entityMap.get(key)!;
         const mention: CozoMention = {
-            id: uuid(),
+            id: generateId(),
             episodeId,
             entityId: entity.id,
             context: match.context,

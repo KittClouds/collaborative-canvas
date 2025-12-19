@@ -33,7 +33,7 @@ import { useSchema } from '@/contexts/SchemaContext';
 import { EntityShape, ENTITY_SHAPES } from '@/types/schema';
 import { ATTRIBUTE_TYPES, AttributeType } from '@/types/attributes';
 import { AttributeTemplate, EntityBlueprint } from '@/types/blueprints';
-import { generateNodeId } from '@/lib/utils/ids';
+import { generateId } from '@/lib/utils/ids';
 import { toast } from 'sonner';
 
 export function SchemaManager() {
@@ -421,7 +421,7 @@ function BlueprintsTab() {
     setTemplates([
       ...templates,
       {
-        id: generateNodeId(),
+        id: generateId(),
         name: '',
         type: 'Text',
         required: false,
@@ -448,7 +448,7 @@ function BlueprintsTab() {
     }
 
     const blueprint: EntityBlueprint = {
-      id: generateNodeId(),
+      id: generateId(),
       entityKind,
       name: name.trim(),
       description: description.trim(),

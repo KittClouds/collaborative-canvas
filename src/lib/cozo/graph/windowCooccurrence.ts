@@ -1,6 +1,6 @@
 import { cozoDb } from '../db';
 import type { CozoEntityEdge, GraphScope } from '../types';
-import { v4 as uuid } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export type WindowType = 'sentence' | 'word' | 'paragraph';
 
@@ -110,7 +110,7 @@ async function buildWordWindowGraph(
               : [m2.entityId, m1.entityId];
 
             edges.push({
-              id: uuid(),
+              id: generateId(),
               sourceId,
               targetId,
               createdAt: new Date(),
@@ -203,7 +203,7 @@ async function buildParagraphWindowGraph(
     }
 
     const edges: CozoEntityEdge[] = result.rows.map((row: unknown[]) => ({
-      id: uuid(),
+      id: generateId(),
       sourceId: row[0] as string,
       targetId: row[1] as string,
       createdAt: new Date(),

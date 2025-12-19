@@ -1,6 +1,6 @@
 import { cozoDb } from '../db';
 import { ENTITY_EDGE_QUERIES } from '../schema/layer2-edges';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export interface EntityEdge {
   id: string;
@@ -38,7 +38,7 @@ export interface CreateEdgeInput {
  * Create a generic edge between entities
  */
 export async function createEdge(input: CreateEdgeInput): Promise<EntityEdge> {
-  const id = uuidv4();
+  const id = generateId();
   const created_at = Date.now();
   const valid_at = Date.now();
 
@@ -89,7 +89,7 @@ export async function createEdge(input: CreateEdgeInput): Promise<EntityEdge> {
  * Create a MENTIONS edge between note and entity
  */
 export async function createMentionEdge(input: CreateEdgeInput): Promise<EntityEdge> {
-  const id = uuidv4();
+  const id = generateId();
   const created_at = Date.now();
   const valid_at = Date.now();
 

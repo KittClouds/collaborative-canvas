@@ -1,6 +1,6 @@
 import { cozoDb } from '../db';
 import type { CozoEntityEdge, GraphScope } from '../types';
-import { v4 as uuid } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export interface CooccurrenceOptions {
   windowSize: number;
@@ -127,7 +127,7 @@ function aggregatePairs(
   }
 
   return Array.from(pairMap.values()).map(agg => ({
-    id: uuid(),
+    id: generateId(),
     sourceId: agg.sourceId,
     targetId: agg.targetId,
     createdAt: new Date(),

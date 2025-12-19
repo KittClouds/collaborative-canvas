@@ -1,6 +1,6 @@
 import { cozoDb } from '../db';
 import type { GraphScope } from '../types';
-import { v4 as uuid } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export type MergeStrategy = 'sum' | 'average' | 'max';
 
@@ -144,7 +144,7 @@ async function mapEntitiesToTargetScope(
     if (targetResult.rows && targetResult.rows.length > 0) {
       mappings.set(sourceId, targetResult.rows[0][0] as string);
     } else {
-      const newId = uuid();
+      const newId = generateId();
 
       cozoDb.runQuery(`
         ?[id, name, entity_kind, entity_subtype, group_id, scope_type, created_at,
@@ -310,7 +310,7 @@ async function upsertTargetEdges(
           extraction_methods
         }
       `, {
-        id: uuid(),
+        id: generateId(),
         source_id: edge.sourceId,
         target_id: edge.targetId,
         created_at: Date.now(),

@@ -1,6 +1,6 @@
 import type { JSONContent } from '@tiptap/react';
 import type { CozoEpisode } from '../types';
-import { v4 as uuid } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export interface EpisodeParseOptions {
     noteId: string;
@@ -34,7 +34,7 @@ export function parseDocumentIntoEpisodes(
         // Create episode based on granularity
         if (options.granularity === 'block' && isBlockNode(node)) {
             episodes.push({
-                id: uuid(),
+                id: generateId(),
                 noteId: options.noteId,
                 createdAt: new Date(),
                 validAt,
@@ -52,7 +52,7 @@ export function parseDocumentIntoEpisodes(
             paragraphs.forEach((para, idx) => {
                 if (!para.trim()) return;
                 episodes.push({
-                    id: uuid(),
+                    id: generateId(),
                     noteId: options.noteId,
                     createdAt: new Date(),
                     validAt,
@@ -71,7 +71,7 @@ export function parseDocumentIntoEpisodes(
             sentences.forEach((sent, idx) => {
                 if (!sent.trim()) return;
                 episodes.push({
-                    id: uuid(),
+                    id: generateId(),
                     noteId: options.noteId,
                     createdAt: new Date(),
                     validAt,

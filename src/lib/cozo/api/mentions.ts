@@ -1,6 +1,6 @@
 import { cozoDb } from '../db';
 import { MENTIONS_QUERIES } from '../schema/layer2-mentions';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export interface Mention {
   id: string;
@@ -32,9 +32,9 @@ export interface CreateMentionInput {
  * Create a mention record
  */
 export async function createMention(input: CreateMentionInput): Promise<Mention> {
-  const id = uuidv4();
+  const id = generateId();
   const created_at = Date.now();
-  const entity_id = input.entity_id || uuidv4(); // Temporary ID if not resolved yet
+  const entity_id = input.entity_id || generateId(); // Temporary ID if not resolved yet
   
   const result = await cozoDb.runQuery(MENTIONS_QUERIES.upsert, {
     id,

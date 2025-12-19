@@ -88,6 +88,7 @@ interface RichEditorProps {
   onWikilinkClick?: (title: string) => void;
   checkWikilinkExists?: (title: string) => boolean;
   onTemporalClick?: (temporal: string) => void;
+  onBacklinkClick?: (title: string) => void;
 }
 
 function convertBase64ToBlob(base64: string) {
@@ -107,6 +108,7 @@ function createExtensions(
   onWikilinkClick?: (title: string) => void,
   checkWikilinkExists?: (title: string) => boolean,
   onTemporalClick?: (temporal: string) => void,
+  onBacklinkClick?: (title: string) => void,
   getNEREntities?: () => any[]
 ) {
   return [
@@ -264,6 +266,7 @@ function createExtensions(
       onWikilinkClick,
       checkWikilinkExists,
       onTemporalClick,
+      onBacklinkClick,
       nerEntities: getNEREntities,
     }),
   ];
@@ -279,6 +282,7 @@ const RichEditor = ({
   onWikilinkClick,
   checkWikilinkExists,
   onTemporalClick,
+  onBacklinkClick,
 }: RichEditorProps) => {
   const previousContentRef = useRef<string>('');
   const previousNoteIdRef = useRef<string | undefined>(noteId);
@@ -291,9 +295,9 @@ const RichEditor = ({
   }, [entities]);
 
   // Use refs for callbacks to keep extensions stable
-  const optionsRef = useRef({ onWikilinkClick, checkWikilinkExists, onTemporalClick });
+  const optionsRef = useRef({ onWikilinkClick, checkWikilinkExists, onTemporalClick, onBacklinkClick });
   useEffect(() => {
-    optionsRef.current = { onWikilinkClick, checkWikilinkExists, onTemporalClick };
+    optionsRef.current = { onWikilinkClick, checkWikilinkExists, onTemporalClick, onBacklinkClick };
   });
 
   // Create extensions ONCE - use refs for dynamic callback access
@@ -302,6 +306,7 @@ const RichEditor = ({
       (title) => optionsRef.current.onWikilinkClick?.(title),
       (title) => optionsRef.current.checkWikilinkExists?.(title) ?? true,
       (temporal) => optionsRef.current.onTemporalClick?.(temporal),
+      (title) => optionsRef.current.onBacklinkClick?.(title),
       () => nerEntitiesRef.current
     ),
     [] // Empty deps = never recreated

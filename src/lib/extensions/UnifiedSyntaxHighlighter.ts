@@ -9,6 +9,7 @@ export interface UnifiedSyntaxOptions {
   onWikilinkClick?: (title: string) => void;
   checkWikilinkExists?: (title: string) => boolean;
   onTemporalClick?: (temporal: string) => void;
+  onBacklinkClick?: (title: string) => void;
   nerEntities?: NEREntity[] | (() => NEREntity[]); // Support array or getter function
   onNEREntityClick?: (entity: NEREntity) => void;
 }
@@ -37,8 +38,8 @@ function buildAllDecorations(
     // Track character positions already decorated to prevent overlaps
     const processed = new Set<number>();
 
-    // 1. Entity syntax: [KIND:SUBTYPE|Label] or [KIND|Label]
-    const entityRegex = /\[([A-Z_]+(?::[A-Z_]+)?)\|([^\]]+)\]/g;
+    // 1. Entity syntax: [KIND:SUBTYPE|Label] or [KIND|Label] or [KIND|Label|{attrs}]
+    const entityRegex = /\[([A-Z_]+(?::[A-Z_]+)?)\|([^\]|]+)(?:\|[^\]]+)?\]/g;
     let match;
 
     while ((match = entityRegex.exec(text)) !== null) {
@@ -220,7 +221,47 @@ function buildAllDecorations(
       }
     }
 
-    // 6. NER-detected entities (runs last, lowest priority)
+    // 6. Backlinks: <<Page Title>> or <<[KIND|Label]>>
+    const backlinkRegex = /<<([^>]+)>>/g;
+
+    while ((match = backlinkRegex.exec(text)) !== null) {
+      const from = pos + match.index;
+      const to = from + match[0].length;
+
+      // Skip if overlaps
+      let hasOverlap = false;
+      for (let i = match.index; i < match.index + match[0].length; i++) {
+        if (processed.has(i)) {
+          hasOverlap = true;
+          break;
+        }
+      }
+      if (hasOverlap) continue;
+
+      // Mark as processed
+      for (let i = match.index; i < match.index + match[0].length; i++) {
+        processed.add(i);
+      }
+
+      const backlinkTitle = match[1].trim();
+
+      // Check if backlink contains entity syntax for color
+      const entityMatch = backlinkTitle.match(/^\[([A-Z_]+)(?::[A-Z_]+)?\|/);
+      const entityKind = entityMatch ? entityMatch[1] as EntityKind : null;
+      const color = entityKind && ENTITY_COLORS[entityKind]
+        ? ENTITY_COLORS[entityKind]
+        : 'hsl(var(--primary))';
+
+      decorations.push(
+        Decoration.inline(from, to, {
+          class: 'backlink-highlight',
+          style: `background-color: ${color}20; color: ${color}; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;`,
+          'data-backlink-title': backlinkTitle,
+        }, { inclusiveStart: false, inclusiveEnd: false })
+      );
+    }
+
+    // 7. NER-detected entities (runs last, lowest priority)
     const nerEntities = typeof options.nerEntities === 'function'
       ? options.nerEntities()
       : options.nerEntities || [];
@@ -283,6 +324,7 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
       onWikilinkClick: undefined,
       checkWikilinkExists: undefined,
       onTemporalClick: undefined,
+      onBacklinkClick: undefined,
       nerEntities: undefined,
       onNEREntityClick: undefined,
     };
@@ -333,6 +375,15 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
                 event.preventDefault();
                 event.stopPropagation();
                 options.onTemporalClick(temporalText);
+                return true;
+              }
+
+              // Handle backlink clicks
+              const backlinkTitle = target.getAttribute('data-backlink-title');
+              if (backlinkTitle && options.onBacklinkClick) {
+                event.preventDefault();
+                event.stopPropagation();
+                options.onBacklinkClick(backlinkTitle);
                 return true;
               }
 

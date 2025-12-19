@@ -56,8 +56,8 @@ export class LinkIndex {
       });
     }
 
-    // Parse entity mentions: [KIND|Label] or [KIND:SUBTYPE|Label]
-    const entityRegex = /\[([A-Z][A-Z_]*)(?::[A-Z_]+)?\|([^\]]+)\]/g;
+    // Parse entity mentions: [KIND|Label] or [KIND:SUBTYPE|Label] or [KIND|Label|{attrs}]
+    const entityRegex = /\[([A-Z][A-Z_]*)(?::[A-Z_]+)?\|([^\]|]+)(?:\|[^\]]+)?\]/g;
     while ((match = entityRegex.exec(plainText)) !== null) {
       const entityKind = match[1] as EntityKind;
       const entityLabel = match[2].trim();
@@ -82,6 +82,36 @@ export class LinkIndex {
         linkType: 'mention',
         context,
       });
+    }
+
+    // Parse backlinks: <<Title>> or <<[KIND|Label]>>
+    const backlinkRegex = /<<([^>]+)>>/g;
+    while ((match = backlinkRegex.exec(plainText)) !== null) {
+      const rawTitle = match[1].trim();
+      const context = this.getContext(plainText, match.index, match[0].length);
+      
+      // Check if backlink contains entity syntax (with optional attributes)
+      const entityMatch = rawTitle.match(/^\[([A-Z_]+)(?::[A-Z_]+)?\|([^\]|]+)(?:\|[^\]]+)?\]$/);
+      
+      if (entityMatch) {
+        const entityKind = entityMatch[1] as EntityKind;
+        const entityLabel = entityMatch[2].trim();
+        links.push({
+          sourceNoteId: noteId,
+          targetTitle: entityLabel,
+          linkType: 'entity',
+          entityKind,
+          entityLabel,
+          context,
+        });
+      } else {
+        links.push({
+          sourceNoteId: noteId,
+          targetTitle: rawTitle,
+          linkType: 'wikilink',
+          context,
+        });
+      }
     }
 
     return links;

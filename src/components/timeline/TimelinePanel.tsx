@@ -12,7 +12,7 @@ import { TimelineViewMode, TimelineViewModeSelector } from './TimelineViewModeSe
 import { TimelineContent } from './TimelineContent';
 import { NarrativeEntity } from '@/types/narrativeEntities';
 import { EntityKind } from '@/lib/entities/entityTypes';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 
 export function TimelinePanel() {
   const { selectedNote, createNote, state, selectNote } = useNotes();

@@ -3,7 +3,7 @@
 // import { createAnthropic } from '@ai-sdk/anthropic';
 // import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { z } from 'zod';
-import { v4 as uuid } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 import type { CozoEntity, CozoEntityEdge } from '../types';
 import { 
     type LLMExtractionConfig, 
@@ -166,7 +166,7 @@ export async function extractEntitiesWithLLM(
             if (kind === 'ORGANIZATION') kind = 'FACTION';
 
             return {
-                id: uuid(),
+                id: generateId(),
                 name: e.name,
                 entityKind: kind as any,
                 entitySubtype: e.subtype,
@@ -189,7 +189,7 @@ export async function extractEntitiesWithLLM(
         const relationships: CozoEntityEdge[] = parsed.relationships
             .filter(r => entityMap.has(r.source_entity) && entityMap.has(r.target_entity))
             .map(r => ({
-                id: uuid(),
+                id: generateId(),
                 sourceId: entityMap.get(r.source_entity)!,
                 targetId: entityMap.get(r.target_entity)!,
                 createdAt: new Date(),

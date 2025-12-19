@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useMemo, ReactNode } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 import { loadFromStorage, saveToStorage, exportNotes, importNotes } from '@/lib/storage';
 import type { DocumentConnections, EntityKind } from '@/lib/entities/entityTypes';
 import { parseEntityFromTitle, parseFolderEntityFromName } from '@/lib/entities/titleParser';
@@ -236,7 +236,7 @@ interface NotesContextValue {
   favoriteNotes: Note[];
   canUndo: boolean;
   canRedo: boolean;
-  createNote: (folderId?: string, title?: string) => Note;
+  createNote: (folderId?: string, title?: string, sourceNoteId?: string) => Note;
   getEntityNote: (kind: EntityKind, label: string) => Note | undefined;
   updateNote: (id: string, updates: Partial<Note>) => void;
   updateNoteContent: (id: string, content: string) => void;
@@ -386,7 +386,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     return undefined;
   }, [state.folders]);
 
-  const createNote = useCallback((folderId?: string, title?: string): Note => {
+  const createNote = useCallback((folderId?: string, title?: string, sourceNoteId?: string): Note => {
     dispatch({ type: 'PUSH_HISTORY' });
 
     // Determine title and entity properties
@@ -413,19 +413,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
           initialContent = JSON.stringify({
             type: 'doc',
             content: [
-              // Convert markdown template to Tiptap structure (simplified for now)
-              // Ideally we'd parse markdown here, but for now we'll put it in a single paragraph
-              // or leave it empty if the editor handles markdown deserialization (which likely does)
               { type: 'paragraph', content: [{ type: 'text', text: template }] }
             ],
           });
-          // Better approach: use the content as-is if your editor supports markdown initialization,
-          // otherwise we stick to simple doc. 
-          // For this app, let's assume raw text content for template is acceptable for now
-          // or that the editor component will handle the "initial content" if it's not valid JSON.
-          // Since the existing code uses JSON stringify, we should probably stick to that structure
-          // but putting a huge string in one paragraph isn't great.
-          // Let's just set the title for now, and handle content if we can simple-parse it.
         }
       } else {
         noteTitle = 'Untitled Note';
@@ -445,13 +435,33 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       // If in a typed folder, inherit the kind context (but note is not an entity itself)
       const inheritedKind = getInheritedKindFromFolder(folderId);
       if (inheritedKind && !parsed) {
-        // Could suggest entity title, but for now just track context
         entityKind = undefined; // Note is not typed, just in a typed folder
       }
     }
 
+    // If sourceNoteId provided, create content with backlink to source note
+    if (sourceNoteId) {
+      const sourceNote = state.notes.find(n => n.id === sourceNoteId);
+      if (sourceNote) {
+        // Create backlink using source note's full title (preserves entity syntax)
+        const backlinkTitle = sourceNote.title;
+        initialContent = JSON.stringify({
+          type: 'doc',
+          content: [
+            { 
+              type: 'paragraph', 
+              content: [
+                { type: 'text', text: `<<${backlinkTitle}>>` }
+              ] 
+            },
+            { type: 'paragraph', content: [] }
+          ],
+        });
+      }
+    }
+
     const newNote: Note = {
-      id: uuidv4(),
+      id: generateId(),
       title: noteTitle,
       content: initialContent,
       createdAt: new Date(),
@@ -467,7 +477,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'ADD_NOTE', payload: newNote });
     dispatch({ type: 'SELECT_NOTE', payload: newNote.id });
     return newNote;
-  }, [getInheritedKindFromFolder]);
+  }, [getInheritedKindFromFolder, state.notes]);
 
 
   const updateNote = useCallback((id: string, updates: Partial<Note>) => {
@@ -522,7 +532,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
 
     const newFolder: Folder = {
-      id: uuidv4(),
+      id: generateId(),
       name: name || 'New Folder',
       parentId,
       createdAt: new Date(),

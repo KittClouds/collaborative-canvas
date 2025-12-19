@@ -10,7 +10,7 @@ import { ENTITY_COLORS } from '@/lib/entities/entityTypes';
 interface OutgoingLinksPanelProps {
   outgoingLinks: WikiLink[];
   notes: Note[];
-  onNavigate: (title: string, createIfNotExists?: boolean) => void;
+  onNavigate: (title: string, createIfNotExists?: boolean, link?: WikiLink) => void;
 }
 
 export function OutgoingLinksPanel({ outgoingLinks, notes, onNavigate }: OutgoingLinksPanelProps) {
@@ -79,7 +79,7 @@ export function OutgoingLinksPanel({ outgoingLinks, notes, onNavigate }: Outgoin
                         <div
                           key={`wikilink-${idx}`}
                           className="p-2 rounded-md bg-card hover:bg-accent transition-colors cursor-pointer flex items-center gap-2 border"
-                          onClick={() => onNavigate(link.targetTitle, true)}
+                          onClick={() => onNavigate(link.targetTitle, true, link)}
                         >
                           {!exists && <FileQuestion className="h-3 w-3 text-destructive shrink-0" />}
                           <span className={`text-sm flex-1 truncate ${!exists ? 'text-destructive' : ''}`}>
@@ -110,7 +110,7 @@ export function OutgoingLinksPanel({ outgoingLinks, notes, onNavigate }: Outgoin
                         <div
                           key={`entity-${idx}`}
                           className="p-2 rounded-md bg-card hover:bg-accent transition-colors cursor-pointer flex items-center gap-2 border"
-                          onClick={() => onNavigate(link.targetTitle, true)}
+                          onClick={() => onNavigate(link.targetTitle, true, link)}
                         >
                           <Badge 
                             variant="outline" 
@@ -151,7 +151,7 @@ export function OutgoingLinksPanel({ outgoingLinks, notes, onNavigate }: Outgoin
                         <div
                           key={`mention-${idx}`}
                           className="p-2 rounded-md bg-card hover:bg-accent transition-colors cursor-pointer flex items-center gap-2 border"
-                          onClick={() => onNavigate(link.targetTitle, true)}
+                          onClick={() => onNavigate(link.targetTitle, true, link)}
                         >
                           <span className="text-muted-foreground">@</span>
                           {!exists && <FileQuestion className="h-3 w-3 text-destructive shrink-0" />}
