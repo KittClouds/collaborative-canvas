@@ -6,51 +6,47 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import { cozoDb } from "@/lib/cozo/db";
 import { initBlueprintHubSchema } from "@/features/blueprint-hub/api/schema";
 import { BlueprintHubProvider } from "@/features/blueprint-hub/context/BlueprintHubContext";
 import { BlueprintHub } from "@/features/blueprint-hub/components/BlueprintHub";
 import { NERProvider } from "@/contexts/NERContext";
-import { syncEngine, SyncEngineProvider, migrateLocalStorageToCozoDB } from "@/lib/sync";
-import { cozoDb } from "@/lib/cozo/db";
 
 const queryClient = new QueryClient();
 
 const App = () => {
-  const [ready, setReady] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState("Initializing...");
+  const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
-    const init = async () => {
+    const initDB = async () => {
       try {
-        setLoadingMessage("Initializing database...");
-        await syncEngine.initialize();
-        console.log("SyncEngine initialized");
+        await cozoDb.init();
+        console.log("CozoDB Initialized");
 
-        setLoadingMessage("Migrating data...");
-        const migrationResult = await migrateLocalStorageToCozoDB(syncEngine);
-        if (migrationResult.migrated > 0) {
-          console.log(`Migrated ${migrationResult.migrated} items from localStorage`);
-        }
+        // Test query
+        const res = cozoDb.runQuery('?[] <- [["hello", "cozo"]]');
+        console.log("CozoDB Test Query Result:", res);
 
-        setLoadingMessage("Loading schemas...");
+        // Initialize Blueprint Hub schema
         await initBlueprintHubSchema(cozoDb);
         console.log("Blueprint Hub schema initialized");
 
-        setReady(true);
+        setDbReady(true);
       } catch (e) {
-        console.error("Initialization failed:", e);
-        setReady(true);
+        console.error("Database initialization failed:", e);
+        // Still set ready to prevent infinite loading
+        setDbReady(true);
       }
     };
-    init();
+    initDB();
   }, []);
 
-  if (!ready) {
+  if (!dbReady) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background">
+      <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">{loadingMessage}</p>
+          <p className="text-muted-foreground">Initializing database...</p>
         </div>
       </div>
     );
@@ -58,28 +54,27 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SyncEngineProvider engine={syncEngine}>
-        <BlueprintHubProvider>
-          <NERProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter
-                future={{
-                  v7_startTransition: true,
-                  v7_relativeSplatPath: true,
-                }}
-              >
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </BrowserRouter>
-              <BlueprintHub />
-            </TooltipProvider>
-          </NERProvider>
-        </BlueprintHubProvider>
-      </SyncEngineProvider>
+      <BlueprintHubProvider>
+        <NERProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true,
+              }}
+            >
+              <Routes>
+                <Route path="/" element={<Index />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+            <BlueprintHub />
+          </TooltipProvider>
+        </NERProvider>
+      </BlueprintHubProvider>
     </QueryClientProvider>
   );
 };

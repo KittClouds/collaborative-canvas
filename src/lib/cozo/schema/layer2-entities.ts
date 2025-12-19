@@ -22,7 +22,6 @@ export const ENTITY_SCHEMA = `
     id: Uuid,
     
     name: String,
-    normalized_name: String,
     entity_kind: String,
     entity_subtype: String? default null,
     
@@ -45,74 +44,44 @@ export const ENTITY_SCHEMA = `
     attributes: Json? default null,
     
     temporal_span: Json? default null,
-    participants: [Uuid] default [],
-    
-    source: String default "manual",
-    confidence: Float default 1.0,
-    blueprint_type_id: String? default null,
-    blueprint_version_id: String? default null,
-    blueprint_fields: Json? default null,
-    provenance_data: Json? default null,
-    alternate_types: Json? default null
+    participants: [Uuid] default []
 }
 `;
 
 export const ENTITY_QUERIES = {
   upsert: `
-    ?[id, name, normalized_name, entity_kind, entity_subtype, group_id, scope_type, created_at,
+    ?[id, name, entity_kind, entity_subtype, group_id, scope_type, created_at,
       extraction_method, summary, aliases, canonical_note_id, frequency,
       degree_centrality, betweenness_centrality, closeness_centrality, community_id,
-      attributes, temporal_span, participants, source, confidence,
-      blueprint_type_id, blueprint_version_id, blueprint_fields, provenance_data, alternate_types] <- 
-      [[$id, $name, $normalized_name, $entity_kind, $entity_subtype, $group_id, $scope_type, $created_at,
+      attributes, temporal_span, participants] <- 
+      [[$id, $name, $entity_kind, $entity_subtype, $group_id, $scope_type, $created_at,
         $extraction_method, $summary, $aliases, $canonical_note_id, $frequency,
         $degree_centrality, $betweenness_centrality, $closeness_centrality, $community_id,
-        $attributes, $temporal_span, $participants, $source, $confidence,
-        $blueprint_type_id, $blueprint_version_id, $blueprint_fields, $provenance_data, $alternate_types]]
+        $attributes, $temporal_span, $participants]]
     :put entity {
-      id, name, normalized_name, entity_kind, entity_subtype, group_id, scope_type, created_at,
+      id, name, entity_kind, entity_subtype, group_id, scope_type, created_at,
       extraction_method, summary, aliases, canonical_note_id, frequency,
       degree_centrality, betweenness_centrality, closeness_centrality, community_id,
-      attributes, temporal_span, participants, source, confidence,
-      blueprint_type_id, blueprint_version_id, blueprint_fields, provenance_data, alternate_types
+      attributes, temporal_span, participants
     }
   `,
 
   getById: `
-    ?[id, name, normalized_name, entity_kind, entity_subtype, group_id, scope_type, created_at,
+    ?[id, name, entity_kind, entity_subtype, group_id, scope_type, created_at,
       extraction_method, summary, aliases, canonical_note_id, frequency,
       degree_centrality, betweenness_centrality, closeness_centrality, community_id,
-      attributes, temporal_span, participants, source, confidence,
-      blueprint_type_id, blueprint_version_id, blueprint_fields, provenance_data, alternate_types] := 
-      *entity{id, name, normalized_name, entity_kind, entity_subtype, group_id, scope_type, created_at,
+      attributes, temporal_span, participants] := 
+      *entity{id, name, entity_kind, entity_subtype, group_id, scope_type, created_at,
         extraction_method, summary, aliases, canonical_note_id, frequency,
         degree_centrality, betweenness_centrality, closeness_centrality, community_id,
-        attributes, temporal_span, participants, source, confidence,
-        blueprint_type_id, blueprint_version_id, blueprint_fields, provenance_data, alternate_types},
+        attributes, temporal_span, participants},
       id == $id
   `,
 
-  getAll: `
-    ?[id, name, normalized_name, entity_kind, entity_subtype, group_id, scope_type, created_at,
-      extraction_method, summary, aliases, canonical_note_id, frequency,
-      source, confidence, blueprint_type_id, blueprint_version_id, blueprint_fields,
-      provenance_data, alternate_types] := 
-      *entity{id, name, normalized_name, entity_kind, entity_subtype, group_id, scope_type, created_at,
-        extraction_method, summary, aliases, canonical_note_id, frequency,
-        source, confidence, blueprint_type_id, blueprint_version_id, blueprint_fields,
-        provenance_data, alternate_types}
-  `,
-
   getByGroupId: `
-    ?[id, name, entity_kind, entity_subtype, frequency, community_id, attributes, source, confidence] := 
-      *entity{id, name, entity_kind, entity_subtype, group_id, frequency, community_id, attributes, source, confidence},
+    ?[id, name, entity_kind, entity_subtype, frequency, community_id, attributes] := 
+      *entity{id, name, entity_kind, entity_subtype, group_id, frequency, community_id, attributes},
       group_id == $group_id
-  `,
-
-  findByNormalizedName: `
-    ?[id, name, normalized_name, entity_kind, entity_subtype, group_id, frequency, source, confidence] := 
-      *entity{id, name, normalized_name, entity_kind, entity_subtype, group_id, frequency, source, confidence},
-      normalized_name == $normalized_name
   `,
 
   getByKind: `
