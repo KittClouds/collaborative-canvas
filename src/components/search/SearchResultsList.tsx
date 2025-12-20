@@ -1,7 +1,7 @@
 import { TrendingUp, FileText } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import type { SearchResult } from '@/lib/cozo/search/searchOrchestrator';
+import type { SearchResult } from '@/lib/search/searchOrchestrator';
 
 interface SearchResultsListProps {
   results: SearchResult[];

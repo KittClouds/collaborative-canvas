@@ -3,8 +3,8 @@ import { useBlueprintHub } from '@/features/blueprint-hub/hooks/useBlueprintHub'
 import { useBlueprintHubContext } from '@/features/blueprint-hub/context/BlueprintHubContext';
 import { useEntityRelationships } from '@/features/blueprint-hub/hooks/useEntityRelationships';
 import { useEntities } from '@/features/blueprint-hub/hooks/useEntities';
-import { findEntityByName } from '@/lib/cozo/api/entities';
-import { createEdge, deleteEdge } from '@/lib/cozo/api/edges';
+import { getEntityStore, getEdgeStore } from '@/lib/storage/index';
+import type { Entity, EntityEdge } from '@/lib/storage/interfaces';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { CompiledEntityType, FieldDef, ViewTemplateDef, CompiledRelationshipType } from '@/features/blueprint-hub/types';
 import type { RenderSection, RenderBlock, LayoutOverrides } from '@/features/blueprint-hub/types/layout';
@@ -41,7 +41,8 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
         setEntityId(entity.noteId);
       } else {
         try {
-          const foundEntity = await findEntityByName(entity.label, projectId, entity.kind);
+          const entityStore = getEntityStore();
+          const foundEntity = await entityStore.findEntityByName(entity.label, entity.kind, projectId);
           if (foundEntity) {
             setEntityId(foundEntity.id);
           } else {
@@ -90,7 +91,8 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
       }
 
       try {
-        await createEdge({
+        const edgeStore = getEdgeStore();
+        await edgeStore.createEdge({
           source_id: entityId,
           target_id: targetId,
           group_id: projectId,
@@ -118,7 +120,8 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
   const handleRemoveRelationship = useCallback(
     async (edgeId: string) => {
       try {
-        await deleteEdge(edgeId);
+        const edgeStore = getEdgeStore();
+        await edgeStore.deleteEdge(edgeId);
         await refreshEdges();
 
         toast({

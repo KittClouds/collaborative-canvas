@@ -1,4 +1,4 @@
-import { getAllNoteEmbeddings, getEmbeddingStats, getEmbeddingForNote } from '../cozo/schema/embeddingSchema';
+import { getEmbeddingStore } from '@/lib/storage/index';
 import type { SyncScope } from './syncService';
 
 export interface EmbeddingHealth {
@@ -25,7 +25,8 @@ class EmbeddingHealthTracker {
     }
 
     const allNotes = this.getNotes();
-    const allEmbeddings = await getAllNoteEmbeddings();
+    const embeddingStore = getEmbeddingStore();
+    const allEmbeddings = await embeddingStore.getAllEmbeddings();
 
     const embeddingsMap = new Map(allEmbeddings.map(e => [e.noteId, e]));
 
@@ -71,7 +72,7 @@ class EmbeddingHealthTracker {
                     scope.type === 'folder' ? scope.folderId :
                     scope.type === 'folders' ? scope.folderIds.join(',') : 'global';
 
-    const storedStats = await getEmbeddingStats(scopeType, scopeId);
+    const storedStats = await embeddingStore.getEmbeddingStats(scopeType, scopeId);
     if (storedStats?.lastSyncAt) {
       health.lastSyncAt = storedStats.lastSyncAt;
     }

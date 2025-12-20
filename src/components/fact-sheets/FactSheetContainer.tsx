@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getSupportedModels, getDefaultModel } from '@/lib/cozo/extraction/extractionConfig';
+import { getSupportedModels, getDefaultModel } from '@/lib/extraction/extractionConfig';
 import { Button } from '@/components/ui/button';
 
 // Import all fact sheet components

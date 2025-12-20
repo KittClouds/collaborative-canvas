@@ -14,7 +14,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ENTITY_KINDS, ENTITY_COLORS, EntityKind } from '@/lib/entities/entityTypes';
-import { upsertEntity, createMentionEdge } from '@/lib/cozo/api';
+import { getEntityStore, getEdgeStore } from '@/lib/storage/index';
 import { useToast } from '@/hooks/use-toast';
 
 // Default fallback mapping (for backwards compatibility)
@@ -351,19 +351,20 @@ export function EntitiesPanel() {
 
         try {
             const resolutionPolicy = compiledBlueprint?.extractionProfile?.resolution_policy || 'entity_on_accept';
-            const groupId = selectedNote.id; // Use note ID as group for scoping
+            const groupId = selectedNote.id;
 
             if (resolutionPolicy === 'entity_on_accept') {
-                // Create/find entity and link immediately
-                const createdEntity = await upsertEntity({
+                const entityStore = getEntityStore();
+                const edgeStore = getEdgeStore();
+                
+                const createdEntity = await entityStore.upsertEntity({
                     name: entity.word,
                     entity_kind: kind,
                     group_id: groupId,
                     scope_type: 'note',
                 });
 
-                // Create MENTIONS edge
-                await createMentionEdge({
+                await edgeStore.createMentionEdge({
                     source_id: selectedNote.id,
                     target_id: createdEntity.id,
                     group_id: groupId,
@@ -377,10 +378,8 @@ export function EntitiesPanel() {
                     description: `"${entity.word}" added as ${kind}`,
                 });
 
-                // Remove from suggestions
                 setEntities(prev => prev.filter(e => e !== entity));
             } else {
-                // mention_first: Create mention without entity
                 toast({
                     title: 'Mention Saved',
                     description: `"${entity.word}" marked for review`,

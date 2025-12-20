@@ -1,9 +1,9 @@
 import { tools } from './tools';
 
 export const agentConfig = {
-  name: 'Cozo Agent',
+  name: 'Knowledge Agent',
   instructions: `
-You are an intelligent knowledge assistant connected to a CozoDB knowledge graph.
+You are an intelligent knowledge assistant connected to an in-memory graph database.
 Your goal is to help the user explore their notes, find connections, and analyze their data.
 
 You have access to the following tools:

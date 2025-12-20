@@ -64,7 +64,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "cozo-lib-wasm": "^0.7.6",
+
     "cytoscape": "^3.33.1",
     "date-fns": "^3.6.0",
     "easydrawer": "^0.0.18",

@@ -6,47 +6,45 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import { cozoDb } from "@/lib/cozo/db";
-import { initBlueprintHubSchema } from "@/features/blueprint-hub/api/schema";
+import { initializeStorage, getBlueprintStore } from "@/lib/storage/index";
 import { BlueprintHubProvider } from "@/features/blueprint-hub/context/BlueprintHubContext";
 import { BlueprintHub } from "@/features/blueprint-hub/components/BlueprintHub";
 import { NERProvider } from "@/contexts/NERContext";
+import { initializeGraph } from "@/lib/graph";
 
 const queryClient = new QueryClient();
 
 const App = () => {
-  const [dbReady, setDbReady] = useState(false);
+  const [storageReady, setStorageReady] = useState(false);
 
   useEffect(() => {
-    const initDB = async () => {
+    const initStorage = async () => {
       try {
-        await cozoDb.init();
-        console.log("CozoDB Initialized");
+        initializeGraph();
+        console.log("UnifiedGraph initialized");
 
-        // Test query
-        const res = cozoDb.runQuery('?[] <- [["hello", "cozo"]]');
-        console.log("CozoDB Test Query Result:", res);
+        await initializeStorage();
+        console.log("Storage service initialized");
 
-        // Initialize Blueprint Hub schema
-        await initBlueprintHubSchema(cozoDb);
-        console.log("Blueprint Hub schema initialized");
+        const blueprintStore = getBlueprintStore();
+        await blueprintStore.initialize();
+        console.log("Blueprint store initialized");
 
-        setDbReady(true);
+        setStorageReady(true);
       } catch (e) {
-        console.error("Database initialization failed:", e);
-        // Still set ready to prevent infinite loading
-        setDbReady(true);
+        console.error("Storage initialization failed:", e);
+        setStorageReady(true);
       }
     };
-    initDB();
+    initStorage();
   }, []);
 
-  if (!dbReady) {
+  if (!storageReady) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Initializing database...</p>
+          <p className="text-muted-foreground">Initializing...</p>
         </div>
       </div>
     );

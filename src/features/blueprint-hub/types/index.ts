@@ -1,5 +1,5 @@
 // Blueprint Hub Type Definitions
-// Comprehensive interfaces for all blueprint entities aligned with CozoDB schema
+// Comprehensive interfaces for all blueprint entities
 
 // ==================== Core Data Types ====================
 

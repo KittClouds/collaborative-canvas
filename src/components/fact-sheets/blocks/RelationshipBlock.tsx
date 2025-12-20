@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CompiledRelationshipType } from '@/features/blueprint-hub/types';
-import { EntityEdge } from '@/lib/cozo/api/edges';
-import { Entity } from '@/lib/cozo/api/entities';
+import type { EntityEdge, Entity } from '@/lib/storage/interfaces';
 import { Button } from '@/components/ui/button';
 import {
   Popover,

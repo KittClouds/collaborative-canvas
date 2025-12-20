@@ -7,6 +7,7 @@ import {
   createVersion,
 } from '../api/storage';
 import { compileBlueprint } from '../services/compiler';
+import { getBlueprintStoreImpl } from '@/lib/storage/impl/BlueprintStoreImpl';
 
 interface BlueprintHubContextType {
   activeBlueprint: CompiledBlueprint | null;
@@ -34,44 +35,22 @@ export function BlueprintHubProvider({ children }: { children: React.ReactNode }
   const [error, setError] = useState<string | null>(null);
   const [isHubOpen, setIsHubOpen] = useState(false);
 
-  // Initialize project and version on mount
   useEffect(() => {
     const initializeProject = async () => {
       setIsLoading(true);
       try {
-        // Check if 'default' project exists
         let meta = await getBlueprintMetaById('default');
         
-        // If not, create it using the storage API directly with 'default' ID
         if (!meta) {
-          const now = Date.now();
-          const { cozoDb } = await import('../../../lib/cozo/db');
-          const { BLUEPRINT_STORAGE_QUERIES } = await import('../api/queries');
-          
-          const result = cozoDb.runQuery(BLUEPRINT_STORAGE_QUERIES.upsertBlueprintMeta, {
-            blueprint_id: 'default',
-            name: 'Default Blueprint',
-            description: 'Default blueprint project',
-            category: 'system',
-            author: null,
-            tags: [],
-            is_system: true,
-            created_at: now,
-            updated_at: now,
-          });
-          
-          if (!result.ok) {
-            throw new Error(`Failed to create default project: ${result.message}`);
-          }
+          const blueprintStore = getBlueprintStoreImpl();
+          blueprintStore.createDefaultBlueprint('default');
+          meta = await getBlueprintMetaById('default');
         }
         
-        // Get versions for this project
         const versions = await getVersionsByBlueprintId('default');
         
-        // Find active version (draft or latest published)
         let activeVersion = versions.find(v => v.status === 'draft');
         
-        // If no draft, create one
         if (!activeVersion) {
           activeVersion = await createVersion({
             blueprint_id: 'default',

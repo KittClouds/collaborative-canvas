@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
-import { search, setSearchContext } from '@/lib/cozo/search/searchOrchestrator';
+import { search, setSearchContext } from '@/lib/search/searchOrchestrator';
 import { syncService, healthTracker } from '@/lib/embeddings';
-import type { SearchResult, SearchResponse } from '@/lib/cozo/search/searchOrchestrator';
+import type { SearchResult, SearchResponse } from '@/lib/search/searchOrchestrator';
 import type { SyncScope, SyncProgress, SyncStatus } from '@/lib/embeddings/syncService';
 import type { EmbeddingHealth } from '@/lib/embeddings/healthTracker';
 import { useNotes } from './NotesContext';

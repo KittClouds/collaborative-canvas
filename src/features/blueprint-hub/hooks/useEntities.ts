@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getEntitiesByGroupId, Entity } from '@/lib/cozo/api/entities';
+import { getEntityStore } from '@/lib/storage/index';
+import type { Entity } from '@/lib/storage/interfaces';
 
 interface UseEntitiesReturn {
   entities: Entity[];
@@ -23,7 +24,8 @@ export function useEntities(groupId: string | null): UseEntitiesReturn {
 
     setIsLoading(true);
     try {
-      const result = await getEntitiesByGroupId(groupId);
+      const entityStore = getEntityStore();
+      const result = await entityStore.getAllEntities(groupId);
       setEntities(result);
     } catch (error) {
       console.error('Error fetching entities:', error);

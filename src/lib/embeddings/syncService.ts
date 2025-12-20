@@ -1,5 +1,5 @@
 import { embeddingService, type EmbeddingModel } from './embeddingService';
-import { saveEmbeddingForNote, updateEmbeddingStats } from '../cozo/schema/embeddingSchema';
+import { getEmbeddingStore } from '@/lib/storage/index';
 
 export type SyncScope =
   | { type: 'note'; noteId: string }
@@ -106,7 +106,8 @@ class EmbeddingSyncService {
             currentNote: note.title,
           });
 
-          await saveEmbeddingForNote(
+          const embeddingStore = getEmbeddingStore();
+          await embeddingStore.saveEmbedding(
             note.id,
             Array.from(embedding),
             model,
@@ -125,11 +126,11 @@ class EmbeddingSyncService {
                       scope.type === 'folder' ? scope.folderId :
                       scope.type === 'folders' ? scope.folderIds.join(',') : 'global';
 
-      await updateEmbeddingStats(scopeType, scopeId, {
+      const embeddingStore = getEmbeddingStore();
+      await embeddingStore.updateEmbeddingStats(scopeType, scopeId, {
         embeddingsCount: itemsSynced,
         totalNotes: notesToSync.length,
         syncedNotes: itemsSynced,
-        lastSyncAt: new Date(),
       });
 
       this.notifyProgress({ phase: 'complete', current: total, total });

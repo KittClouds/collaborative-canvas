@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getEdgesBySourceId, getEdgesByTargetId, EntityEdge } from '@/lib/cozo/api/edges';
+import { getEdgeStore } from '@/lib/storage/index';
+import type { EntityEdge } from '@/lib/storage/interfaces';
 
 interface UseEntityRelationshipsReturn {
   edges: EntityEdge[];
@@ -23,9 +24,10 @@ export function useEntityRelationships(entityId: string | null): UseEntityRelati
 
     setIsLoading(true);
     try {
+      const edgeStore = getEdgeStore();
       const [outgoing, incoming] = await Promise.all([
-        getEdgesBySourceId(entityId),
-        getEdgesByTargetId(entityId),
+        edgeStore.getEdgesBySourceId(entityId),
+        edgeStore.getEdgesByTargetId(entityId),
       ]);
 
       // Combine and deduplicate

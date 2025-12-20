@@ -1,10 +1,8 @@
 import { z } from 'zod';
 import { tool } from 'ai';
-import { search } from '@/lib/cozo/search/searchOrchestrator';
-import { findEntitiesWithinHops, findShortestPath } from '@/lib/cozo/algorithms/pathfinding';
-import { detectCommunitiesLouvain } from '@/lib/cozo/algorithms/communityDetection';
-import { getEntityHistory } from '@/lib/cozo/temporal/entityHistory';
-import { cozoDb } from '@/lib/cozo/db';
+import { search } from '@/lib/search/searchOrchestrator';
+import { getEntityStore, getTemporalStore } from '@/lib/storage/index';
+import { getGraph } from '@/lib/graph';
 
 // 1. Vector Search Tool
 export const searchVectorTool = tool({
@@ -18,7 +16,7 @@ export const searchVectorTool = tool({
       const results = await search({
         query,
         maxResults: maxResults || 10,
-        enableGraphExpansion: true, // Enable graph expansion for better context
+        enableGraphExpansion: true,
       });
 
       return {
@@ -45,13 +43,17 @@ export const searchGraphTool = tool({
     maxHops: z.number().optional().describe('Maximum number of hops to traverse (default: 2)'),
     groupId: z.string().optional().describe('Scope/Group ID for the graph (default: "global")'),
   }),
-  execute: async ({ entityId, maxHops, groupId }) => {
+  execute: async ({ entityId, maxHops }) => {
     try {
-      const neighbors = await findEntitiesWithinHops(
-        entityId,
-        maxHops || 2,
-        groupId || 'global'
-      );
+      const graph = getGraph();
+      const neighborhood = graph.getNeighborhood(entityId, maxHops || 2);
+      
+      const neighbors = neighborhood.nodes.map(n => ({
+        id: n.data.id,
+        name: n.data.label,
+        type: n.data.entityKind || n.data.type,
+      }));
+      
       return { success: true, neighbors, count: neighbors.length };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -68,8 +70,6 @@ export const searchFtsTool = tool({
   }),
   execute: async ({ query, maxResults }) => {
     try {
-      // Using search orchestrator but could potentially disable vector/graph features if we had a dedicated FTS flag
-      // For now, we rely on the orchestrator which handles keyword matching too
       const results = await search({
         query,
         maxResults: maxResults || 10,
@@ -99,25 +99,20 @@ export const getEntityTool = tool({
   }),
   execute: async ({ name }) => {
     try {
-      const query = `
-        ?[id, name, type, metadata] := 
-        *entity{id, name, type, metadata},
-        name = $name
-      `;
-      const result = await cozoDb.runQuery(query, { name });
+      const entityStore = getEntityStore();
+      const entity = await entityStore.findEntityByNameOnly(name, 'global');
 
-      if (!result.rows || result.rows.length === 0) {
+      if (!entity) {
         return { success: false, error: 'Entity not found' };
       }
 
-      const row = result.rows[0];
       return {
         success: true,
         entity: {
-          id: row[0],
-          name: row[1],
-          type: row[2],
-          metadata: row[3]
+          id: entity.id,
+          name: entity.name,
+          type: entity.entity_kind,
+          metadata: entity.attributes
         }
       };
     } catch (error: any) {
@@ -134,19 +129,29 @@ export const findPathTool = tool({
     toEntityId: z.string().describe('Target entity ID'),
     groupId: z.string().optional().describe('Scope/Group ID (default: "global")'),
   }),
-  execute: async ({ fromEntityId, toEntityId, groupId }) => {
+  execute: async ({ fromEntityId, toEntityId }) => {
     try {
-      const path = await findShortestPath({
-        fromEntityId,
-        toEntityId,
-        groupId: groupId || 'global'
-      });
+      const graph = getGraph();
+      const pathResult = graph.findPath(fromEntityId, toEntityId);
 
-      if (!path) {
+      if (!pathResult) {
         return { success: false, error: 'No path found' };
       }
 
-      return { success: true, path };
+      const pathNodes = pathResult.path.map(nodeId => {
+        const node = graph.getNode(nodeId);
+        return {
+          id: nodeId,
+          name: node?.data.label || nodeId,
+          type: node?.data.entityKind || node?.data.type,
+        };
+      });
+
+      return { 
+        success: true, 
+        path: pathNodes,
+        length: pathResult.length
+      };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
@@ -161,7 +166,8 @@ export const getHistoryTool = tool({
   }),
   execute: async ({ entityId }) => {
     try {
-      const history = await getEntityHistory(entityId);
+      const temporalStore = getTemporalStore();
+      const history = await temporalStore.getEntityHistory(entityId);
       return { success: true, history };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -175,11 +181,24 @@ export const analyzeCommunitiesTool = tool({
   parameters: z.object({
     groupId: z.string().optional().describe('Scope/Group ID (default: "global")'),
   }),
-  execute: async ({ groupId }) => {
+  execute: async () => {
     try {
-      const communities = await detectCommunitiesLouvain({
-        groupId: groupId || 'global'
+      const graph = getGraph();
+      const communityMap = graph.detectCommunities();
+      
+      const communityGroups = new Map<string, string[]>();
+      communityMap.forEach((communityId, nodeId) => {
+        if (!communityGroups.has(communityId)) {
+          communityGroups.set(communityId, []);
+        }
+        communityGroups.get(communityId)!.push(nodeId);
       });
+
+      const communities = Array.from(communityGroups.entries()).map(([id, members]) => ({
+        id,
+        members,
+        size: members.length,
+      }));
 
       return { success: true, communities, count: communities.length };
     } catch (error: any) {
@@ -195,24 +214,12 @@ export const analyzeQueryTool = tool({
     query: z.string().describe('The user query to analyze'),
   }),
   execute: async ({ query }) => {
-    // Intent classification patterns
     const patterns = {
-      // Exact lookup: "who is [name]", "what is [term]"
       exactLookup: /^(who|what) is (\w+)/i,
-
-      // Relationship: "how are X and Y related", "connection between"
       relationship: /(related|connection|relationship|link) (between|with)/i,
-
-      // Evolution: "how has X changed", "history of"  
       temporal: /(changed|evolved|history|over time|timeline)/i,
-
-      // Conceptual: "themes about", "similar to", "like"
       semantic: /(theme|concept|similar|like|about|meaning)/i,
-
-      // Group analysis: "groups of", "clusters", "communities"
       community: /(group|cluster|communit|categor)/i,
-
-      // Exploratory: "everything about", "tell me about"
       exploratory: /(everything|all|tell me|explain)/i
     };
 
@@ -243,7 +250,6 @@ export const analyzeQueryTool = tool({
       strategies.push({ type: 'community', priority: 1, reason: 'Detect clusters' });
     }
 
-    // Default exploratory search
     if (strategies.length === 0) {
       strategies.push(
         { type: 'vector', priority: 1, reason: 'Semantic search' },
@@ -300,15 +306,13 @@ export const rerankResultsTool = tool({
           });
           merged.push(seen.get(key));
         } else {
-          // Boost score if found in multiple modalities
           const existing = seen.get(key);
           existing.sources.push(source);
-          existing.combinedScore += (item.score || 1.0) * 0.5; // Diminishing boost
+          existing.combinedScore += (item.score || 1.0) * 0.5;
         }
       }
     }
 
-    // Sort by combined score (higher is better)
     const ranked = merged.sort((a, b) => b.combinedScore - a.combinedScore);
 
     return {
@@ -329,7 +333,6 @@ export const shouldExpandGraphTool = tool({
     hasEntityResults: z.boolean().optional().describe('Whether any results are entities'),
   }),
   execute: async ({ initialResultCount, query, hasEntityResults = false }) => {
-    // Decision logic for when to expand graph context
     const relationshipPattern = /connect|related|link|between|with|and/i;
     const isRelationshipQuery = relationshipPattern.test(query);
     const hasSpareResults = initialResultCount < 3;
@@ -367,7 +370,6 @@ export const tools = {
   findPath: findPathTool,
   getHistory: getHistoryTool,
   analyzeCommunities: analyzeCommunitiesTool,
-  // MetaSearch Orchestration Tools
   analyzeQuery: analyzeQueryTool,
   rerankResults: rerankResultsTool,
   shouldExpandGraph: shouldExpandGraphTool,

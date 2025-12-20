@@ -3,7 +3,7 @@ import {
     type LLMExtractionConfig,
     getDefaultModel,
     getSupportedModels
-} from '../../lib/cozo/extraction/extractionConfig';
+} from '@/lib/extraction/extractionConfig';
 
 interface LLMExtractionSettingsProps {
     initialConfig?: LLMExtractionConfig;
