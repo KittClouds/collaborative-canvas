@@ -18,3 +18,6 @@ export type { TimelineEvent, TimelineRange } from './TimelineQueries';
 
 export { EntityQueries, getEntityQueries } from './EntityQueries';
 export type { EntityMentionInfo, EntityWithMentions } from './EntityQueries';
+
+export { ResoRankSearchQueries, getResoRankSearch, resetResoRankSearch } from './ResoRankSearchQueries';
+export type { SearchOptions, SearchResult, SearchStats } from './ResoRankSearchQueries';

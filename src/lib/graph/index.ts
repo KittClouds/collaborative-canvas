@@ -34,6 +34,9 @@ export { TimelineQueries, getTimelineQueries } from './queries/TimelineQueries';
 export type { TimelineEvent, TimelineRange } from './queries/TimelineQueries';
 export { EntityQueries, getEntityQueries } from './queries/EntityQueries';
 export type { EntityMentionInfo, EntityWithMentions } from './queries/EntityQueries';
+export { ResoRankSearchQueries, getResoRankSearch, resetResoRankSearch } from './queries/ResoRankSearchQueries';
+export type { SearchOptions, SearchResult, SearchStats } from './queries/ResoRankSearchQueries';
 
 export { GraphSyncManager, getGraphSyncManager, resetGraphSyncManager } from './integration';
 export type { SyncOptions } from './integration';
+export { GraphResoRankSync, getGraphResoRankSync, resetGraphResoRankSync } from './integration';
