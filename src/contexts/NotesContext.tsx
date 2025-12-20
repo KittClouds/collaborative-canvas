@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { generateId } from '@/lib/utils/ids';
 import { loadFromStorage, saveToStorage, exportNotes, importNotes } from '@/lib/storage';
 import type { DocumentConnections, EntityKind } from '@/lib/entities/entityTypes';
 import { parseEntityFromTitle, parseFolderEntityFromName } from '@/lib/entities/titleParser';
 import { migrateExistingNotes, migrateExistingFolders, needsMigration } from '@/lib/entities/migration';
 import { NARRATIVE_FOLDER_CONFIGS, getTemplateForKind } from '@/lib/templates/narrativeTemplates';
+import { getGraphSyncManager, type GraphSyncManager } from '@/lib/graph/integration';
 
 // Types
 export interface Note {
@@ -256,6 +257,15 @@ const NotesContext = createContext<NotesContextValue | null>(null);
 
 export function NotesProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(notesReducer, initialState);
+  const graphSyncRef = useRef<GraphSyncManager | null>(null);
+  const initialHydrationDone = useRef(false);
+
+  const getGraphSync = useCallback((): GraphSyncManager => {
+    if (!graphSyncRef.current) {
+      graphSyncRef.current = getGraphSyncManager();
+    }
+    return graphSyncRef.current;
+  }, []);
 
   // Load initial data with migration
   useEffect(() => {
@@ -270,7 +280,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'SET_NOTES', payload: notes });
     dispatch({ type: 'SET_FOLDERS', payload: folders });
-  }, []);
+
+    getGraphSync().hydrateFromNotesContext(notes, folders);
+    initialHydrationDone.current = true;
+  }, [getGraphSync]);
 
   // Auto-save with backup
   useEffect(() => {
@@ -476,12 +489,16 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     };
     dispatch({ type: 'ADD_NOTE', payload: newNote });
     dispatch({ type: 'SELECT_NOTE', payload: newNote.id });
+
+    if (initialHydrationDone.current) {
+      getGraphSync().onNoteCreated(newNote);
+    }
+
     return newNote;
-  }, [getInheritedKindFromFolder, state.notes]);
+  }, [getInheritedKindFromFolder, state.notes, getGraphSync]);
 
 
   const updateNote = useCallback((id: string, updates: Partial<Note>) => {
-    // If title is being updated, re-parse entity properties
     if (updates.title !== undefined) {
       const parsed = parseEntityFromTitle(updates.title);
       if (parsed && parsed.label) {
@@ -497,17 +514,36 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       }
     }
     dispatch({ type: 'UPDATE_NOTE', payload: { id, updates } });
-  }, []);
+
+    if (initialHydrationDone.current) {
+      const existingNote = state.notes.find(n => n.id === id);
+      if (existingNote) {
+        const updatedNote = { ...existingNote, ...updates, updatedAt: new Date() };
+        getGraphSync().onNoteUpdated(updatedNote, state.notes);
+      }
+    }
+  }, [state.notes, getGraphSync]);
 
   const updateNoteContent = useCallback((id: string, content: string) => {
-    // NO LONGER extract title from content - titles are explicit
     dispatch({ type: 'UPDATE_NOTE', payload: { id, updates: { content } } });
-  }, []);
+
+    if (initialHydrationDone.current) {
+      const existingNote = state.notes.find(n => n.id === id);
+      if (existingNote) {
+        const updatedNote = { ...existingNote, content, updatedAt: new Date() };
+        getGraphSync().onNoteUpdated(updatedNote, state.notes);
+      }
+    }
+  }, [state.notes, getGraphSync]);
 
   const deleteNote = useCallback((id: string) => {
     dispatch({ type: 'PUSH_HISTORY' });
     dispatch({ type: 'DELETE_NOTE', payload: id });
-  }, []);
+
+    if (initialHydrationDone.current) {
+      getGraphSync().onNoteDeleted(id);
+    }
+  }, [getGraphSync]);
 
   const selectNote = useCallback((id: string | null) => {
     dispatch({ type: 'SELECT_NOTE', payload: id });
@@ -520,12 +556,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const createFolder = useCallback((name: string, parentId?: string, options?: Partial<Folder>): Folder => {
     dispatch({ type: 'PUSH_HISTORY' });
 
-    // Parse folder name for entity properties
     const parsed = parseFolderEntityFromName(name);
     let inheritedKind: EntityKind | undefined;
     let inheritedSubtype: string | undefined;
 
-    // Get inherited kind/subtype from parent
     if (parentId) {
       inheritedKind = getInheritedKindFromFolder(parentId);
       inheritedSubtype = getInheritedSubtypeFromFolder(parentId);
@@ -546,11 +580,15 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       color: options?.color,
     };
     dispatch({ type: 'ADD_FOLDER', payload: newFolder });
+
+    if (initialHydrationDone.current) {
+      getGraphSync().onFolderCreated(newFolder);
+    }
+
     return newFolder;
-  }, [getInheritedKindFromFolder, getInheritedSubtypeFromFolder]);
+  }, [getInheritedKindFromFolder, getInheritedSubtypeFromFolder, getGraphSync]);
 
   const updateFolder = useCallback((id: string, updates: Partial<Folder>) => {
-    // If name is being updated, re-parse entity properties
     if (updates.name !== undefined) {
       const parsed = parseFolderEntityFromName(updates.name);
       if (parsed) {
@@ -568,13 +606,25 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       }
     }
     dispatch({ type: 'UPDATE_FOLDER', payload: { id, updates } });
-  }, []);
+
+    if (initialHydrationDone.current) {
+      const existingFolder = state.folders.find(f => f.id === id);
+      if (existingFolder) {
+        const updatedFolder = { ...existingFolder, ...updates };
+        getGraphSync().onFolderUpdated(updatedFolder);
+      }
+    }
+  }, [state.folders, getGraphSync]);
 
 
   const deleteFolder = useCallback((id: string) => {
     dispatch({ type: 'PUSH_HISTORY' });
     dispatch({ type: 'DELETE_FOLDER', payload: id });
-  }, []);
+
+    if (initialHydrationDone.current) {
+      getGraphSync().onFolderDeleted(id);
+    }
+  }, [getGraphSync]);
 
   const undo = useCallback(() => {
     dispatch({ type: 'UNDO' });
@@ -592,7 +642,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'PUSH_HISTORY' });
     const data = await importNotes(file);
     dispatch({ type: 'IMPORT_DATA', payload: data });
-  }, []);
+
+    if (initialHydrationDone.current) {
+      getGraphSync().hydrateFromNotesContext(data.notes, data.folders);
+    }
+  }, [getGraphSync]);
 
   // Find canonical entity note by kind and label
   const getEntityNote = useCallback((kind: EntityKind, label: string): Note | undefined => {

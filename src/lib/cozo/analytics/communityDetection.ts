@@ -1,11 +1,10 @@
-import louvain from 'graphology-communities-louvain';
 import { cozoDb } from '../db';
-import { exportGraphToGraphology } from './graphExporter';
+import { exportGraphToUnified } from './graphExporter';
 import { mapRowToEntity } from '../types';
 
 export interface CommunityDetectionOptions {
   groupId: string;
-  resolution?: number; // For multi-scale community detection (if supported)
+  resolution?: number;
 }
 
 export interface CommunityResult {
@@ -16,34 +15,53 @@ export interface CommunityResult {
 export async function detectCommunities(
   options: CommunityDetectionOptions
 ): Promise<CommunityResult> {
-  const graph = await exportGraphToGraphology(options.groupId);
+  const graph = await exportGraphToUnified(options.groupId);
+  const cy = graph.getInstance();
 
-  if (graph.order === 0) {
+  if (cy.nodes().length === 0) {
+    graph.destroy();
     return { communities: 0, modularity: 0 };
   }
 
-  // Run Louvain
-  // 'detailed' returns metrics and the mapping
-  const details = louvain.detailed(graph, {
-    resolution: options.resolution || 1.0
-  });
+  const communities = graph.detectCommunities();
+  const uniqueCommunities = new Set(communities.values());
+  const communityCount = uniqueCommunities.size;
 
-  const communityCount = details.count;
-  const modularity = details.modularity;
+  const modularity = calculateModularity(graph, communities);
 
-  // Extract assignments and update Cozo
-  const updates: Record<string, string> = {};
+  await updateCommunities(Object.fromEntries(communities), options.groupId);
 
-  Object.entries(details.communities).forEach(([node, community]) => {
-    updates[node] = String(community);
-  });
-
-  await updateCommunities(updates, options.groupId);
+  graph.destroy();
 
   return {
     communities: communityCount,
     modularity: modularity
   };
+}
+
+function calculateModularity(
+  graph: import('@/lib/graph/UnifiedGraph').UnifiedGraph,
+  communities: Map<string, string>
+): number {
+  const cy = graph.getInstance();
+  const m = cy.edges().length;
+  if (m === 0) return 0;
+
+  let q = 0;
+  const nodes = cy.nodes();
+
+  nodes.forEach(nodeI => {
+    nodes.forEach(nodeJ => {
+      if (communities.get(nodeI.id()) === communities.get(nodeJ.id())) {
+        const aij = nodeI.edgesWith(nodeJ).length > 0 ? 1 : 0;
+        const ki = nodeI.degree(false);
+        const kj = nodeJ.degree(false);
+        q += aij - (ki * kj) / (2 * m);
+      }
+    });
+  });
+
+  return q / (2 * m);
 }
 
 async function updateCommunities(
@@ -78,7 +96,6 @@ async function updateCommunities(
           const newComm = updates[entity.id];
 
           if (newComm !== undefined && newComm !== entity.communityId) {
-            // Update needed
             const writeQuery = `
               ?[id, name, kind, subtype, group, scope, created, method, summ, aliases, canon, freq, 
                 degree, bw, cl, comm, attrs, span, parts] <- [[
@@ -111,7 +128,7 @@ async function updateCommunities(
               degree: entity.degreeCentrality,
               bw: entity.betweennessCentrality,
               cl: entity.closenessCentrality,
-              comm: newComm, // Update this
+              comm: newComm,
               attrs: entity.attributes,
               span: entity.temporalSpan,
               parts: entity.participants

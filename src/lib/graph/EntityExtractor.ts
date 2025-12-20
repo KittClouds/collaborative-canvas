@@ -2,7 +2,8 @@ import type {
   ExtractionResult, 
   ExtractedEntity, 
   GraphEntity,
-  ExtractionMethod 
+  ExtractionMethod,
+  EntityMention
 } from './types';
 
 /**

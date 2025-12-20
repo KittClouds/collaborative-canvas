@@ -1,12 +1,11 @@
-import Graph from 'graphology';
+import { UnifiedGraph } from '@/lib/graph/UnifiedGraph';
 import { cozoDb } from '../db';
 import { mapRowToEntity, mapRowToEntityEdge } from '../types';
-import type { CozoEntity, CozoEntityEdge } from '../types';
+import type { EntityKind } from '@/lib/entities/entityTypes';
 
-export async function exportGraphToGraphology(groupId: string): Promise<Graph> {
-  const graph = new Graph({ multi: true, type: 'directed' });
+export async function exportGraphToUnified(groupId: string): Promise<UnifiedGraph> {
+  const graph = new UnifiedGraph();
 
-  // 1. Fetch Entities (Nodes)
   const nodeQuery = `
     ?[id, name, kind, subtype, group, scope, created, method, summ, aliases, canon, freq, 
       degree, betweenness, closeness, comm, attrs, span, parts] :=
@@ -24,11 +23,21 @@ export async function exportGraphToGraphology(groupId: string): Promise<Graph> {
       for (const row of nodeResult.rows) {
         const entity = mapRowToEntity(row);
         if (!graph.hasNode(entity.id)) {
-          graph.addNode(entity.id, {
-            ...entity,
-            // Graphology attributes
-            label: entity.name,
-            size: entity.frequency || 1,
+          graph.createEntity(entity.name, entity.entityKind as EntityKind, {
+            entitySubtype: entity.entitySubtype,
+            attributes: {
+              ...entity.attributes,
+              degreeCentrality: entity.degreeCentrality,
+              betweennessCentrality: entity.betweennessCentrality,
+              closenessCentrality: entity.closenessCentrality,
+              communityId: entity.communityId,
+            },
+            extraction: {
+              method: entity.extractionMethod as 'regex' | 'ner' | 'llm' | 'manual',
+              confidence: 1.0,
+              mentions: [],
+              frequency: entity.frequency || 1,
+            },
           });
         }
       }
@@ -38,7 +47,6 @@ export async function exportGraphToGraphology(groupId: string): Promise<Graph> {
     throw err;
   }
 
-  // 2. Fetch Edges
   const edgeQuery = `
     ?[id, source, target, created, valid, invalid, group, scope, type, fact, eps, notes, 
       weight, pmi, conf, methods] :=
@@ -55,11 +63,12 @@ export async function exportGraphToGraphology(groupId: string): Promise<Graph> {
       for (const row of edgeResult.rows) {
         const edge = mapRowToEntityEdge(row);
         
-        // Ensure source/target exist (they should, but safety first)
         if (graph.hasNode(edge.sourceId) && graph.hasNode(edge.targetId)) {
-          graph.addEdge(edge.sourceId, edge.targetId, {
-            ...edge,
+          graph.createRelationship(edge.sourceId, edge.targetId, edge.edgeType, {
             weight: edge.weight,
+            pmi: edge.pmiScore,
+            confidence: edge.confidence,
+            noteIds: edge.noteIds,
           });
         }
       }
@@ -69,6 +78,7 @@ export async function exportGraphToGraphology(groupId: string): Promise<Graph> {
     throw err;
   }
 
-  console.log(`Exported graph: ${graph.order} nodes, ${graph.size} edges`);
+  const stats = graph.getStats();
+  console.log(`Exported graph: ${stats.nodeCount} nodes, ${stats.edgeCount} edges`);
   return graph;
 }
