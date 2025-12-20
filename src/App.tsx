@@ -11,18 +11,26 @@ import { BlueprintHubProvider } from "@/features/blueprint-hub/context/Blueprint
 import { BlueprintHub } from "@/features/blueprint-hub/components/BlueprintHub";
 import { NERProvider } from "@/contexts/NERContext";
 import { initializeGraph } from "@/lib/graph";
+import { initializeSQLiteAndHydrate } from "@/lib/db";
 
 const queryClient = new QueryClient();
 
 const App = () => {
   const [storageReady, setStorageReady] = useState(false);
+  const [initStatus, setInitStatus] = useState("Initializing...");
 
   useEffect(() => {
     const initStorage = async () => {
       try {
+        setInitStatus("Initializing graph...");
         initializeGraph();
         console.log("UnifiedGraph initialized");
 
+        setInitStatus("Initializing SQLite persistence...");
+        const { nodesLoaded, embeddingsLoaded } = await initializeSQLiteAndHydrate();
+        console.log(`SQLite initialized: ${nodesLoaded} nodes, ${embeddingsLoaded} embeddings`);
+
+        setInitStatus("Initializing storage service...");
         await initializeStorage();
         console.log("Storage service initialized");
 
@@ -44,7 +52,7 @@ const App = () => {
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Initializing...</p>
+          <p className="text-muted-foreground">{initStatus}</p>
         </div>
       </div>
     );

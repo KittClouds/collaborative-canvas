@@ -2,9 +2,10 @@ import type {
   IEmbeddingStore,
   EmbeddingRecord,
 } from '../interfaces';
+import { dbClient, blobToFloat32 } from '@/lib/db';
 
 export class EmbeddingStoreImpl implements IEmbeddingStore {
-  private embeddings: Map<string, EmbeddingRecord> = new Map();
+  private cache: Map<string, EmbeddingRecord> = new Map();
   private stats: Map<string, {
     embeddingsCount: number;
     totalNotes: number;
@@ -19,8 +20,18 @@ export class EmbeddingStoreImpl implements IEmbeddingStore {
     contentHash: string
   ): Promise<void> {
     const now = Date.now();
-    const existing = this.embeddings.get(noteId);
+    const float32 = new Float32Array(embedding);
+    const text = '';
 
+    if (dbClient.isReady()) {
+      try {
+        await dbClient.saveEmbedding(noteId, float32, model, text, contentHash);
+      } catch (err) {
+        console.error('[EmbeddingStore] Failed to save to SQLite:', err);
+      }
+    }
+
+    const existing = this.cache.get(noteId);
     if (existing) {
       const updated: EmbeddingRecord = {
         ...existing,
@@ -36,7 +47,7 @@ export class EmbeddingStoreImpl implements IEmbeddingStore {
         updated.embeddingModel = 'modernbert-embed-base';
       }
 
-      this.embeddings.set(noteId, updated);
+      this.cache.set(noteId, updated);
     } else {
       const record: EmbeddingRecord = {
         noteId,
@@ -48,20 +59,84 @@ export class EmbeddingStoreImpl implements IEmbeddingStore {
         updatedAt: now,
       };
 
-      this.embeddings.set(noteId, record);
+      this.cache.set(noteId, record);
     }
   }
 
   async getEmbedding(noteId: string): Promise<EmbeddingRecord | null> {
-    return this.embeddings.get(noteId) || null;
+    const cached = this.cache.get(noteId);
+    if (cached) {
+      return cached;
+    }
+
+    if (dbClient.isReady()) {
+      try {
+        const sqliteEmb = await dbClient.getEmbedding(noteId);
+        if (sqliteEmb) {
+          const record: EmbeddingRecord = {
+            noteId: sqliteEmb.node_id,
+            embeddingSmall: sqliteEmb.embedding_small 
+              ? Array.from(blobToFloat32(sqliteEmb.embedding_small)) 
+              : undefined,
+            embeddingMedium: sqliteEmb.embedding_medium 
+              ? Array.from(blobToFloat32(sqliteEmb.embedding_medium)) 
+              : undefined,
+            embeddingModel: sqliteEmb.model_medium || sqliteEmb.model_small || undefined,
+            contentHash: sqliteEmb.content_hash,
+            createdAt: sqliteEmb.created_at,
+            updatedAt: sqliteEmb.updated_at,
+          };
+          this.cache.set(noteId, record);
+          return record;
+        }
+      } catch (err) {
+        console.error('[EmbeddingStore] Failed to get from SQLite:', err);
+      }
+    }
+
+    return null;
   }
 
   async getAllEmbeddings(): Promise<EmbeddingRecord[]> {
-    return Array.from(this.embeddings.values());
+    if (dbClient.isReady()) {
+      try {
+        const sqliteEmbeddings = await dbClient.getAllEmbeddings();
+        for (const sqliteEmb of sqliteEmbeddings) {
+          if (!this.cache.has(sqliteEmb.node_id)) {
+            const record: EmbeddingRecord = {
+              noteId: sqliteEmb.node_id,
+              embeddingSmall: sqliteEmb.embedding_small 
+                ? Array.from(blobToFloat32(sqliteEmb.embedding_small)) 
+                : undefined,
+              embeddingMedium: sqliteEmb.embedding_medium 
+                ? Array.from(blobToFloat32(sqliteEmb.embedding_medium)) 
+                : undefined,
+              embeddingModel: sqliteEmb.model_medium || sqliteEmb.model_small || undefined,
+              contentHash: sqliteEmb.content_hash,
+              createdAt: sqliteEmb.created_at,
+              updatedAt: sqliteEmb.updated_at,
+            };
+            this.cache.set(sqliteEmb.node_id, record);
+          }
+        }
+      } catch (err) {
+        console.error('[EmbeddingStore] Failed to get all from SQLite:', err);
+      }
+    }
+
+    return Array.from(this.cache.values());
   }
 
   async deleteEmbedding(noteId: string): Promise<void> {
-    this.embeddings.delete(noteId);
+    this.cache.delete(noteId);
+
+    if (dbClient.isReady()) {
+      try {
+        await dbClient.deleteEmbedding(noteId);
+      } catch (err) {
+        console.error('[EmbeddingStore] Failed to delete from SQLite:', err);
+      }
+    }
   }
 
   async getEmbeddingStats(scopeType: string, scopeId: string): Promise<{
@@ -91,12 +166,12 @@ export class EmbeddingStoreImpl implements IEmbeddingStore {
   }
 
   clear(): void {
-    this.embeddings.clear();
+    this.cache.clear();
     this.stats.clear();
   }
 
   getCount(): number {
-    return this.embeddings.size;
+    return this.cache.size;
   }
 }
 
