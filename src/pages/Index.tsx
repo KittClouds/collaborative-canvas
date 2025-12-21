@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Menu, FileText, Trash2 } from 'lucide-react';
-import RichEditor from '@/components/RichEditor';
+import RichEditor from '@/components/editor/RichEditor';
 import { useTheme } from '@/hooks/useTheme';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNotes, NotesProvider } from '@/contexts/NotesContext';
@@ -64,7 +64,7 @@ function NotesApp() {
 
   // Navigate to a note by title (for footer links panel)
   const handleNavigateToNote = useCallback((
-    title: string, 
+    title: string,
     createIfNotExists?: boolean,
     link?: WikiLink
   ) => {
@@ -77,7 +77,7 @@ function NotesApp() {
       if (link?.linkType === 'entity' && link.entityKind) {
         noteTitle = formatEntityTitle(link.entityKind, link.targetTitle);
       }
-      
+
       // Pass source note ID for backlink creation
       const sourceNoteId = selectedNoteRef.current?.id;
       const newNote = createNoteRef.current(undefined, noteTitle, sourceNoteId);
@@ -144,7 +144,7 @@ function NotesApp() {
     // Check if backlink contains entity syntax like [KIND|Label]
     const entityMatch = backlinkTitle.match(/^\[([A-Z_]+)(?::[A-Z_]+)?\|([^\]]+)\]$/);
     const searchTitle = entityMatch ? entityMatch[2] : backlinkTitle;
-    
+
     const existingNote = findNoteByTitleRef.current(searchTitle);
     if (existingNote) {
       selectNoteRef.current(existingNote.id);

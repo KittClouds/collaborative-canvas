@@ -7,7 +7,7 @@ import {
   createVersion,
 } from '../api/storage';
 import { compileBlueprint } from '../services/compiler';
-import { getBlueprintStoreImpl } from '@/lib/storage/impl/BlueprintStoreImpl';
+import { getBlueprintStoreImpl } from '@/lib/storage/index';
 
 interface BlueprintHubContextType {
   activeBlueprint: CompiledBlueprint | null;
@@ -40,17 +40,17 @@ export function BlueprintHubProvider({ children }: { children: React.ReactNode }
       setIsLoading(true);
       try {
         let meta = await getBlueprintMetaById('default');
-        
+
         if (!meta) {
           const blueprintStore = getBlueprintStoreImpl();
           blueprintStore.createDefaultBlueprint('default');
           meta = await getBlueprintMetaById('default');
         }
-        
+
         const versions = await getVersionsByBlueprintId('default');
-        
+
         let activeVersion = versions.find(v => v.status === 'draft');
-        
+
         if (!activeVersion) {
           activeVersion = await createVersion({
             blueprint_id: 'default',
@@ -58,7 +58,7 @@ export function BlueprintHubProvider({ children }: { children: React.ReactNode }
             change_summary: 'Initial draft version',
           });
         }
-        
+
         setVersionId(activeVersion.version_id);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to initialize project');
@@ -82,10 +82,10 @@ export function BlueprintHubProvider({ children }: { children: React.ReactNode }
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       console.log('Blueprint Hub: Refresh called');
-      
+
       if (!versionId) {
         console.log('Blueprint Hub: No version ID available');
         setCompiledBlueprint(null);
@@ -95,10 +95,10 @@ export function BlueprintHubProvider({ children }: { children: React.ReactNode }
       // Compile the blueprint
       const compiled = await compileBlueprint(versionId);
       setCompiledBlueprint(compiled);
-      
+
       // Also set as active blueprint for backward compatibility
       setActiveBlueprint(compiled);
-      
+
       console.log('Blueprint Hub: Successfully compiled blueprint for version', versionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh blueprint data');
@@ -112,16 +112,16 @@ export function BlueprintHubProvider({ children }: { children: React.ReactNode }
   const reloadActiveVersion = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       console.log('Blueprint Hub: Reloading active version');
-      
+
       // Get versions for the project
       const versions = await getVersionsByBlueprintId(projectId);
-      
+
       // Find active version (draft or latest published)
       let activeVersion = versions.find(v => v.status === 'draft');
-      
+
       // If no draft, create one
       if (!activeVersion) {
         activeVersion = await createVersion({
@@ -130,10 +130,10 @@ export function BlueprintHubProvider({ children }: { children: React.ReactNode }
           change_summary: 'New draft version',
         });
       }
-      
+
       // Update the version ID, which will trigger a recompile
       setVersionId(activeVersion.version_id);
-      
+
       console.log('Blueprint Hub: Switched to version', activeVersion.version_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reload active version');

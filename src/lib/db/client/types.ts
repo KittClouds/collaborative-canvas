@@ -69,28 +69,28 @@ export interface SQLiteNode {
   content: string | null;
   parent_id: string | null;
   depth: number;
-  
+
   // Entity classification
   entity_kind: string | null;
   entity_subtype: string | null;
   is_entity: number;
   source_note_id: string | null;
-  
+
   // Blueprint system
   blueprint_id: string | null;
-  
+
   // Narrative ordering
   sequence: number | null;
-  
+
   // Display properties
   color: string | null;
   is_pinned: number;
   favorite: number;
-  
+
   // Timestamps
   created_at: number;
   updated_at: number;
-  
+
   // Complex data (JSON strings)
   attributes: string | null;
   extraction: string | null;
@@ -99,11 +99,11 @@ export interface SQLiteNode {
   scene_metadata: string | null;
   event_metadata: string | null;
   blueprint_data: string | null;
-  
+
   // Inherited context
   inherited_kind: string | null;
   inherited_subtype: string | null;
-  
+
   // Type flags
   is_typed_root: number;
   is_subtype_root: number;
@@ -116,24 +116,24 @@ export interface SQLiteNodeInput {
   content?: string | null;
   parent_id?: string | null;
   depth?: number;
-  
+
   // Entity classification
   entity_kind?: string | null;
   entity_subtype?: string | null;
   is_entity?: boolean;
   source_note_id?: string | null;
-  
+
   // Blueprint system
   blueprint_id?: string | null;
-  
+
   // Narrative ordering
   sequence?: number | null;
-  
+
   // Display properties
   color?: string | null;
   is_pinned?: boolean;
   favorite?: boolean;
-  
+
   // Complex data (will be JSON.stringify'd)
   attributes?: Record<string, unknown> | null;
   extraction?: ExtractionData | null;
@@ -142,11 +142,11 @@ export interface SQLiteNodeInput {
   scene_metadata?: SceneMetadata | null;
   event_metadata?: EventMetadata | null;
   blueprint_data?: BlueprintData | null;
-  
+
   // Inherited context
   inherited_kind?: string | null;
   inherited_subtype?: string | null;
-  
+
   // Type flags
   is_typed_root?: boolean;
   is_subtype_root?: boolean;
@@ -343,7 +343,7 @@ export interface FTSSearchOptions {
 
 export const EMBEDDING_DIMS = {
   small: 256,
-  medium: 786,
+  medium: 768,
 } as const;
 
 export const EMBEDDING_MODELS = {

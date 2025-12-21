@@ -32,8 +32,16 @@ const MAX_INHERITANCE_DEPTH = 10;
  * 4. Computing a hash for the compiled artifact
  */
 export async function compileBlueprint(versionId: string): Promise<CompiledBlueprint> {
-  // Fetch version
-  const version = await getVersionById(versionId);
+  // Fetch version with a potential retry to handle initialization race conditions
+  let version = await getVersionById(versionId);
+
+  if (!version) {
+    console.warn(`[Compiler] Version ${versionId} not immediately found. Retrying...`);
+    // Brief delay to allow for store synchronization if needed
+    await new Promise(resolve => setTimeout(resolve, 50));
+    version = await getVersionById(versionId);
+  }
+
   if (!version) {
     throw new Error(`Version not found: ${versionId}`);
   }
@@ -104,11 +112,11 @@ export async function compileBlueprint(versionId: string): Promise<CompiledBluep
   // Fetch extraction profile with label mappings and ignore list
   const extractionProfile = await getExtractionProfile(versionId);
   let enrichedProfile;
-  
+
   if (extractionProfile) {
     const labelMappings = await getLabelMappings(extractionProfile.profile_id);
     const ignoreList = await getIgnoreList(extractionProfile.profile_id);
-    
+
     enrichedProfile = {
       ...extractionProfile,
       labelMappings,

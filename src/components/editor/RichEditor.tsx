@@ -73,8 +73,8 @@ import 'easydrawer/styles.css';
 import 'react-image-crop/dist/ReactCrop.css';
 
 // Import editor components
-import EditorToolbar from './editor/EditorToolbar';
-import EditorBubbleMenus from './editor/EditorBubbleMenus';
+import EditorToolbar from './EditorToolbar';
+import EditorBubbleMenus from './EditorBubbleMenus';
 
 import { useLayoutDimensions } from '@/hooks/useLayoutDimensions';
 
