@@ -33,6 +33,7 @@ import {
   Book,
   Sparkles,
   Boxes,
+  Settings,
 } from "lucide-react";
 import {
   Select,
@@ -43,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import { SemanticSearchPanel } from "@/components/search/SemanticSearchPanel";
 import { EntitiesPanel } from "@/components/EntitiesPanel";
+import { SettingsPanel } from "@/components/settings";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -352,6 +354,26 @@ function SubtypeFolderMenu({ parentId, parentKind, onComplete }: SubtypeFolderMe
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// Settings Button Component
+function SettingsButton() {
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 w-8 p-0 shrink-0"
+        onClick={() => setIsOpen(true)}
+        aria-label="Settings"
+      >
+        <Settings className="h-4 w-4" />
+      </Button>
+      <SettingsPanel open={isOpen} onOpenChange={setIsOpen} />
+    </>
   );
 }
 
@@ -1051,15 +1073,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-sidebar-border">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full mb-3 gap-2"
-          onClick={openHub}
-        >
-          <Boxes className="h-4 w-4" />
-          Blueprint Hub
-        </Button>
+        <div className="flex items-center gap-2 mb-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-2"
+            onClick={openHub}
+          >
+            <Boxes className="h-4 w-4" />
+            Blueprint Hub
+          </Button>
+          <SettingsButton />
+        </div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{state.notes.length} notes</span>
           {state.isSaving ? (

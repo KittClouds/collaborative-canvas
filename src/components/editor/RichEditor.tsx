@@ -268,6 +268,7 @@ function createExtensions(
       onTemporalClick,
       onBacklinkClick,
       nerEntities: getNEREntities,
+      useWidgetMode: true,
     }),
   ];
 }

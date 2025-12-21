@@ -97,7 +97,7 @@ export class LLMExtractor {
 
         const existingEdges = this.graph.getEdgesBetween(noteId, entityNode.data.id);
         const hasMention = existingEdges.some(e => e.data.type === 'MENTIONS');
-        
+
         if (!hasMention) {
           const edge = this.graph.addEdge({
             source: noteId,
@@ -199,11 +199,31 @@ Return a JSON object with this structure:
   }
 
   private async callLLM(
-    _prompt: LLMExtractionPrompt,
+    prompt: LLMExtractionPrompt,
     _options: LLMExtractionOptions
   ): Promise<string> {
-    console.warn('LLM extraction not implemented - connect to Mastra agent');
-    return JSON.stringify({ entities: [], relationships: [] });
+    try {
+      // Import UnifiedLLMEngine dynamically to avoid circular deps
+      const { UnifiedLLMEngine } = await import('@/lib/llm/UnifiedLLMEngine');
+
+      const response = await UnifiedLLMEngine.chat(
+        [
+          { role: 'system', content: prompt.systemPrompt },
+          { role: 'user', content: prompt.userPrompt },
+        ],
+        {
+          temperature: 0.3, // Low temp for extraction
+          maxTokens: 2048,
+        },
+        'extraction'
+      );
+
+      return response.content;
+    } catch (error) {
+      console.error('LLM extraction call failed:', error);
+      // Return empty structure on failure
+      return JSON.stringify({ entities: [], relationships: [] });
+    }
   }
 
   private parseLLMResponse(response: string): {

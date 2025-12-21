@@ -50,7 +50,7 @@ function NotesApp() {
   const { activateTimelineWithTemporal } = useTemporalHighlight();
 
   // Link index for wikilink navigation and footer links panel
-  const { findNoteByTitle, noteExists, getBacklinks, getOutgoingLinks } = useLinkIndex(state.notes);
+  const { findNoteByTitle, noteExists, getBacklinks, getOutgoingLinks, getEntityStats, getEntityMentions } = useLinkIndex(state.notes);
 
   const backlinks = useMemo(() =>
     selectedNote ? getBacklinks(selectedNote) : [],
@@ -60,6 +60,11 @@ function NotesApp() {
   const outgoingLinks = useMemo(() =>
     selectedNote ? getOutgoingLinks(selectedNote.id) : [],
     [selectedNote, getOutgoingLinks]
+  );
+
+  const entityStats = useMemo(() =>
+    selectedNote ? getEntityStats(selectedNote.id) : [],
+    [selectedNote, getEntityStats]
   );
 
   // Navigate to a note by title (for footer links panel)
@@ -283,9 +288,12 @@ function NotesApp() {
         <FooterLinksPanel
           backlinks={selectedNote ? backlinks : []}
           outgoingLinks={selectedNote ? outgoingLinks : []}
+          entityStats={selectedNote ? entityStats : []}
           notes={state.notes}
+          getEntityMentions={getEntityMentions}
           onNavigate={handleNavigateToNote}
         />
+
       </SidebarProvider>
     </RightSidebarProvider>
   );

@@ -32,7 +32,7 @@ export class LinkIndex {
    */
   parseNoteLinks(noteId: string, noteTitle: string, content: string): WikiLink[] {
     const links: WikiLink[] = [];
-    
+
     // Extract plain text from JSON content
     let plainText = '';
     try {
@@ -89,10 +89,10 @@ export class LinkIndex {
     while ((match = backlinkRegex.exec(plainText)) !== null) {
       const rawTitle = match[1].trim();
       const context = this.getContext(plainText, match.index, match[0].length);
-      
+
       // Check if backlink contains entity syntax (with optional attributes)
       const entityMatch = rawTitle.match(/^\[([A-Z_]+)(?::[A-Z_]+)?\|([^\]|]+)(?:\|[^\]]+)?\]$/);
-      
+
       if (entityMatch) {
         const entityKind = entityMatch[1] as EntityKind;
         const entityLabel = entityMatch[2].trim();
@@ -122,15 +122,15 @@ export class LinkIndex {
    */
   private extractTextFromDoc(node: any): string {
     if (!node) return '';
-    
+
     if (node.type === 'text' && node.text) {
       return node.text;
     }
-    
+
     if (node.content && Array.isArray(node.content)) {
       return node.content.map((child: any) => this.extractTextFromDoc(child)).join(' ');
     }
-    
+
     return '';
   }
 
@@ -141,11 +141,11 @@ export class LinkIndex {
     const contextRadius = 40;
     const start = Math.max(0, index - contextRadius);
     const end = Math.min(text.length, index + matchLength + contextRadius);
-    
+
     let context = text.slice(start, end).trim();
     if (start > 0) context = '...' + context;
     if (end < text.length) context = context + '...';
-    
+
     return context;
   }
 
@@ -199,7 +199,7 @@ export class LinkIndex {
         if (!this.backlinkMap.has(key)) {
           this.backlinkMap.set(key, []);
         }
-        
+
         this.backlinkMap.get(key)!.push({
           sourceNoteId,
           sourceNoteTitle: sourceNote.title,
@@ -216,7 +216,7 @@ export class LinkIndex {
    */
   getBacklinksForNote(note: Note): BacklinkInfo[] {
     const results: BacklinkInfo[] = [];
-    
+
     // Check by title
     const titleKey = this.getBacklinkKey(note.title);
     const titleBacklinks = this.backlinkMap.get(titleKey) || [];
@@ -226,7 +226,7 @@ export class LinkIndex {
     if (note.isEntity && note.entityLabel && note.entityKind) {
       const entityKey = this.getBacklinkKey(note.entityLabel, note.entityKind);
       const entityBacklinks = this.backlinkMap.get(entityKey) || [];
-      
+
       // Avoid duplicates
       for (const bl of entityBacklinks) {
         if (!results.some(r => r.sourceNoteId === bl.sourceNoteId)) {
@@ -251,8 +251,8 @@ export class LinkIndex {
    */
   findNoteByTitle(title: string, notes: Note[]): Note | undefined {
     const normalizedTitle = this.normalizeTitle(title);
-    
-    return notes.find(n => 
+
+    return notes.find(n =>
       this.normalizeTitle(n.title) === normalizedTitle ||
       (n.isEntity && n.entityLabel && this.normalizeTitle(n.entityLabel) === normalizedTitle)
     );
@@ -264,7 +264,73 @@ export class LinkIndex {
   noteExists(title: string, notes: Note[]): boolean {
     return this.findNoteByTitle(title, notes) !== undefined;
   }
+
+  /**
+   * Get all mentions of a specific entity across all notes
+   */
+  getEntityMentions(entityLabel: string, entityKind?: EntityKind): BacklinkInfo[] {
+    const key = this.getBacklinkKey(entityLabel, entityKind);
+    return this.backlinkMap.get(key) || [];
+  }
+
+  /**
+   * Get all entities mentioned in a note (grouped by entity)
+   */
+  getEntitiesInNote(noteId: string): Map<string, WikiLink[]> {
+    const links = this.outgoingLinks.get(noteId) || [];
+    const entityLinks = links.filter(l => l.linkType === 'entity');
+
+    // Group by entity (kind + label)
+    const grouped = new Map<string, WikiLink[]>();
+    for (const link of entityLinks) {
+      const key = `${link.entityKind}:${link.entityLabel}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push(link);
+    }
+
+    return grouped;
+  }
+
+  /**
+   * Get entity mention statistics for a note
+   */
+  getEntityStats(noteId: string): Array<{
+    entityKind: EntityKind;
+    entityLabel: string;
+    mentionsInThisNote: number;
+    mentionsAcrossVault: number;
+    appearanceCount: number;
+  }> {
+    const entities = this.getEntitiesInNote(noteId);
+    const stats: Array<{
+      entityKind: EntityKind;
+      entityLabel: string;
+      mentionsInThisNote: number;
+      mentionsAcrossVault: number;
+      appearanceCount: number;
+    }> = [];
+
+    entities.forEach((links, key) => {
+      const colonIdx = key.indexOf(':');
+      const kind = key.slice(0, colonIdx) as EntityKind;
+      const label = key.slice(colonIdx + 1);
+      const backlinks = this.getEntityMentions(label, kind);
+
+      stats.push({
+        entityKind: kind,
+        entityLabel: label,
+        mentionsInThisNote: links.length,
+        mentionsAcrossVault: backlinks.reduce((sum, bl) => sum + bl.linkCount, 0),
+        appearanceCount: backlinks.length,
+      });
+    });
+
+    return stats;
+  }
 }
+
 
 // Singleton instance
 export const linkIndex = new LinkIndex();

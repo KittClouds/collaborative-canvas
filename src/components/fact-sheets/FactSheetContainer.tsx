@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getSupportedModels, getDefaultModel } from '@/lib/extraction/extractionConfig';
+import { SettingsManager } from '@/lib/settings';
+import { ModelRegistry, ModelId } from '@/lib/llm';
 import { Button } from '@/components/ui/button';
 
 // Import all fact sheet components
@@ -27,7 +28,7 @@ import { SceneFactSheet } from './SceneFactSheet';
 import { BlueprintCardsPanel } from './BlueprintCardsPanel';
 
 // Map entity kinds to their fact sheet components
-const factSheetComponents: Record<EntityKind, React.ComponentType<{ entity: ParsedEntity; onUpdate: (attributes: EntityAttributes) => void }>> = {
+const factSheetComponents: Partial<Record<EntityKind, React.ComponentType<{ entity: ParsedEntity; onUpdate: (attributes: EntityAttributes) => void }>>> = {
   CHARACTER: CharacterFactSheet,
   LOCATION: LocationFactSheet,
   ITEM: ItemFactSheet,
@@ -53,23 +54,37 @@ function setPanelMode(mode: PanelMode) {
 
 export function FactSheetContainer() {
   const { selectedNote, updateNoteContent } = useNotes();
-  const { 
-    selectedEntity, 
-    setSelectedEntity, 
-    entitiesInCurrentNote, 
-    setEntitiesInCurrentNote 
+  const {
+    selectedEntity,
+    setSelectedEntity,
+    entitiesInCurrentNote,
+    setEntitiesInCurrentNote
   } = useEntitySelection();
 
   // Panel Mode State
   const [panelMode, setPanelModeState] = useState<PanelMode>(getPanelMode());
 
-  // Extraction Model State
-  const [extProvider, setExtProvider] = useState<'openai' | 'google' | 'anthropic'>('openai');
-  const [extModel, setExtModel] = useState(getDefaultModel('openai'));
+  // Extraction Model State (Synced with global settings by default)
+  const [extModel, setExtModel] = useState<ModelId>(() => {
+    return SettingsManager.getLLMSettings().extractorModel;
+  });
+
+  // Sync with global settings changes
+  useEffect(() => {
+    const settings = SettingsManager.load();
+    setExtModel(settings.llm.extractorModel);
+  }, [SettingsManager]);
 
   const handlePanelModeChange = useCallback((mode: PanelMode) => {
     setPanelModeState(mode);
     setPanelMode(mode);
+  }, []);
+
+  const handleModelChange = useCallback((modelId: string) => {
+    const id = modelId as ModelId;
+    setExtModel(id);
+    // Optionally update global settings if user changes it here
+    SettingsManager.updateLLMSettings({ extractorModel: id });
   }, []);
 
   // ... (rest of the component)
@@ -92,7 +107,7 @@ export function FactSheetContainer() {
       try {
         const parsed = JSON.parse(selectedNote.content);
         const connections = parseNoteConnectionsFromDocument(parsed);
-        
+
         for (const entity of connections.entities) {
           // Avoid duplicates (note entity already added)
           const isDuplicate = entities.some(
@@ -118,7 +133,7 @@ export function FactSheetContainer() {
   // Update context when entities change
   useEffect(() => {
     setEntitiesInCurrentNote(allEntities);
-    
+
     // Auto-select first entity if none selected or current selection not in list
     if (allEntities.length > 0) {
       const currentStillValid = selectedEntity && allEntities.some(
@@ -136,7 +151,7 @@ export function FactSheetContainer() {
   const handleAttributeUpdate = useCallback(
     (attributes: EntityAttributes) => {
       if (!selectedNote || !selectedEntity) return;
-      
+
       // For now, we'll store entity attributes in a special section of the note content
       // In a full implementation, this would update the entity's attributes in the content JSON
       try {
@@ -182,7 +197,7 @@ export function FactSheetContainer() {
   }
 
   // Get the correct fact sheet component
-  const FactSheetComponent = selectedEntity 
+  const FactSheetComponent = selectedEntity
     ? factSheetComponents[selectedEntity.kind]
     : null;
 
@@ -190,21 +205,28 @@ export function FactSheetContainer() {
     <div className="flex flex-col h-full">
       {/* Extraction Model Selector */}
       <div className="p-2 border-b border-border bg-muted/20 flex items-center gap-2">
-        <BrainCircuit className="h-4 w-4 text-muted-foreground shrink-0" title="Extraction Model" />
-        <Select value={extModel} onValueChange={setExtModel}>
+        <BrainCircuit className="h-4 w-4 text-muted-foreground shrink-0" />
+        <Select value={extModel} onValueChange={handleModelChange}>
           <SelectTrigger className="h-7 text-xs w-full bg-background">
-             <SelectValue placeholder="Select Extraction Model" />
+            <SelectValue placeholder="Select Extraction Model" />
           </SelectTrigger>
           <SelectContent>
-             {(['openai', 'google', 'anthropic'] as const).map(provider => (
-                <React.Fragment key={provider}>
-                   {getSupportedModels(provider).map(model => (
-                      <SelectItem key={model} value={model} className="text-xs">
-                        {model}
-                      </SelectItem>
-                   ))}
-                </React.Fragment>
-             ))}
+            <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Gemini
+            </div>
+            {ModelRegistry.getModelsByProvider('gemini').map(model => (
+              <SelectItem key={model.id} value={model.id} className="text-xs">
+                {model.name} {model.costPer1kTokens === 0 && '(FREE)'}
+              </SelectItem>
+            ))}
+            <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mt-1">
+              OpenRouter
+            </div>
+            {ModelRegistry.getModelsByProvider('openrouter').map(model => (
+              <SelectItem key={model.id} value={model.id} className="text-xs">
+                {model.name} {model.costPer1kTokens === 0 && '(FREE)'}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -250,8 +272,8 @@ export function FactSheetContainer() {
             </SelectTrigger>
             <SelectContent className="bg-popover border border-border">
               {allEntities.map((entity) => (
-                <SelectItem 
-                  key={`${entity.kind}|${entity.label}`} 
+                <SelectItem
+                  key={`${entity.kind}|${entity.label}`}
                   value={`${entity.kind}|${entity.label}`}
                 >
                   <span className="flex items-center gap-2">
@@ -270,8 +292,8 @@ export function FactSheetContainer() {
       {/* Fact sheet content */}
       <div className="flex-1 overflow-auto">
         {selectedEntity && panelMode === 'standard' && FactSheetComponent && (
-          <FactSheetComponent 
-            entity={selectedEntity} 
+          <FactSheetComponent
+            entity={selectedEntity}
             onUpdate={handleAttributeUpdate}
           />
         )}

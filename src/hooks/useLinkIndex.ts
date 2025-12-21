@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { linkIndex, type BacklinkInfo, type WikiLink } from '@/lib/linking/LinkIndex';
 import type { Note } from '@/contexts/NotesContext';
+import type { EntityKind } from '@/lib/entities/entityTypes';
+
+interface EntityStats {
+  entityKind: EntityKind;
+  entityLabel: string;
+  mentionsInThisNote: number;
+  mentionsAcrossVault: number;
+  appearanceCount: number;
+}
 
 /**
  * Hook to manage the link index and provide link-related functions
@@ -10,9 +19,9 @@ export function useLinkIndex(notes: Note[]) {
 
   // Rebuild index when notes change (debounced via dependency comparison)
   useEffect(() => {
-    // Simple hash to detect meaningful changes
-    const notesHash = notes.map(n => `${n.id}:${n.title}:${n.content.slice(0, 100)}`).join('|');
-    
+    // Use full content length to detect all changes
+    const notesHash = notes.map(n => `${n.id}:${n.title}:${n.content.length}:${n.content.slice(0, 200)}`).join('|');
+
     if (notesHash !== previousNotesRef.current) {
       previousNotesRef.current = notesHash;
       linkIndex.rebuildIndex(notes);
@@ -30,6 +39,16 @@ export function useLinkIndex(notes: Note[]) {
     return linkIndex.getOutgoingLinks(noteId);
   }, []);
 
+  // Get entity stats for a note
+  const getEntityStats = useCallback((noteId: string): EntityStats[] => {
+    return linkIndex.getEntityStats(noteId);
+  }, []);
+
+  // Get entity mentions across all notes
+  const getEntityMentions = useCallback((label: string, kind?: EntityKind): BacklinkInfo[] => {
+    return linkIndex.getEntityMentions(label, kind);
+  }, []);
+
   // Find a note by title
   const findNoteByTitle = useCallback((title: string): Note | undefined => {
     return linkIndex.findNoteByTitle(title, notes);
@@ -43,6 +62,8 @@ export function useLinkIndex(notes: Note[]) {
   return {
     getBacklinks,
     getOutgoingLinks,
+    getEntityStats,
+    getEntityMentions,
     findNoteByTitle,
     noteExists,
   };

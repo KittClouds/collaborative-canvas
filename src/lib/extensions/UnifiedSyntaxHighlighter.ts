@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, Selection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '../entities/entityTypes';
@@ -10,44 +10,92 @@ export interface UnifiedSyntaxOptions {
   checkWikilinkExists?: (title: string) => boolean;
   onTemporalClick?: (temporal: string) => void;
   onBacklinkClick?: (title: string) => void;
-  nerEntities?: NEREntity[] | (() => NEREntity[]); // Support array or getter function
+  nerEntities?: NEREntity[] | (() => NEREntity[]);
   onNEREntityClick?: (entity: NEREntity) => void;
+  useWidgetMode?: boolean;
 }
 
 const syntaxPluginKey = new PluginKey('unified-syntax-highlighter');
 
+// 🆕 Track which ranges are currently being edited
+interface EditingRange {
+  from: number;
+  to: number;
+}
+
 /**
- * Single decoration builder for ALL syntax types.
- * Processes in priority order to avoid overlaps:
- * 1. Entities [KIND:SUBTYPE|Label] or [KIND|Label]
- * 2. WikiLinks [[Page Title]]
- * 3. Tags #hashtag
- * 4. Mentions @username
+ * Check if cursor/selection overlaps with a range
+ */
+function isEditing(selection: { from: number; to: number }, range: EditingRange): boolean {
+  // Consider "near" as within 2 characters (allows placing cursor before/after)
+  const buffer = 2;
+  return (
+    (selection.from >= range.from - buffer && selection.from <= range.to + buffer) ||
+    (selection.to >= range.from - buffer && selection.to <= range.to + buffer) ||
+    (selection.from <= range.from && selection.to >= range.to)
+  );
+}
+
+/**
+ * Create widget with edit detection
+ */
+function createEditableWidget(
+  label: string,
+  kind: string,
+  fullMatch: string,
+  color: string
+): HTMLElement {
+  const span = document.createElement('span');
+  span.className = 'entity-widget';
+  span.textContent = label;
+  span.style.cssText = `
+    background-color: ${color}20;
+    color: ${color};
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+    font-size: 0.875em;
+    cursor: text;
+    display: inline-block;
+    position: relative;
+  `;
+  span.setAttribute('data-entity-kind', kind);
+  span.setAttribute('data-entity-label', label);
+  span.setAttribute('data-entity-full', fullMatch);
+
+  // 🆕 Make widget "clickable" to enable editing
+  span.setAttribute('contenteditable', 'false');
+  span.setAttribute('data-editable-widget', 'true');
+
+  return span;
+}
+
+/**
+ * Build decorations with smart editing detection
  */
 function buildAllDecorations(
   doc: ProseMirrorNode,
-  options: UnifiedSyntaxOptions
+  options: UnifiedSyntaxOptions,
+  selection?: { from: number; to: number }
 ): DecorationSet {
   const decorations: Decoration[] = [];
+  const useWidgets = options.useWidgetMode ?? false;
 
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
 
     const text = node.text;
-
-    // Track character positions already decorated to prevent overlaps
     const processed = new Set<number>();
 
-    // 1. Entity syntax: [KIND:SUBTYPE|Label] or [KIND|Label] or [KIND|Label|{attrs}]
+    // 1. Entity syntax - WITH SMART WIDGET MODE
     const entityRegex = /\[([A-Z_]+(?::[A-Z_]+)?)\|([^\]|]+)(?:\|[^\]]+)?\]/g;
     let match;
 
     while ((match = entityRegex.exec(text)) !== null) {
-      const [fullMatch, kind] = match;
+      const [fullMatch, kind, label] = match;
       const from = pos + match.index;
       const to = from + fullMatch.length;
 
-      // Mark range as processed
       for (let i = match.index; i < match.index + fullMatch.length; i++) {
         processed.add(i);
       }
@@ -56,26 +104,50 @@ function buildAllDecorations(
       if (ENTITY_KINDS.includes(baseKind)) {
         const color = ENTITY_COLORS[baseKind] || '#6b7280';
 
-        decorations.push(
-          Decoration.inline(from, to, {
-            class: 'entity-highlight',
-            style: `background-color: ${color}20; color: ${color}; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em;`,
-            'data-kind': kind,
-          }, { inclusiveStart: false, inclusiveEnd: false })
-        );
+        // 🆕 Check if this entity is being edited
+        const isCurrentlyEditing = selection
+          ? isEditing(selection, { from, to })
+          : false;
+
+        if (useWidgets && !isCurrentlyEditing) {
+          // WIDGET MODE: Show clean widget (not being edited)
+          const widget = createEditableWidget(label, kind, fullMatch, color);
+          decorations.push(
+            Decoration.widget(from, widget, {
+              side: -1, // 🆕 Changed from 0 to -1 (places widget BEFORE position)
+              key: `entity-${from}-${fullMatch}`,
+            })
+          );
+          // Hide original text
+          decorations.push(
+            Decoration.inline(from, to, {
+              class: 'entity-hidden',
+              style: 'position: absolute; left: -9999px; pointer-events: none;',
+            })
+          );
+        } else {
+          // INLINE MODE: Show full syntax (being edited OR widget mode off)
+          decorations.push(
+            Decoration.inline(from, to, {
+              class: 'entity-highlight entity-editing',
+              style: `background-color: ${color}20; color: ${color}; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em;`,
+              'data-kind': kind,
+            }, { inclusiveStart: false, inclusiveEnd: false })
+          );
+        }
       }
     }
 
-    // 2. WikiLinks: [[Page Title]] or [[Page Title|Display]]
+    // 2. WikiLinks - SAME PATTERN
     const wikilinkRegex = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
 
     while ((match = wikilinkRegex.exec(text)) !== null) {
+      const [fullMatch, title] = match;
       const from = pos + match.index;
-      const to = from + match[0].length;
+      const to = from + fullMatch.length;
 
-      // Skip if overlaps with already processed range
       let hasOverlap = false;
-      for (let i = match.index; i < match.index + match[0].length; i++) {
+      for (let i = match.index; i < match.index + fullMatch.length; i++) {
         if (processed.has(i)) {
           hasOverlap = true;
           break;
@@ -83,37 +155,116 @@ function buildAllDecorations(
       }
       if (hasOverlap) continue;
 
-      // Mark as processed
-      for (let i = match.index; i < match.index + match[0].length; i++) {
+      for (let i = match.index; i < match.index + fullMatch.length; i++) {
         processed.add(i);
       }
 
-      const title = match[1].trim();
-      const exists = options.checkWikilinkExists?.(title) ?? true;
+      const titleTrimmed = title.trim();
+      const exists = options.checkWikilinkExists?.(titleTrimmed) ?? true;
 
-      const baseStyle = 'padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;';
-      const style = exists
-        ? `${baseStyle} background-color: hsl(var(--primary) / 0.15); color: hsl(var(--primary)); text-decoration: underline; text-decoration-style: dotted;`
-        : `${baseStyle} background-color: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); text-decoration: underline; text-decoration-style: dashed;`;
+      const isCurrentlyEditing = selection
+        ? isEditing(selection, { from, to })
+        : false;
 
-      decorations.push(
-        Decoration.inline(from, to, {
-          class: exists ? 'wikilink-highlight wikilink-exists' : 'wikilink-highlight wikilink-broken',
-          style,
-          'data-wikilink-title': title,
-          'data-wikilink-exists': exists ? 'true' : 'false',
-        }, { inclusiveStart: false, inclusiveEnd: false })
-      );
+      if (useWidgets && !isCurrentlyEditing) {
+        // WIDGET MODE
+        const widget = createWikilinkWidget(titleTrimmed, fullMatch, exists);
+        decorations.push(
+          Decoration.widget(from, widget, {
+            side: -1,
+            key: `wikilink-${from}-${fullMatch}`,
+          })
+        );
+        decorations.push(
+          Decoration.inline(from, to, {
+            class: 'wikilink-hidden',
+            style: 'position: absolute; left: -9999px; pointer-events: none;',
+          })
+        );
+      } else {
+        // INLINE MODE
+        const baseStyle = 'padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;';
+        const style = exists
+          ? `${baseStyle} background-color: hsl(var(--primary) / 0.15); color: hsl(var(--primary)); text-decoration: underline; text-decoration-style: dotted;`
+          : `${baseStyle} background-color: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); text-decoration: underline; text-decoration-style: dashed;`;
+
+        decorations.push(
+          Decoration.inline(from, to, {
+            class: exists ? 'wikilink-highlight wikilink-editing' : 'wikilink-highlight wikilink-broken wikilink-editing',
+            style,
+            'data-wikilink-title': titleTrimmed,
+            'data-wikilink-exists': exists ? 'true' : 'false',
+          }, { inclusiveStart: false, inclusiveEnd: false })
+        );
+      }
     }
 
-    // 3. Tags: #hashtag
+    // 3. Backlinks - SAME PATTERN
+    const backlinkRegex = /<<([^>]+)>>/g;
+
+    while ((match = backlinkRegex.exec(text)) !== null) {
+      const [fullMatch, backlinkTitle] = match;
+      const from = pos + match.index;
+      const to = from + fullMatch.length;
+
+      let hasOverlap = false;
+      for (let i = match.index; i < match.index + fullMatch.length; i++) {
+        if (processed.has(i)) {
+          hasOverlap = true;
+          break;
+        }
+      }
+      if (hasOverlap) continue;
+
+      for (let i = match.index; i < match.index + fullMatch.length; i++) {
+        processed.add(i);
+      }
+
+      const titleTrimmed = backlinkTitle.trim();
+      const entityMatch = titleTrimmed.match(/^\[([A-Z_]+)(?::[A-Z_]+)?\|/);
+      const entityKind = entityMatch ? entityMatch[1] as EntityKind : null;
+      const color = entityKind && ENTITY_COLORS[entityKind]
+        ? ENTITY_COLORS[entityKind]
+        : 'hsl(var(--primary))';
+
+      const isCurrentlyEditing = selection
+        ? isEditing(selection, { from, to })
+        : false;
+
+      if (useWidgets && !isCurrentlyEditing) {
+        // WIDGET MODE
+        const widget = createBacklinkWidget(titleTrimmed, fullMatch, color);
+        decorations.push(
+          Decoration.widget(from, widget, {
+            side: -1,
+            key: `backlink-${from}-${fullMatch}`,
+          })
+        );
+        decorations.push(
+          Decoration.inline(from, to, {
+            class: 'backlink-hidden',
+            style: 'position: absolute; left: -9999px; pointer-events: none;',
+          })
+        );
+      } else {
+        // INLINE MODE
+        decorations.push(
+          Decoration.inline(from, to, {
+            class: 'backlink-highlight backlink-editing',
+            style: `background-color: ${color}20; color: ${color}; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;`,
+            'data-backlink-title': titleTrimmed,
+          }, { inclusiveStart: false, inclusiveEnd: false })
+        );
+      }
+    }
+
+    // 4. Tags: #hashtag
     const tagRegex = /#(\w+)/g;
 
     while ((match = tagRegex.exec(text)) !== null) {
       const from = pos + match.index;
       const to = from + match[0].length;
 
-      // Skip if overlaps
       let hasOverlap = false;
       for (let i = match.index; i < match.index + match[0].length; i++) {
         if (processed.has(i)) {
@@ -123,7 +274,6 @@ function buildAllDecorations(
       }
       if (hasOverlap) continue;
 
-      // Mark as processed
       for (let i = match.index; i < match.index + match[0].length; i++) {
         processed.add(i);
       }
@@ -137,14 +287,13 @@ function buildAllDecorations(
       );
     }
 
-    // 4. Mentions: @username
+    // 5. Mentions: @username
     const mentionRegex = /@(\w+)/g;
 
     while ((match = mentionRegex.exec(text)) !== null) {
       const from = pos + match.index;
       const to = from + match[0].length;
 
-      // Skip if overlaps
       let hasOverlap = false;
       for (let i = match.index; i < match.index + match[0].length; i++) {
         if (processed.has(i)) {
@@ -154,7 +303,6 @@ function buildAllDecorations(
       }
       if (hasOverlap) continue;
 
-      // Mark as processed
       for (let i = match.index; i < match.index + match[0].length; i++) {
         processed.add(i);
       }
@@ -168,35 +316,25 @@ function buildAllDecorations(
       );
     }
 
-    // 5. Temporal expressions: "three days later", "next morning", etc.
+    // 6. Temporal expressions
     const temporalPatterns = [
-      // Relative time: "X days/weeks/hours later/before/after"
       /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(second|minute|hour|day|week|month|year)s?\s+(later|before|after|earlier|ago)\b/gi,
-      // Next/last patterns: "next morning", "last night"
       /\b(next|last|the following|the previous)\s+(morning|afternoon|evening|night|day|week|month|year|dawn|dusk|midnight|noon)\b/gi,
-      // Simple time words
       /\b(yesterday|tomorrow|today|tonight|nowadays)\b/gi,
-      // Time of day patterns
       /\b(at|by|before|after|around)\s+(dawn|dusk|midnight|noon|sunrise|sunset)\b/gi,
-      // Moments patterns
       /\b(moments?|seconds?|minutes?|hours?)\s+(later|before|after|earlier)\b/gi,
-      // Meanwhile, eventually, etc.
       /\b(meanwhile|eventually|suddenly|immediately|soon|later|afterwards|beforehand)\b/gi,
-      // "In the morning/evening"
       /\b(in the|that)\s+(morning|afternoon|evening|night)\b/gi,
-      // Chapter/sequential time hints
       /\b(the next day|the day after|the night before|the morning of|the evening of)\b/gi,
     ];
 
     for (const temporalRegex of temporalPatterns) {
-      // Reset regex state for each pattern
       temporalRegex.lastIndex = 0;
 
       while ((match = temporalRegex.exec(text)) !== null) {
         const from = pos + match.index;
         const to = from + match[0].length;
 
-        // Skip if overlaps
         let hasOverlap = false;
         for (let i = match.index; i < match.index + match[0].length; i++) {
           if (processed.has(i)) {
@@ -206,7 +344,6 @@ function buildAllDecorations(
         }
         if (hasOverlap) continue;
 
-        // Mark as processed
         for (let i = match.index; i < match.index + match[0].length; i++) {
           processed.add(i);
         }
@@ -221,70 +358,26 @@ function buildAllDecorations(
       }
     }
 
-    // 6. Backlinks: <<Page Title>> or <<[KIND|Label]>>
-    const backlinkRegex = /<<([^>]+)>>/g;
-
-    while ((match = backlinkRegex.exec(text)) !== null) {
-      const from = pos + match.index;
-      const to = from + match[0].length;
-
-      // Skip if overlaps
-      let hasOverlap = false;
-      for (let i = match.index; i < match.index + match[0].length; i++) {
-        if (processed.has(i)) {
-          hasOverlap = true;
-          break;
-        }
-      }
-      if (hasOverlap) continue;
-
-      // Mark as processed
-      for (let i = match.index; i < match.index + match[0].length; i++) {
-        processed.add(i);
-      }
-
-      const backlinkTitle = match[1].trim();
-
-      // Check if backlink contains entity syntax for color
-      const entityMatch = backlinkTitle.match(/^\[([A-Z_]+)(?::[A-Z_]+)?\|/);
-      const entityKind = entityMatch ? entityMatch[1] as EntityKind : null;
-      const color = entityKind && ENTITY_COLORS[entityKind]
-        ? ENTITY_COLORS[entityKind]
-        : 'hsl(var(--primary))';
-
-      decorations.push(
-        Decoration.inline(from, to, {
-          class: 'backlink-highlight',
-          style: `background-color: ${color}20; color: ${color}; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;`,
-          'data-backlink-title': backlinkTitle,
-        }, { inclusiveStart: false, inclusiveEnd: false })
-      );
-    }
-
-    // 7. NER-detected entities (runs last, lowest priority)
+    // 7. NER-detected entities
     const nerEntities = typeof options.nerEntities === 'function'
       ? options.nerEntities()
       : options.nerEntities || [];
 
     if (nerEntities.length > 0) {
       for (const entity of nerEntities) {
-        // Only process entities within this text node's range
         const entityStart = entity.start;
         const entityEnd = entity.end;
         const nodeStart = pos;
         const nodeEnd = pos + text.length;
 
-        // Check if entity overlaps with this text node
         if (entityEnd <= nodeStart || entityStart >= nodeEnd) continue;
 
-        // Calculate positions relative to this node
         const relativeStart = Math.max(0, entityStart - nodeStart);
         const relativeEnd = Math.min(text.length, entityEnd - nodeStart);
 
         const from = pos + relativeStart;
         const to = pos + relativeEnd;
 
-        // Skip if overlaps with already processed ranges
         let hasOverlap = false;
         for (let i = relativeStart; i < relativeEnd; i++) {
           if (processed.has(i)) {
@@ -294,7 +387,6 @@ function buildAllDecorations(
         }
         if (hasOverlap) continue;
 
-        // Mark as processed
         for (let i = relativeStart; i < relativeEnd; i++) {
           processed.add(i);
         }
@@ -316,6 +408,61 @@ function buildAllDecorations(
   return DecorationSet.create(doc, decorations);
 }
 
+// Helper functions (moved outside, reuse for all types)
+function createWikilinkWidget(
+  title: string,
+  fullMatch: string,
+  exists: boolean
+): HTMLElement {
+  const span = document.createElement('span');
+  span.className = exists ? 'wikilink-widget wikilink-exists' : 'wikilink-widget wikilink-broken';
+  span.textContent = title;
+
+  const baseStyle = 'padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: text; display: inline-block;';
+  const style = exists
+    ? `${baseStyle} background-color: hsl(var(--primary) / 0.15); color: hsl(var(--primary)); text-decoration: underline; text-decoration-style: dotted;`
+    : `${baseStyle} background-color: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); text-decoration: underline; text-decoration-style: dashed;`;
+
+  span.style.cssText = style;
+  span.setAttribute('data-wikilink-title', title);
+  span.setAttribute('data-wikilink-exists', exists ? 'true' : 'false');
+  span.setAttribute('data-wikilink-full', fullMatch);
+  span.setAttribute('contenteditable', 'false');
+  span.setAttribute('data-editable-widget', 'true');
+
+  return span;
+}
+
+function createBacklinkWidget(
+  backlinkTitle: string,
+  fullMatch: string,
+  color: string
+): HTMLElement {
+  const span = document.createElement('span');
+  span.className = 'backlink-widget';
+
+  const entityMatch = backlinkTitle.match(/\[([A-Z_]+)(?::[A-Z_]+)?\|([^\]]+)\]/);
+  const displayText = entityMatch ? entityMatch[2] : backlinkTitle;
+
+  span.textContent = displayText;
+  span.style.cssText = `
+    background-color: ${color}20;
+    color: ${color};
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+    font-size: 0.875em;
+    cursor: text;
+    display: inline-block;
+  `;
+  span.setAttribute('data-backlink-title', backlinkTitle);
+  span.setAttribute('data-backlink-full', fullMatch);
+  span.setAttribute('contenteditable', 'false');
+  span.setAttribute('data-editable-widget', 'true');
+
+  return span;
+}
+
 export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
   name: 'unifiedSyntaxHighlighter',
 
@@ -327,6 +474,7 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
       onBacklinkClick: undefined,
       nerEntities: undefined,
       onNEREntityClick: undefined,
+      useWidgetMode: false,
     };
   },
 
@@ -341,14 +489,18 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
             return buildAllDecorations(doc, options);
           },
           apply(tr, oldDecorations, oldState, newState) {
-            // Only rebuild if document content changed, not just selection
-            if (!tr.docChanged) {
-              // Map existing decorations through the transaction
+            // Always rebuild on document change OR selection change (in widget mode)
+            if (!tr.docChanged && !tr.selectionSet) {
               return oldDecorations.map(tr.mapping, tr.doc);
             }
 
-            // Document changed - rebuild decorations
-            return buildAllDecorations(newState.doc, options);
+            // 🆕 Pass selection to decoration builder (for edit detection)
+            const selection = {
+              from: newState.selection.from,
+              to: newState.selection.to,
+            };
+
+            return buildAllDecorations(newState.doc, options, selection);
           },
         },
         props: {
@@ -357,19 +509,37 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
           },
 
           handleDOMEvents: {
+            // 🆕 Handle clicks on widgets to enable editing
+            mousedown: (view, event) => {
+              const target = event.target as HTMLElement;
+
+              if (target.getAttribute('data-editable-widget') === 'true') {
+                // User clicked on a widget - find its position and place cursor there
+                const pos = view.posAtDOM(target, 0);
+                const tr = view.state.tr.setSelection(
+                  Selection.near(view.state.doc.resolve(pos))
+                );
+                view.dispatch(tr);
+                event.preventDefault();
+                return true;
+              }
+
+              return false;
+            },
+
             click: (view, event) => {
               const target = event.target as HTMLElement;
 
-              // Handle wikilink clicks
+              // Handle wikilink clicks (when NOT in edit mode)
               const wikilinkTitle = target.getAttribute('data-wikilink-title');
-              if (wikilinkTitle && options.onWikilinkClick) {
+              if (wikilinkTitle && options.onWikilinkClick && !target.classList.contains('wikilink-editing')) {
                 event.preventDefault();
                 event.stopPropagation();
                 options.onWikilinkClick(wikilinkTitle);
                 return true;
               }
 
-              // Handle temporal expression clicks
+              // Handle temporal clicks
               const temporalText = target.getAttribute('data-temporal');
               if (temporalText && options.onTemporalClick) {
                 event.preventDefault();
@@ -378,16 +548,16 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
                 return true;
               }
 
-              // Handle backlink clicks
+              // Handle backlink clicks (when NOT in edit mode)
               const backlinkTitle = target.getAttribute('data-backlink-title');
-              if (backlinkTitle && options.onBacklinkClick) {
+              if (backlinkTitle && options.onBacklinkClick && !target.classList.contains('backlink-editing')) {
                 event.preventDefault();
                 event.stopPropagation();
                 options.onBacklinkClick(backlinkTitle);
                 return true;
               }
 
-              // Handle NER entity clicks
+              // Handle NER clicks
               const nerEntity = target.getAttribute('data-ner-entity');
               if (nerEntity && options.onNEREntityClick) {
                 event.preventDefault();
