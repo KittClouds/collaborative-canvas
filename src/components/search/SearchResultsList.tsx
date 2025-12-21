@@ -1,13 +1,15 @@
-import { TrendingUp, FileText } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { FileText, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import type { SearchResult } from '@/lib/search/searchOrchestrator';
+import { Card, CardContent } from '@/components/ui/card';
+import type { SearchResult } from '@/lib/db/search';
 
 interface SearchResultsListProps {
   results: SearchResult[];
   isLoading: boolean;
   query: string;
   onResultClick: (noteId: string) => void;
+  searchMode?: 'semantic' | 'hybrid';
 }
 
 export function SearchResultsList({
@@ -15,133 +17,185 @@ export function SearchResultsList({
   isLoading,
   query,
   onResultClick,
+  searchMode = 'semantic'
 }: SearchResultsListProps) {
+  const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (nodeId: string) => {
+    setExpandedResults(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
+
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-sm text-muted-foreground animate-pulse">
-          Searching...
-        </div>
+      <div className="flex items-center justify-center h-32">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  if (results.length === 0 && query.trim()) {
+  if (!query) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-        <FileText className="h-8 w-8 text-muted-foreground/50 mb-2" />
-        <p className="text-sm text-muted-foreground">No results found</p>
-        <p className="text-xs text-muted-foreground/70 mt-1">
-          Try syncing more notes or adjusting your query
-        </p>
+      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+        Enter a search query
       </div>
     );
   }
 
   if (results.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-        <FileText className="h-8 w-8 text-muted-foreground/50 mb-2" />
-        <p className="text-sm text-muted-foreground">Enter a search query</p>
-        <p className="text-xs text-muted-foreground/70 mt-1">
-          Semantic search finds related notes by meaning
-        </p>
+      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+        No results found
       </div>
     );
   }
 
   return (
     <ScrollArea className="flex-1">
-      <div className="space-y-2 p-1">
-        {results.map((result) => (
-          <SearchResultItem
-            key={result.noteId}
-            result={result}
-            query={query}
-            onClick={() => onResultClick(result.noteId)}
-          />
-        ))}
+      <div className="space-y-2 pr-3">
+        {results.map((result) => {
+          const isExpanded = expandedResults.has(result.node_id);
+          const breakdown = searchMode === 'hybrid' ? result.metadata?.breakdown : undefined;
+
+          return (
+            <Card
+              key={result.node_id}
+              className="cursor-pointer hover:bg-sidebar-accent/50 transition-colors"
+              onClick={() => onResultClick(result.node_id)}
+            >
+              <CardContent className="p-3 space-y-2">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                    <FileText className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-medium truncate">{result.label}</h4>
+                      {result.metadata?.type && (
+                        <span className="text-xs text-muted-foreground">
+                          {result.metadata.type}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Score Badge */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-medium text-primary">
+                      {(result.score * 100).toFixed(0)}%
+                    </span>
+                    <span className="px-1.5 py-0.5 text-xs bg-sidebar-accent rounded">
+                      {result.source}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Content Preview */}
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  {result.content.slice(0, 150)}
+                  {result.content.length > 150 && '...'}
+                </p>
+
+                {/* Hybrid Breakdown */}
+                {breakdown && (
+                  <div className="space-y-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpanded(result.node_id);
+                      }}
+                      className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {isExpanded ? (
+                        <ChevronUp className="w-3 h-3" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3" />
+                      )}
+                      Score Breakdown
+                    </button>
+
+                    {isExpanded && (
+                      <div className="space-y-2 pl-5">
+                        {/* Visual Breakdown */}
+                        <div className="space-y-1">
+                          <ScoreBar
+                            label="Lexical"
+                            value={breakdown.lexical}
+                            color="bg-blue-500"
+                          />
+                          <ScoreBar
+                            label="Vector"
+                            value={breakdown.vector}
+                            color="bg-purple-500"
+                          />
+                          <ScoreBar
+                            label="Graph"
+                            value={breakdown.graph}
+                            color="bg-green-500"
+                          />
+                        </div>
+
+                        {/* Applied Weights */}
+                        <div className="text-xs text-muted-foreground">
+                          Weights: L={breakdown.weights.lexical.toFixed(2)},
+                          V={breakdown.weights.vector.toFixed(2)},
+                          G={breakdown.weights.graph.toFixed(2)}
+                        </div>
+
+                        {/* Graph Signal Details (if available) */}
+                        {breakdown.graphSignal && (
+                          <div className="text-xs space-y-1 text-muted-foreground">
+                            <div className="font-medium">Graph Signals:</div>
+                            <div className="pl-2 space-y-0.5">
+                              <div>Degree: {breakdown.graphSignal.degree}</div>
+                              <div>Centrality: {breakdown.graphSignal.centrality.toFixed(3)}</div>
+                              {breakdown.graphSignal.connectedToCandidates > 0 && (
+                                <div>Connected: {breakdown.graphSignal.connectedToCandidates} candidates</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </ScrollArea>
   );
 }
 
-interface SearchResultItemProps {
-  result: SearchResult;
-  query: string;
-  onClick: () => void;
-}
-
-function SearchResultItem({ result, query, onClick }: SearchResultItemProps) {
-  const scorePercent = Math.round(result.score * 100);
-
+// Helper component for score visualization
+function ScoreBar({
+  label,
+  value,
+  color
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
   return (
-    <div
-      className="p-3 rounded-md border bg-card hover:bg-accent cursor-pointer transition-colors"
-      onClick={onClick}
-    >
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <span className="font-medium text-sm truncate flex-1">
-          {result.noteTitle}
-        </span>
-        <Badge variant="secondary" className="text-xs shrink-0">
-          {scorePercent}%
-        </Badge>
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">{(value * 100).toFixed(0)}%</span>
       </div>
-
-      <p className="text-xs text-muted-foreground line-clamp-2">
-        {highlightQuery(result.snippet, query)}
-      </p>
-
-      <div className="flex items-center gap-2 mt-2">
-        {result.graphExpanded && (
-          <div className="flex items-center gap-1 text-xs text-blue-500">
-            <TrendingUp className="h-3 w-3" />
-            <span>Graph-expanded</span>
-          </div>
-        )}
-
-        {result.entityMatches.length > 0 && (
-          <div className="flex gap-1 flex-wrap">
-            {result.entityMatches.slice(0, 2).map((entity, i) => (
-              <Badge key={i} variant="outline" className="text-[10px] px-1 py-0">
-                {entity}
-              </Badge>
-            ))}
-            {result.entityMatches.length > 2 && (
-              <Badge variant="outline" className="text-[10px] px-1 py-0">
-                +{result.entityMatches.length - 2}
-              </Badge>
-            )}
-          </div>
-        )}
+      <div className="h-1.5 bg-sidebar-accent rounded-full overflow-hidden">
+        <div
+          className={`h-full ${color} transition-all duration-300`}
+          style={{ width: `${value * 100}%` }}
+        />
       </div>
     </div>
   );
-}
-
-function highlightQuery(text: string, query: string): React.ReactNode {
-  if (!query.trim()) return text;
-
-  const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-  if (words.length === 0) return text;
-
-  const regex = new RegExp(`(${words.map(escapeRegex).join('|')})`, 'gi');
-  const parts = text.split(regex);
-
-  return parts.map((part, i) => {
-    const isMatch = words.some(w => part.toLowerCase() === w);
-    if (isMatch) {
-      return (
-        <mark key={i} className="bg-yellow-200 dark:bg-yellow-800 rounded px-0.5">
-          {part}
-        </mark>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

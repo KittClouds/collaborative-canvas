@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
-import { search, setSearchContext } from '@/lib/search/searchOrchestrator';
+import { searchService } from '@/lib/db/search';
 import { syncService, healthTracker } from '@/lib/embeddings';
-import type { SearchResult, SearchResponse } from '@/lib/search/searchOrchestrator';
+import type { SearchResult } from '@/lib/db/search';
 import type { SyncScope, SyncProgress, SyncStatus } from '@/lib/embeddings/syncService';
 import type { EmbeddingHealth } from '@/lib/embeddings/healthTracker';
 import { useNotes } from './NotesContext';
@@ -13,13 +13,18 @@ interface SearchState {
   searchMetadata?: {
     totalResults: number;
     searchTime: number;
-    modelUsed: 'small' | 'medium';
     graphExpanded: boolean;
   };
   embeddingHealth: EmbeddingHealth;
   syncStatus: SyncStatus;
   syncProgress?: SyncProgress;
   selectedModel: 'small' | 'medium';
+  searchMode: 'semantic' | 'hybrid';
+  hybridWeights: {
+    vector: number;
+    graph: number;
+    lexical: number;
+  };
 }
 
 interface SearchContextValue extends SearchState {
@@ -29,6 +34,8 @@ interface SearchContextValue extends SearchState {
   cancelSync: () => void;
   refreshHealth: () => Promise<void>;
   setSelectedModel: (model: 'small' | 'medium') => void;
+  setSearchMode: (mode: 'semantic' | 'hybrid') => void;
+  setHybridWeights: (weights: { vector: number; graph: number; lexical: number }) => void;
 }
 
 const SearchContext = createContext<SearchContextValue | undefined>(undefined);
@@ -50,6 +57,12 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ isRunning: false });
   const [syncProgress, setSyncProgress] = useState<SyncProgress>();
   const [selectedModel, setSelectedModel] = useState<'small' | 'medium'>('small');
+  const [searchMode, setSearchMode] = useState<'semantic' | 'hybrid'>('semantic');
+  const [hybridWeights, setHybridWeights] = useState({
+    vector: 0.4,
+    graph: 0.4,
+    lexical: 0.2,
+  });
 
   useEffect(() => {
     const notesProvider = () => state.notes.map(n => ({
@@ -64,14 +77,6 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       id: n.id,
       folderId: n.folderId,
     })));
-
-    setSearchContext({
-      getNoteById: (id: string) => {
-        const note = state.notes.find(n => n.id === id);
-        if (!note) return undefined;
-        return { id: note.id, title: note.title, content: note.content };
-      },
-    });
   }, [state.notes]);
 
   useEffect(() => {
@@ -102,31 +107,44 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const executeSearch = useCallback(async () => {
-    if (!query.trim()) {
-      setResults([]);
-      setSearchMetadata(undefined);
-      return;
-    }
+    if (!query.trim()) return;
 
     setIsSearching(true);
+    const startTime = performance.now();
 
     try {
-      const response = await search({
+      const results = await searchService.search({
         query,
-        maxResults: 20,
-        enableGraphExpansion: true,
-        model: selectedModel,
+        k: 20,
+        mode: searchMode,
+        semanticOptions: {
+          model: selectedModel,
+          threshold: 0.5,
+        },
+        ...(searchMode === 'hybrid' && {
+          hybridOptions: {
+            vectorWeight: hybridWeights.vector,
+            graphWeight: hybridWeights.graph,
+            lexicalWeight: hybridWeights.lexical,
+            maxHops: 2,
+            boostConnected: true,
+          },
+        }),
       });
 
-      setResults(response.results);
-      setSearchMetadata(response.metadata);
-    } catch (e) {
-      console.error('Search failed:', e);
+      setResults(results);
+      setSearchMetadata({
+        totalResults: results.length,
+        searchTime: Math.round(performance.now() - startTime),
+        graphExpanded: searchMode === 'hybrid',
+      });
+    } catch (error) {
+      console.error('Search failed:', error);
       setResults([]);
     } finally {
       setIsSearching(false);
     }
-  }, [query, selectedModel]);
+  }, [query, selectedModel, searchMode, hybridWeights]);
 
   const syncEmbeddings = useCallback(async (scope: SyncScope) => {
     setSyncStatus({ isRunning: true, scope });
@@ -152,12 +170,16 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
     syncStatus,
     syncProgress,
     selectedModel,
+    searchMode,
+    hybridWeights,
     setQuery,
     executeSearch,
     syncEmbeddings,
     cancelSync,
     refreshHealth,
     setSelectedModel,
+    setSearchMode,
+    setHybridWeights,
   }), [
     query,
     results,
@@ -167,6 +189,8 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
     syncStatus,
     syncProgress,
     selectedModel,
+    searchMode,
+    hybridWeights,
     executeSearch,
     syncEmbeddings,
     cancelSync,

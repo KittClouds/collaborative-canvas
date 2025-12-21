@@ -40,3 +40,35 @@ export type { SearchOptions, SearchResult, SearchStats } from './queries/ResoRan
 export { GraphSyncManager, getGraphSyncManager, resetGraphSyncManager } from './integration';
 export type { SyncOptions } from './integration';
 export { GraphResoRankSync, getGraphResoRankSync, resetGraphResoRankSync } from './integration';
+
+// Episode system
+export { EpisodeManager } from './episodes';
+export type { Episode, EpisodeId, EpisodeMetadata } from './episodes';
+
+// Community system
+export { CommunityManager } from './communities';
+export type {
+    Community,
+    CommunityId,
+    CommunityType,
+    CommunityDetectionOptions,
+    BridgeNodeInfo,
+    CommunityRelationship,
+    CommunityStats,
+} from './communities';
+
+// Temporal system
+export { TemporalQueryManager } from './temporal';
+export type {
+    TimeRangeOptions,
+    TemporalProximityOptions,
+    DuringOptions,
+    EntityTimelineOptions,
+    SequenceOptions,
+    CoOccurrenceOptions,
+    TemporalQueryResult,
+    EntityTimeline,
+    TemporalGap,
+    TemporalSequence,
+    CoOccurrenceResult,
+} from './temporal';

@@ -144,10 +144,10 @@ export class UnifiedGraph {
 
     node.data(newData);
     this.indexes.updateNodeIndex(id, oldData, newData);
-    
+
     const newClasses = this.getNodeClasses(newData);
     node.classes(newClasses.join(' '));
-    
+
     this.updateLastModified();
   }
 
@@ -249,10 +249,10 @@ export class UnifiedGraph {
     const newData = { ...oldData, ...data, updatedAt: Date.now() };
 
     edge.data(newData);
-    
+
     const newClasses = this.getEdgeClasses(newData);
     edge.classes(newClasses.join(' '));
-    
+
     this.updateLastModified();
   }
 
@@ -317,8 +317,8 @@ export class UnifiedGraph {
     const oldParentId = node.parentId;
     const newDepth = folderId ? this.calculateFolderDepth(folderId) + 1 : 0;
 
-    this.updateNode(nodeId, { 
-      parentId: folderId, 
+    this.updateNode(nodeId, {
+      parentId: folderId,
       depth: newDepth,
     });
   }
@@ -403,7 +403,7 @@ export class UnifiedGraph {
 
   findEntityByLabel(label: string, kind?: EntityKind): UnifiedNode | null {
     const ids = this.indexes.getByLabel(label);
-    
+
     for (const id of ids) {
       const node = this.getNode(id);
       if (node && node.data.type === 'ENTITY') {
@@ -412,26 +412,26 @@ export class UnifiedGraph {
         }
       }
     }
-    
+
     return null;
   }
 
   mergeEntities(sourceId: NodeId, targetId: NodeId): UnifiedNode {
     const source = this.getNodeData(sourceId);
     const target = this.getNodeData(targetId);
-    
+
     if (!source || !target) {
       throw new Error('Both entities must exist for merge');
     }
 
     const sourceEdges = this.cy.getElementById(sourceId).connectedEdges();
-    
+
     this.cy.batch(() => {
       sourceEdges.forEach(edge => {
         const edgeData = edge.data() as UnifiedEdgeData;
         const newSource = edgeData.source === sourceId ? targetId : edgeData.source;
         const newTarget = edgeData.target === sourceId ? targetId : edgeData.target;
-        
+
         if (newSource !== newTarget) {
           this.addEdge({
             ...edgeData,
@@ -465,7 +465,7 @@ export class UnifiedGraph {
     sourceNoteId: NodeId
   ): UnifiedNode {
     const existing = this.findEntityByLabel(label, kind);
-    
+
     if (existing) {
       const existingExtraction = existing.data.extraction;
       if (existingExtraction) {
@@ -538,11 +538,11 @@ export class UnifiedGraph {
 
   getNarrativeHierarchy(rootId?: NodeId): UnifiedNode[] {
     const narrativeKinds: EntityKind[] = ['NARRATIVE', 'ARC', 'ACT', 'CHAPTER', 'SCENE', 'BEAT', 'EVENT'];
-    
+
     if (!rootId) {
       return this.cy.nodes()
         .filter(n => narrativeKinds.includes(n.data('entityKind')))
-        .map(n => this.cyNodeToUnified(n))
+        .map(n => this.cyNodeToUnified(n as NodeSingular))
         .sort((a, b) => (a.data.narrativeMetadata?.sequence || 0) - (b.data.narrativeMetadata?.sequence || 0));
     }
 
@@ -558,12 +558,12 @@ export class UnifiedGraph {
       const node = this.getNode(currentId);
       if (node) {
         result.push(node);
-        
+
         const children = this.cy.getElementById(currentId)
           .outgoers('edge[type = "PARENT_OF"]')
           .targets()
           .map(n => n.id());
-        
+
         queue.push(...children);
       }
     }
@@ -731,16 +731,16 @@ export class UnifiedGraph {
 
     while (queue.length > 0) {
       const { id: currentId, dist } = queue.shift()!;
-      
+
       if (dist < depth) {
         const current = this.cy.getElementById(currentId);
-        
+
         current.connectedEdges().forEach(edge => {
           resultEdges.push(this.cyEdgeToUnified(edge));
-          
+
           const neighbor = edge.source().id() === currentId ? edge.target() : edge.source();
           const neighborId = neighbor.id();
-          
+
           if (!visited.has(neighborId)) {
             visited.add(neighborId);
             resultNodes.push(this.cyNodeToUnified(neighbor));
@@ -756,27 +756,27 @@ export class UnifiedGraph {
   findPath(sourceId: NodeId, targetId: NodeId): PathResult | null {
     const source = this.cy.getElementById(sourceId);
     const target = this.cy.getElementById(targetId);
-    
+
     if (!source.length || !target.length) return null;
 
     const distances: Map<string, number> = new Map();
     const predecessors: Map<string, { node: string; edge: string }> = new Map();
-    
-    this.cy.nodes().forEach(n => distances.set(n.id(), Infinity));
+
+    this.cy.nodes().forEach(n => { distances.set(n.id(), Infinity); });
     distances.set(sourceId, 0);
-    
+
     const queue = [sourceId];
-    
+
     while (queue.length > 0) {
       const current = queue.shift()!;
-      
+
       if (current === targetId) break;
-      
+
       this.cy.getElementById(current).connectedEdges().forEach(edge => {
         const neighbor = edge.source().id() === current ? edge.target() : edge.source();
         const neighborId = neighbor.id();
         const newDist = distances.get(current)! + 1;
-        
+
         if (newDist < distances.get(neighborId)!) {
           distances.set(neighborId, newDist);
           predecessors.set(neighborId, { node: current, edge: edge.id() });
@@ -784,13 +784,13 @@ export class UnifiedGraph {
         }
       });
     }
-    
+
     if (distances.get(targetId) === Infinity) return null;
-    
+
     const path: NodeId[] = [];
     const edges: EdgeId[] = [];
     let current = targetId;
-    
+
     while (current) {
       path.unshift(current);
       const pred = predecessors.get(current);
@@ -801,7 +801,7 @@ export class UnifiedGraph {
         break;
       }
     }
-    
+
     return { path, edges, length: path.length - 1 };
   }
 
@@ -815,21 +815,21 @@ export class UnifiedGraph {
 
       const component: NodeId[] = [];
       const queue = [nodeId];
-      
+
       while (queue.length > 0) {
         const current = queue.shift()!;
         if (visited.has(current)) continue;
-        
+
         visited.add(current);
         component.push(current);
-        
+
         this.cy.getElementById(current).neighborhood('node').forEach(neighbor => {
           if (!visited.has(neighbor.id())) {
             queue.push(neighbor.id());
           }
         });
       }
-      
+
       components.push(component);
     });
 
@@ -838,21 +838,21 @@ export class UnifiedGraph {
 
   searchByLabel(query: string, options?: SearchOptions): UnifiedNode[] {
     const ids = this.indexes.searchByLabel(query, options?.fuzzy);
-    
+
     let nodes = ids.map(id => this.getNode(id)).filter((n): n is UnifiedNode => n !== null);
-    
+
     if (options?.nodeTypes?.length) {
       nodes = nodes.filter(n => options.nodeTypes!.includes(n.data.type));
     }
-    
+
     if (options?.entityKinds?.length) {
       nodes = nodes.filter(n => n.data.entityKind && options.entityKinds!.includes(n.data.entityKind));
     }
-    
+
     if (options?.limit) {
       nodes = nodes.slice(0, options.limit);
     }
-    
+
     return nodes;
   }
 
@@ -873,8 +873,8 @@ export class UnifiedGraph {
   computeBetweenness(): Map<NodeId, number> {
     const centrality = new Map<NodeId, number>();
     const nodes = this.cy.nodes();
-    
-    nodes.forEach(node => centrality.set(node.id(), 0));
+
+    nodes.forEach(node => { centrality.set(node.id(), 0); });
 
     if (nodes.length > 100) {
       nodes.forEach(node => {
@@ -886,22 +886,22 @@ export class UnifiedGraph {
     nodes.forEach(source => {
       const distances = new Map<string, number>();
       const predecessors = new Map<string, string[]>();
-      
+
       nodes.forEach(n => {
         distances.set(n.id(), Infinity);
         predecessors.set(n.id(), []);
       });
-      
+
       distances.set(source.id(), 0);
       const queue = [source.id()];
-      
+
       while (queue.length > 0) {
         const current = queue.shift()!;
-        
+
         this.cy.getElementById(current).neighborhood('node').forEach(neighbor => {
           const neighborId = neighbor.id();
           const newDist = distances.get(current)! + 1;
-          
+
           if (newDist < distances.get(neighborId)!) {
             distances.set(neighborId, newDist);
             predecessors.set(neighborId, [current]);
@@ -911,20 +911,20 @@ export class UnifiedGraph {
           }
         });
       }
-      
+
       nodes.forEach(target => {
         if (source.id() === target.id()) return;
-        
+
         let current = target.id();
         const path: string[] = [];
-        
+
         while (predecessors.get(current)?.length) {
           const preds = predecessors.get(current)!;
           if (preds[0] === source.id()) break;
           current = preds[0];
           path.push(current);
         }
-        
+
         path.forEach(nodeId => {
           centrality.set(nodeId, (centrality.get(nodeId) || 0) + 1);
         });
@@ -933,7 +933,7 @@ export class UnifiedGraph {
 
     const n = nodes.length;
     const normFactor = n > 2 ? ((n - 1) * (n - 2)) / 2 : 1;
-    
+
     centrality.forEach((value, key) => {
       centrality.set(key, value / normFactor);
     });
@@ -948,14 +948,14 @@ export class UnifiedGraph {
 
     nodes.forEach(node => {
       const distances = new Map<string, number>();
-      nodes.forEach(n => distances.set(n.id(), Infinity));
+      nodes.forEach(n => { distances.set(n.id(), Infinity); });
       distances.set(node.id(), 0);
-      
+
       const queue = [node.id()];
-      
+
       while (queue.length > 0) {
         const current = queue.shift()!;
-        
+
         this.cy.getElementById(current).neighborhood('node').forEach(neighbor => {
           const neighborId = neighbor.id();
           if (distances.get(neighborId) === Infinity) {
@@ -964,10 +964,10 @@ export class UnifiedGraph {
           }
         });
       }
-      
+
       let totalDistance = 0;
       let reachable = 0;
-      
+
       distances.forEach((dist, id) => {
         if (dist !== Infinity && dist > 0) {
           totalDistance += dist;
@@ -975,10 +975,10 @@ export class UnifiedGraph {
         }
       });
 
-      const closeness = reachable > 0 
+      const closeness = reachable > 0
         ? (reachable / (n - 1)) * (reachable / totalDistance)
         : 0;
-      
+
       centrality.set(node.id(), closeness);
     });
 
@@ -996,21 +996,21 @@ export class UnifiedGraph {
 
       const queue = [nodeId];
       const currentCommunity = `community_${communityId}`;
-      
+
       while (queue.length > 0) {
         const current = queue.shift()!;
         if (visited.has(current)) continue;
-        
+
         visited.add(current);
         communities.set(current, currentCommunity);
-        
+
         this.cy.getElementById(current).neighborhood('node').forEach(neighbor => {
           if (!visited.has(neighbor.id())) {
             queue.push(neighbor.id());
           }
         });
       }
-      
+
       communityId++;
     });
 
@@ -1053,14 +1053,14 @@ export class UnifiedGraph {
 
   exportSubgraph(nodeIds: NodeId[]): GraphExport {
     const nodeSet = new Set(nodeIds);
-    
+
     const nodes: UnifiedNode[] = nodeIds
       .map(id => this.getNode(id))
       .filter((n): n is UnifiedNode => n !== null);
 
     const edges: UnifiedEdge[] = this.cy.edges()
       .filter(e => nodeSet.has(e.source().id()) && nodeSet.has(e.target().id()))
-      .map(e => this.cyEdgeToUnified(e));
+      .map(e => this.cyEdgeToUnified(e as EdgeSingular));
 
     return {
       format: 'unified-cytoscape',
@@ -1078,6 +1078,8 @@ export class UnifiedGraph {
           entityCount: nodes.filter(n => n.data.type === 'ENTITY').length,
           blueprintCount: nodes.filter(n => n.data.type === 'BLUEPRINT').length,
           temporalCount: nodes.filter(n => n.data.type === 'TEMPORAL').length,
+          episodeCount: nodes.filter(n => n.data.type === 'COMMUNITY' || n.data.episode_id).length, // Estimate
+          communityCount: nodes.filter(n => n.data.type === 'COMMUNITY' || n.data.community_id).length,
           extractionCounts: { regex: 0, ner: 0, llm: 0, manual: 0 },
         },
       },
@@ -1107,7 +1109,7 @@ export class UnifiedGraph {
 
   private computeStats(): GraphStats {
     const indexStats = this.indexes.getStats();
-    
+
     let regexCount = 0;
     let nerCount = 0;
     let llmCount = 0;
@@ -1133,6 +1135,8 @@ export class UnifiedGraph {
       entityCount: indexStats.typeCount.ENTITY,
       blueprintCount: indexStats.typeCount.BLUEPRINT,
       temporalCount: indexStats.typeCount.TEMPORAL,
+      episodeCount: this.cy.nodes('[type = "COMMUNITY"]').length, // Chapters/Scenes are entities too but this is a reasonable start
+      communityCount: this.cy.nodes('[type = "COMMUNITY"]').length,
       extractionCounts: {
         regex: regexCount,
         ner: nerCount,
@@ -1183,7 +1187,7 @@ export class UnifiedGraph {
   private getNextNarrativeSequence(parentId: NodeId): number {
     const children = this.getNarrativeChildren(parentId);
     if (children.length === 0) return 0;
-    
+
     const maxSequence = Math.max(
       ...children.map(c => c.data.narrativeMetadata?.sequence || 0)
     );
@@ -1192,37 +1196,37 @@ export class UnifiedGraph {
 
   private getNodeClasses(data: UnifiedNodeData): string[] {
     const classes: string[] = [data.type.toLowerCase()];
-    
+
     if (data.entityKind) {
       classes.push(`kind-${data.entityKind.toLowerCase()}`);
     }
-    
+
     if (data.isEntity) {
       classes.push('entity');
     }
-    
+
     if (data.isPinned) {
       classes.push('pinned');
     }
-    
+
     if (data.favorite) {
       classes.push('favorite');
     }
-    
+
     return classes;
   }
 
   private getEdgeClasses(data: UnifiedEdgeData): string[] {
     const classes: string[] = [`type-${data.type.toLowerCase()}`];
-    
+
     if (data.bidirectional) {
       classes.push('bidirectional');
     }
-    
+
     if (data.extractionMethod) {
       classes.push(`method-${data.extractionMethod}`);
     }
-    
+
     return classes;
   }
 
