@@ -15,6 +15,7 @@ import { seedStarterBlueprint } from '../api/seedBlueprint';
 import { publishVersion, createVersion, getVersionById } from '../api/storage';
 import { toast } from '@/hooks/use-toast';
 import { Sparkles } from 'lucide-react';
+import { PatternManager } from './PatternManager';
 import type { BlueprintVersion } from '../types';
 
 export function BlueprintHub() {
@@ -61,17 +62,17 @@ export function BlueprintHub() {
     try {
       // 1. Publish current version
       await publishVersion(versionId);
-      
+
       // 2. Create new draft version
       await createVersion({
         blueprint_id: projectId,
         status: 'draft',
         change_summary: 'New draft version',
       });
-      
+
       // 3. Reload active version to switch to new draft
       await reloadActiveVersion();
-      
+
       toast({
         title: 'Version published',
         description: 'Version published successfully! Started new draft.',
@@ -115,13 +116,12 @@ export function BlueprintHub() {
                   <span className="text-sm text-muted-foreground">
                     v{currentVersion.version_number}
                   </span>
-                  <span className={`text-xs px-2 py-1 rounded-md ${
-                    currentVersion.status === 'draft' 
-                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                      : currentVersion.status === 'published'
+                  <span className={`text-xs px-2 py-1 rounded-md ${currentVersion.status === 'draft'
+                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                    : currentVersion.status === 'published'
                       ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                       : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-                  }`}>
+                    }`}>
                     {currentVersion.status.charAt(0).toUpperCase() + currentVersion.status.slice(1)}
                   </span>
                   {currentVersion.status === 'draft' && (
@@ -143,6 +143,7 @@ export function BlueprintHub() {
         <Tabs defaultValue="entity-types" className="flex-1 flex flex-col">
           <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="entity-types">Entity Types</TabsTrigger>
+            <TabsTrigger value="patterns">Patterns</TabsTrigger>
             <TabsTrigger value="fields">Fields</TabsTrigger>
             <TabsTrigger value="relationships">Relationships</TabsTrigger>
             <TabsTrigger value="attributes">Attributes</TabsTrigger>
@@ -155,6 +156,10 @@ export function BlueprintHub() {
           <div className="flex-1 overflow-auto mt-4">
             <TabsContent value="entity-types" className="h-full">
               <EntityTypesTab isLoading={isLoading} />
+            </TabsContent>
+
+            <TabsContent value="patterns" className="h-full">
+              <PatternManager />
             </TabsContent>
 
             <TabsContent value="fields" className="h-full">
@@ -193,7 +198,7 @@ export function BlueprintHub() {
 
                 <div className="space-y-4">
                   <h4 className="font-semibold">Quick Start</h4>
-                  
+
                   <div className="border rounded-lg p-4 bg-muted/50">
                     <div className="flex items-start gap-3">
                       <Sparkles className="w-5 h-5 text-primary mt-0.5" />
@@ -203,7 +208,7 @@ export function BlueprintHub() {
                           Get started quickly with a pre-configured blueprint including entity types (Note, Character,
                           Location, Item, Faction), relationships, and sample fields.
                         </p>
-                        <Button 
+                        <Button
                           onClick={handleSeedBlueprint}
                           disabled={isSeeding}
                           size="sm"
@@ -222,28 +227,28 @@ export function BlueprintHub() {
                         Define types of entities (e.g., Character, Location, Item) that your knowledge base will contain.
                       </p>
                     </div>
-                    
+
                     <div>
                       <h5 className="font-medium mb-1">Fields</h5>
                       <p className="text-muted-foreground">
                         Add custom fields to entity types to store specific data (e.g., age, role, coordinates).
                       </p>
                     </div>
-                    
+
                     <div>
                       <h5 className="font-medium mb-1">Relationships</h5>
                       <p className="text-muted-foreground">
                         Define how entity types can be connected (e.g., Character LOCATED_IN Location).
                       </p>
                     </div>
-                    
+
                     <div>
                       <h5 className="font-medium mb-1">View Templates</h5>
                       <p className="text-muted-foreground">
                         Create custom views for displaying entities in different formats (table, card, timeline, etc.).
                       </p>
                     </div>
-                    
+
                     <div>
                       <h5 className="font-medium mb-1">MOCs (Maps of Content)</h5>
                       <p className="text-muted-foreground">

@@ -5,12 +5,14 @@ import { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '../entities/entityTypes';
 import type { NEREntity } from '../extraction';
 import { entityRegistry } from '../entities/entity-registry';
+import { patternRegistry, type PatternDefinition, type RefKind } from '../refs';
 
 export interface UnifiedSyntaxOptions {
   onWikilinkClick?: (title: string) => void;
   checkWikilinkExists?: (title: string) => boolean;
   onTemporalClick?: (temporal: string) => void;
   onBacklinkClick?: (title: string) => void;
+  onRefClick?: (kind: RefKind, target: string, payload?: any) => void;
   nerEntities?: NEREntity[] | (() => NEREntity[]);
   onNEREntityClick?: (entity: NEREntity) => void;
   useWidgetMode?: boolean;
@@ -18,7 +20,7 @@ export interface UnifiedSyntaxOptions {
 
 const syntaxPluginKey = new PluginKey('unified-syntax-highlighter');
 
-// 🆕 Track which ranges are currently being edited
+// Track which ranges are currently being edited
 interface EditingRange {
   from: number;
   to: number;
@@ -38,19 +40,24 @@ function isEditing(selection: { from: number; to: number }, range: EditingRange)
 }
 
 /**
- * Create widget with edit detection
+ * Create a widget for any pattern match
  */
-function createEditableWidget(
+function createPatternWidget(
   label: string,
-  kind: string,
+  kind: RefKind,
   fullMatch: string,
-  color: string
+  color: string,
+  backgroundColor: string,
+  extraClasses: string = '',
+  extraStyles: string = ''
 ): HTMLElement {
   const span = document.createElement('span');
-  span.className = 'entity-widget';
+  span.className = `ref-widget ref-${kind} ${extraClasses}`;
   span.textContent = label;
+
+  // Base style + overrides
   span.style.cssText = `
-    background-color: ${color}20;
+    background-color: ${backgroundColor};
     color: ${color};
     padding: 2px 6px;
     border-radius: 4px;
@@ -59,12 +66,15 @@ function createEditableWidget(
     cursor: text;
     display: inline-block;
     position: relative;
+    ${extraStyles}
   `;
-  span.setAttribute('data-entity-kind', kind);
-  span.setAttribute('data-entity-label', label);
-  span.setAttribute('data-entity-full', fullMatch);
 
-  // 🆕 Make widget "clickable" to enable editing
+  // Data attributes for identifying the widget
+  span.setAttribute('data-ref-kind', kind);
+  span.setAttribute('data-ref-label', label);
+  span.setAttribute('data-ref-full', fullMatch);
+
+  // Make widget "clickable" to enable editing
   span.setAttribute('contenteditable', 'false');
   span.setAttribute('data-editable-widget', 'true');
 
@@ -72,7 +82,7 @@ function createEditableWidget(
 }
 
 /**
- * Build decorations with smart editing detection
+ * Build decorations using PatternRegistry
  */
 function buildAllDecorations(
   doc: ProseMirrorNode,
@@ -82,262 +92,38 @@ function buildAllDecorations(
   const decorations: Decoration[] = [];
   const useWidgets = options.useWidgetMode ?? false;
 
+  // Get active patterns sorted by priority
+  const patterns = patternRegistry.getActivePatterns();
+
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
 
     const text = node.text;
     const processed = new Set<number>();
 
-    // 1. Entity syntax - WITH SMART WIDGET MODE
-    const entityRegex = /\[([A-Z_]+(?::[A-Z_]+)?)\|([^\]|]+)(?:\|[^\]]+)?\]/g;
-    let match;
+    // 1. Iterate through registered patterns
+    for (const pattern of patterns) {
+      if (!pattern.enabled) continue;
 
-    while ((match = entityRegex.exec(text)) !== null) {
-      const [fullMatch, kind, label] = match;
-      const from = pos + match.index;
-      const to = from + fullMatch.length;
+      const regex = patternRegistry.getCompiledPattern(pattern.id);
+      let match: RegExpExecArray | null;
 
-      for (let i = match.index; i < match.index + fullMatch.length; i++) {
-        processed.add(i);
-      }
+      // Reset regex state
+      regex.lastIndex = 0;
 
-      const baseKind = kind.split(':')[0] as EntityKind;
-      if (ENTITY_KINDS.includes(baseKind)) {
-        const color = ENTITY_COLORS[baseKind] || '#6b7280';
-
-        // 🆕 Check if this entity is being edited
-        const isCurrentlyEditing = selection
-          ? isEditing(selection, { from, to })
-          : false;
-
-        if (useWidgets && !isCurrentlyEditing) {
-          // WIDGET MODE: Show clean widget (not being edited)
-          const widget = createEditableWidget(label, kind, fullMatch, color);
-          decorations.push(
-            Decoration.widget(from, widget, {
-              side: -1, // 🆕 Changed from 0 to -1 (places widget BEFORE position)
-              key: `entity-${from}-${fullMatch}`,
-            })
-          );
-          // Hide original text - use a more stable approach that keeps it in the flow
-          decorations.push(
-            Decoration.inline(from, to, {
-              class: 'entity-hidden',
-              style: 'display: none;', // Reverting to display: none as it's more stable for block flow than absolute positioning
-            })
-          );
-        } else {
-          // INLINE MODE: Show full syntax (being edited OR widget mode off)
-          decorations.push(
-            Decoration.inline(from, to, {
-              class: 'entity-highlight entity-editing',
-              style: `background-color: ${color}20; color: ${color}; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em;`,
-              'data-kind': kind,
-            }, { inclusiveStart: false, inclusiveEnd: false })
-          );
+      while ((match = regex.exec(text)) !== null) {
+        // Safe check for infinite loops with zero-length matches
+        if (match.index === regex.lastIndex) {
+          regex.lastIndex++;
         }
-      }
-    }
 
-    // 2. WikiLinks - SAME PATTERN
-    const wikilinkRegex = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
-
-    while ((match = wikilinkRegex.exec(text)) !== null) {
-      const [fullMatch, title] = match;
-      const from = pos + match.index;
-      const to = from + fullMatch.length;
-
-      let hasOverlap = false;
-      for (let i = match.index; i < match.index + fullMatch.length; i++) {
-        if (processed.has(i)) {
-          hasOverlap = true;
-          break;
-        }
-      }
-      if (hasOverlap) continue;
-
-      for (let i = match.index; i < match.index + fullMatch.length; i++) {
-        processed.add(i);
-      }
-
-      const titleTrimmed = title.trim();
-      const exists = options.checkWikilinkExists?.(titleTrimmed) ?? true;
-
-      const isCurrentlyEditing = selection
-        ? isEditing(selection, { from, to })
-        : false;
-
-      if (useWidgets && !isCurrentlyEditing) {
-        // WIDGET MODE
-        const widget = createWikilinkWidget(titleTrimmed, fullMatch, exists);
-        decorations.push(
-          Decoration.widget(from, widget, {
-            side: -1,
-            key: `wikilink-${from}-${fullMatch}`,
-          })
-        );
-        decorations.push(
-          Decoration.inline(from, to, {
-            class: 'wikilink-hidden',
-            style: 'display: none;',
-          })
-        );
-      } else {
-        // INLINE MODE
-        const baseStyle = 'padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;';
-        const style = exists
-          ? `${baseStyle} background-color: hsl(var(--primary) / 0.15); color: hsl(var(--primary)); text-decoration: underline; text-decoration-style: dotted;`
-          : `${baseStyle} background-color: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); text-decoration: underline; text-decoration-style: dashed;`;
-
-        decorations.push(
-          Decoration.inline(from, to, {
-            class: exists ? 'wikilink-highlight wikilink-editing' : 'wikilink-highlight wikilink-broken wikilink-editing',
-            style,
-            'data-wikilink-title': titleTrimmed,
-            'data-wikilink-exists': exists ? 'true' : 'false',
-          }, { inclusiveStart: false, inclusiveEnd: false })
-        );
-      }
-    }
-
-    // 3. Backlinks - SAME PATTERN
-    const backlinkRegex = /<<([^>]+)>>/g;
-
-    while ((match = backlinkRegex.exec(text)) !== null) {
-      const [fullMatch, backlinkTitle] = match;
-      const from = pos + match.index;
-      const to = from + fullMatch.length;
-
-      let hasOverlap = false;
-      for (let i = match.index; i < match.index + fullMatch.length; i++) {
-        if (processed.has(i)) {
-          hasOverlap = true;
-          break;
-        }
-      }
-      if (hasOverlap) continue;
-
-      for (let i = match.index; i < match.index + fullMatch.length; i++) {
-        processed.add(i);
-      }
-
-      const titleTrimmed = backlinkTitle.trim();
-      const entityMatch = titleTrimmed.match(/^\[([A-Z_]+)(?::[A-Z_]+)?\|/);
-      const entityKind = entityMatch ? entityMatch[1] as EntityKind : null;
-      const color = entityKind && ENTITY_COLORS[entityKind]
-        ? ENTITY_COLORS[entityKind]
-        : 'hsl(var(--primary))';
-
-      const isCurrentlyEditing = selection
-        ? isEditing(selection, { from, to })
-        : false;
-
-      if (useWidgets && !isCurrentlyEditing) {
-        // WIDGET MODE
-        const widget = createBacklinkWidget(titleTrimmed, fullMatch, color);
-        decorations.push(
-          Decoration.widget(from, widget, {
-            side: -1,
-            key: `backlink-${from}-${fullMatch}`,
-          })
-        );
-        decorations.push(
-          Decoration.inline(from, to, {
-            class: 'backlink-hidden',
-            style: 'display: none;',
-          })
-        );
-      } else {
-        // INLINE MODE
-        decorations.push(
-          Decoration.inline(from, to, {
-            class: 'backlink-highlight backlink-editing',
-            style: `background-color: ${color}20; color: ${color}; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;`,
-            'data-backlink-title': titleTrimmed,
-          }, { inclusiveStart: false, inclusiveEnd: false })
-        );
-      }
-    }
-
-    // 4. Tags: #hashtag
-    const tagRegex = /#(\w+)/g;
-
-    while ((match = tagRegex.exec(text)) !== null) {
-      const from = pos + match.index;
-      const to = from + match[0].length;
-
-      let hasOverlap = false;
-      for (let i = match.index; i < match.index + match[0].length; i++) {
-        if (processed.has(i)) {
-          hasOverlap = true;
-          break;
-        }
-      }
-      if (hasOverlap) continue;
-
-      for (let i = match.index; i < match.index + match[0].length; i++) {
-        processed.add(i);
-      }
-
-      decorations.push(
-        Decoration.inline(from, to, {
-          class: 'tag-highlight',
-          style: 'background-color: #3b82f620; color: #3b82f6; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;',
-          'data-tag': match[1],
-        }, { inclusiveStart: false, inclusiveEnd: false })
-      );
-    }
-
-    // 5. Mentions: @username
-    const mentionRegex = /@(\w+)/g;
-
-    while ((match = mentionRegex.exec(text)) !== null) {
-      const from = pos + match.index;
-      const to = from + match[0].length;
-
-      let hasOverlap = false;
-      for (let i = match.index; i < match.index + match[0].length; i++) {
-        if (processed.has(i)) {
-          hasOverlap = true;
-          break;
-        }
-      }
-      if (hasOverlap) continue;
-
-      for (let i = match.index; i < match.index + match[0].length; i++) {
-        processed.add(i);
-      }
-
-      decorations.push(
-        Decoration.inline(from, to, {
-          class: 'mention-highlight',
-          style: 'background-color: #8b5cf620; color: #8b5cf6; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: pointer;',
-          'data-mention': match[1],
-        }, { inclusiveStart: false, inclusiveEnd: false })
-      );
-    }
-
-    // 6. Temporal expressions
-    const temporalPatterns = [
-      /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(second|minute|hour|day|week|month|year)s?\s+(later|before|after|earlier|ago)\b/gi,
-      /\b(next|last|the following|the previous)\s+(morning|afternoon|evening|night|day|week|month|year|dawn|dusk|midnight|noon)\b/gi,
-      /\b(yesterday|tomorrow|today|tonight|nowadays)\b/gi,
-      /\b(at|by|before|after|around)\s+(dawn|dusk|midnight|noon|sunrise|sunset)\b/gi,
-      /\b(moments?|seconds?|minutes?|hours?)\s+(later|before|after|earlier)\b/gi,
-      /\b(meanwhile|eventually|suddenly|immediately|soon|later|afterwards|beforehand)\b/gi,
-      /\b(in the|that)\s+(morning|afternoon|evening|night)\b/gi,
-      /\b(the next day|the day after|the night before|the morning of|the evening of)\b/gi,
-    ];
-
-    for (const temporalRegex of temporalPatterns) {
-      temporalRegex.lastIndex = 0;
-
-      while ((match = temporalRegex.exec(text)) !== null) {
+        const fullMatch = match[0];
         const from = pos + match.index;
-        const to = from + match[0].length;
+        const to = from + fullMatch.length;
 
+        // Check for overlaps with already processed ranges
         let hasOverlap = false;
-        for (let i = match.index; i < match.index + match[0].length; i++) {
+        for (let i = match.index; i < match.index + fullMatch.length; i++) {
           if (processed.has(i)) {
             hasOverlap = true;
             break;
@@ -345,28 +131,133 @@ function buildAllDecorations(
         }
         if (hasOverlap) continue;
 
-        for (let i = match.index; i < match.index + match[0].length; i++) {
+        // Mark range as processed
+        for (let i = match.index; i < match.index + fullMatch.length; i++) {
           processed.add(i);
         }
 
-        decorations.push(
-          Decoration.inline(from, to, {
-            class: 'temporal-highlight',
-            style: 'background-color: hsl(var(--chart-4) / 0.15); color: hsl(var(--chart-4)); padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em;',
-            'data-temporal': match[0],
-          }, { inclusiveStart: false, inclusiveEnd: false })
-        );
+        // Logic for "is being edited"
+        const isCurrentlyEditing = selection
+          ? isEditing(selection, { from, to })
+          : false;
+
+        // Extract Label/Target for display
+        // Use capture mappings if available, otherwise fallback
+        let label = fullMatch;
+        let target = fullMatch;
+
+        if (pattern.captures) {
+          // Find capture keys that might represent label/display/target
+          // This is a heuristic based on common capture names
+          const labelKeys = ['label', 'displayText', 'displayName', 'username', 'tagName', 'word'];
+          const targetKeys = ['target', 'id', 'username', 'tagName'];
+
+          // Helper to find capture value
+          const getCapture = (keys: string[]) => {
+            for (const key of keys) {
+              if (pattern.captures[key]) {
+                const groupIndex = pattern.captures[key].group;
+                if (match![groupIndex]) return match![groupIndex];
+              }
+            }
+            return null;
+          };
+
+          label = getCapture(labelKeys) || fullMatch;
+          target = getCapture(targetKeys) || label;
+        }
+
+        // Dynamic State (Existence check for wikilinks)
+        let exists = true;
+        if (pattern.kind === 'wikilink' && options.checkWikilinkExists) {
+          exists = options.checkWikilinkExists(target);
+        }
+
+        // Determine Colors
+        let color = pattern.rendering?.color || 'hsl(var(--primary))';
+        let bgColor = pattern.rendering?.backgroundColor || 'hsl(var(--primary) / 0.15)';
+
+        // Entity Kind Colors
+        if (pattern.kind === 'entity') {
+          // Try to extract kind from regex if possible, or use generic
+          // Default entity pattern has Kind in group 1
+          if (match[1] && ENTITY_COLORS[match[1] as EntityKind]) {
+            color = ENTITY_COLORS[match[1] as EntityKind];
+            bgColor = `${color}20`;
+          }
+        }
+
+        // Wikilink Colors (Dynamic)
+        if (pattern.kind === 'wikilink') {
+          color = exists ? 'hsl(var(--primary))' : 'hsl(var(--destructive))';
+          bgColor = exists ? 'hsl(var(--primary) / 0.15)' : 'hsl(var(--destructive) / 0.15)';
+        }
+
+        // Render Widget vs Inline
+        const shouldRenderWidget = (useWidgets || pattern.rendering?.widgetMode) && !isCurrentlyEditing;
+
+        if (shouldRenderWidget) {
+          // WIDGET
+          const widget = createPatternWidget(
+            label,
+            pattern.kind,
+            fullMatch,
+            color,
+            bgColor,
+            pattern.kind === 'wikilink' ? (exists ? 'wikilink-exists' : 'wikilink-broken') : ''
+          );
+
+          decorations.push(
+            Decoration.widget(from, widget, {
+              side: -1,
+              key: `${pattern.id}-${from}-${fullMatch}`,
+            })
+          );
+
+          // Hide original text
+          decorations.push(
+            Decoration.inline(from, to, {
+              class: 'ref-hidden',
+              style: 'display: none;',
+            })
+          );
+        } else {
+          // INLINE
+          let style = `
+            background-color: ${bgColor}; 
+            color: ${color}; 
+            padding: 2px 6px; 
+            border-radius: 4px; 
+            font-weight: 500; 
+            font-size: 0.875em; 
+            cursor: pointer;
+          `;
+
+          // Special inline styles
+          if (pattern.kind === 'wikilink') {
+            style += ` text-decoration: underline; text-decoration-style: ${exists ? 'dotted' : 'dashed'};`;
+          }
+
+          decorations.push(
+            Decoration.inline(from, to, {
+              class: `ref-highlight ref-${pattern.kind} ${pattern.kind === 'wikilink' ? (exists ? 'wikilink-editing' : 'wikilink-broken wikilink-editing') : ''}`,
+              style,
+              'data-ref-kind': pattern.kind,
+              'data-ref-target': target,
+              'data-ref-exists': exists.toString(),
+            }, { inclusiveStart: false, inclusiveEnd: false })
+          );
+        }
       }
     }
 
-    // 7. NER-detected entities
+    // 2. NER-detected entities (Keep existing logic)
     const nerEntities = typeof options.nerEntities === 'function'
       ? options.nerEntities()
       : options.nerEntities || [];
 
     if (nerEntities.length > 0) {
       for (const entity of nerEntities) {
-        // ... (existing NER code)
         const entityStart = entity.start;
         const entityEnd = entity.end;
         const nodeStart = pos;
@@ -376,10 +267,10 @@ function buildAllDecorations(
 
         const relativeStart = Math.max(0, entityStart - nodeStart);
         const relativeEnd = Math.min(text.length, entityEnd - nodeStart);
-
         const from = pos + relativeStart;
         const to = pos + relativeEnd;
 
+        // Check overlap
         let hasOverlap = false;
         for (let i = relativeStart; i < relativeEnd; i++) {
           if (processed.has(i)) {
@@ -389,6 +280,7 @@ function buildAllDecorations(
         }
         if (hasOverlap) continue;
 
+        // Mark processed
         for (let i = relativeStart; i < relativeEnd; i++) {
           processed.add(i);
         }
@@ -406,24 +298,14 @@ function buildAllDecorations(
       }
     }
 
-    // 8. Registered Implicit Entities (Phase 1)
+    // 3. Registered Implicit Entities (Keep existing logic)
     const allRegistered = entityRegistry.getAllEntities();
-
-    // Quick escape if no entities
     if (allRegistered.length > 0) {
-      // Sort by length desc to handle overlapping (longest first)
-      // Note: This is a simple per-node check. For better perf with huge registries, 
-      // we'd use Aho-Corasick or similar. For now ( < 1000 entities), direct regex is fine.
-
       for (const entity of allRegistered) {
         const patterns = [entity.label, ...(entity.aliases || [])];
-
         for (const pattern of patterns) {
-          // Naive regex matching for implicit mentions
-          // Using word boundaries to avoid partial matches
           const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
-
           let match;
           while ((match = regex.exec(text)) !== null) {
             const from = pos + match.index;
@@ -445,7 +327,6 @@ function buildAllDecorations(
             }
 
             const color = ENTITY_COLORS[entity.kind] || '#6b7280';
-
             decorations.push(
               Decoration.inline(from, to, {
                 class: 'entity-implicit-highlight',
@@ -465,61 +346,6 @@ function buildAllDecorations(
   return DecorationSet.create(doc, decorations);
 }
 
-// Helper functions (moved outside, reuse for all types)
-function createWikilinkWidget(
-  title: string,
-  fullMatch: string,
-  exists: boolean
-): HTMLElement {
-  const span = document.createElement('span');
-  span.className = exists ? 'wikilink-widget wikilink-exists' : 'wikilink-widget wikilink-broken';
-  span.textContent = title;
-
-  const baseStyle = 'padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em; cursor: text; display: inline-block;';
-  const style = exists
-    ? `${baseStyle} background-color: hsl(var(--primary) / 0.15); color: hsl(var(--primary)); text-decoration: underline; text-decoration-style: dotted;`
-    : `${baseStyle} background-color: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); text-decoration: underline; text-decoration-style: dashed;`;
-
-  span.style.cssText = style;
-  span.setAttribute('data-wikilink-title', title);
-  span.setAttribute('data-wikilink-exists', exists ? 'true' : 'false');
-  span.setAttribute('data-wikilink-full', fullMatch);
-  span.setAttribute('contenteditable', 'false');
-  span.setAttribute('data-editable-widget', 'true');
-
-  return span;
-}
-
-function createBacklinkWidget(
-  backlinkTitle: string,
-  fullMatch: string,
-  color: string
-): HTMLElement {
-  const span = document.createElement('span');
-  span.className = 'backlink-widget';
-
-  const entityMatch = backlinkTitle.match(/\[([A-Z_]+)(?::[A-Z_]+)?\|([^\]]+)\]/);
-  const displayText = entityMatch ? entityMatch[2] : backlinkTitle;
-
-  span.textContent = displayText;
-  span.style.cssText = `
-    background-color: ${color}20;
-    color: ${color};
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: 500;
-    font-size: 0.875em;
-    cursor: text;
-    display: inline-block;
-  `;
-  span.setAttribute('data-backlink-title', backlinkTitle);
-  span.setAttribute('data-backlink-full', fullMatch);
-  span.setAttribute('contenteditable', 'false');
-  span.setAttribute('data-editable-widget', 'true');
-
-  return span;
-}
-
 export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
   name: 'unifiedSyntaxHighlighter',
 
@@ -529,6 +355,7 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
       checkWikilinkExists: undefined,
       onTemporalClick: undefined,
       onBacklinkClick: undefined,
+      onRefClick: undefined, // Universal handler
       nerEntities: undefined,
       onNEREntityClick: undefined,
       useWidgetMode: false,
@@ -547,28 +374,16 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
           },
           apply(tr, oldDecorations, oldState, newState) {
             const useWidgets = options.useWidgetMode ?? false;
-
             // Rebuild on doc change
             if (tr.docChanged) {
               const selection = { from: newState.selection.from, to: newState.selection.to };
               return buildAllDecorations(newState.doc, options, selection);
             }
-
-            // If only selection changed and we are in widget mode, 
-            // check if we NEED to rebuild (selection near a syntax element)
+            // Check selection change for widget mode editing
             if (tr.selectionSet && useWidgets) {
-              const oldSelection = { from: oldState.selection.from, to: oldState.selection.to };
               const newSelection = { from: newState.selection.from, to: newState.selection.to };
-
-              // Simple check: did selection cross a text block?
-              // Or better: just rebuild it less aggressively.
-              // For now, let's just make sure we don't return oldDecorations if selection changed
-              // BUT we can skip if the change is "outside" any widgets.
-              // Actually, to keep it simple and fix the drag menu, 
-              // let's only rebuild if the selection is within a small buffer of any entity syntax.
               return buildAllDecorations(newState.doc, options, newSelection);
             }
-
             return oldDecorations.map(tr.mapping, tr.doc);
           },
         },
@@ -578,56 +393,24 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
           },
 
           handleDOMEvents: {
-            // 🆕 Handle clicks on widgets to enable editing
+            // Handle clicks on widgets to enable editing
             mousedown: (view, event) => {
               const target = event.target as HTMLElement;
-
               if (target.getAttribute('data-editable-widget') === 'true') {
-                // User clicked on a widget - find its position and place cursor there
                 const pos = view.posAtDOM(target, 0);
                 const tr = view.state.tr.setSelection(
                   Selection.near(view.state.doc.resolve(pos))
                 );
                 view.dispatch(tr);
-                // Removed event.preventDefault() to allow the event to flow to other parts of the system
-                // if they are listening for bubble selection/drag events.
                 return true;
               }
-
               return false;
             },
 
             click: (view, event) => {
               const target = event.target as HTMLElement;
 
-              // Handle wikilink clicks (when NOT in edit mode)
-              const wikilinkTitle = target.getAttribute('data-wikilink-title');
-              if (wikilinkTitle && options.onWikilinkClick && !target.classList.contains('wikilink-editing')) {
-                event.preventDefault();
-                event.stopPropagation();
-                options.onWikilinkClick(wikilinkTitle);
-                return true;
-              }
-
-              // Handle temporal clicks
-              const temporalText = target.getAttribute('data-temporal');
-              if (temporalText && options.onTemporalClick) {
-                event.preventDefault();
-                event.stopPropagation();
-                options.onTemporalClick(temporalText);
-                return true;
-              }
-
-              // Handle backlink clicks (when NOT in edit mode)
-              const backlinkTitle = target.getAttribute('data-backlink-title');
-              if (backlinkTitle && options.onBacklinkClick && !target.classList.contains('backlink-editing')) {
-                event.preventDefault();
-                event.stopPropagation();
-                options.onBacklinkClick(backlinkTitle);
-                return true;
-              }
-
-              // Handle NER clicks
+              // 1. NER Logic (First, because it's distinct)
               const nerEntity = target.getAttribute('data-ner-entity');
               if (nerEntity && options.onNEREntityClick) {
                 event.preventDefault();
@@ -642,6 +425,41 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
                   end: nerEnd,
                   score: 0,
                 });
+                return true;
+              }
+
+              // 2. Universal Ref Logic (from pattern registry)
+              // Only trigger if NOT editing (check for editing class, e.g. .ref-hidden is for widget)
+              // If we are in inline mode, we check specific classes.
+              // Actually, simpler: if it has data-ref-kind, and we are not in edit mode (cursor nearby).
+
+              const refKind = target.getAttribute('data-ref-kind') as RefKind | null;
+              const refTarget = target.getAttribute('data-ref-target');
+
+              if (refKind && refTarget) {
+                // Prevent click if we are editing this exact element
+                // But click handler fires usually when NOT editing.
+                event.preventDefault();
+                event.stopPropagation();
+
+                // Route to specific handlers for backward compatibility
+                if (refKind === 'wikilink' && options.onWikilinkClick) {
+                  options.onWikilinkClick(refTarget);
+                } else if (refKind === 'backlink' && options.onBacklinkClick) {
+                  options.onBacklinkClick(refTarget);
+                } else if (refKind === 'temporal' && options.onTemporalClick) {
+                  options.onTemporalClick(refTarget);
+                } else if (options.onRefClick) {
+                  options.onRefClick(refKind, refTarget);
+                }
+                return true;
+              }
+
+              // Fallback for legacy data attributes (just in case)
+              const wikilinkTitle = target.getAttribute('data-wikilink-title');
+              if (wikilinkTitle && options.onWikilinkClick) {
+                event.preventDefault();
+                options.onWikilinkClick(wikilinkTitle);
                 return true;
               }
 

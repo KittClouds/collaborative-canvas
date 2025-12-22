@@ -8,7 +8,7 @@
  * - Relationship tracking
  */
 
-import { v7 as uuidv7 } from 'uuid';
+import { generateId } from '@/lib/utils/ids';
 import type { EntityKind } from './entityTypes';
 import type {
     RegisteredEntity,
@@ -83,7 +83,7 @@ export class EntityRegistry {
 
         // Create new entity
         const entity: RegisteredEntity = {
-            id: uuidv7(),
+            id: generateId(),
             label,
             normalizedLabel: normalized,
             kind,
@@ -556,7 +556,7 @@ export class EntityRegistry {
 
         // Create new relationship
         relationship = {
-            id: uuidv7(),
+            id: generateId(),
             sourceEntityId: source.id,
             targetEntityId: target.id,
             type,

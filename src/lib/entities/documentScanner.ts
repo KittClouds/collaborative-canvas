@@ -21,6 +21,10 @@ import { extractionService } from '@/lib/extraction/ExtractionService';
 import { promptTemplateBuilder } from '@/lib/extraction/PromptTemplateBuilder';
 import type { StructuredExtraction } from '@/lib/extraction/ExtractionService';
 
+// Phase 3 Imports - Ref System
+import { refParser, type Ref, type ParseContext, isEntityRef, isWikilinkRef, isBacklinkRef, isTagRef, isMentionRef, isTripleRef } from '@/lib/refs';
+import type { EntityRefPayload, WikilinkRefPayload, TripleRefPayload, TagRefPayload, MentionRefPayload } from '@/lib/refs';
+
 // ==================== EXISTING FUNCTIONS (UNCHANGED) ====================
 
 /**
@@ -251,6 +255,95 @@ export function hasRawEntitySyntax(content: JSONContent): boolean {
   };
 
   return walkNode(content);
+}
+
+// ==================== PHASE 3: REF-BASED SCANNING ====================
+
+/**
+ * Scan document using the new Ref system
+ * Returns an array of Ref objects for all detected patterns
+ */
+export function scanDocumentRefs(
+  noteId: string,
+  content: JSONContent
+): Ref[] {
+  const plainText = extractPlainTextFromDocument(content);
+  const context: ParseContext = {
+    noteId,
+    fullText: plainText,
+    position: 0,
+  };
+
+  return refParser.parse(plainText, context);
+}
+
+/**
+ * Convert Refs to legacy DocumentConnections format
+ * Provides backward compatibility with existing consumers
+ */
+export function refsToDocumentConnections(refs: Ref[]): DocumentConnections {
+  const connections: DocumentConnections = {
+    tags: [],
+    mentions: [],
+    links: [],
+    wikilinks: [],
+    entities: [],
+    triples: [],
+    backlinks: [],
+  };
+
+  for (const ref of refs) {
+    if (isEntityRef(ref)) {
+      const payload = ref.payload as EntityRefPayload;
+      connections.entities.push({
+        kind: payload.entityKind,
+        label: ref.target,
+        subtype: payload.subtype,
+        positions: ref.positions.map(p => p.offset),
+      });
+    } else if (isWikilinkRef(ref)) {
+      if (!connections.wikilinks.includes(ref.target)) {
+        connections.wikilinks.push(ref.target);
+      }
+    } else if (isBacklinkRef(ref)) {
+      if (!connections.backlinks.includes(ref.target)) {
+        connections.backlinks.push(ref.target);
+      }
+    } else if (isTagRef(ref)) {
+      const payload = ref.payload as TagRefPayload;
+      if (!connections.tags.includes(payload.normalized)) {
+        connections.tags.push(payload.normalized);
+      }
+    } else if (isMentionRef(ref)) {
+      const payload = ref.payload as MentionRefPayload;
+      const mention = payload.displayName || ref.target;
+      if (!connections.mentions.includes(mention)) {
+        connections.mentions.push(mention);
+      }
+    } else if (isTripleRef(ref)) {
+      const payload = ref.payload as TripleRefPayload;
+      connections.triples.push({
+        subject: { kind: payload.subjectKind, label: payload.subjectLabel },
+        predicate: ref.predicate || '',
+        object: { kind: payload.objectKind, label: payload.objectLabel },
+      });
+    }
+  }
+
+  return connections;
+}
+
+/**
+ * Hybrid scan using new Ref system with fallback to legacy
+ * Use this for a gradual migration path
+ */
+export function scanDocumentHybrid(
+  noteId: string,
+  content: JSONContent
+): { refs: Ref[]; connections: DocumentConnections } {
+  const refs = scanDocumentRefs(noteId, content);
+  const connections = refsToDocumentConnections(refs);
+  return { refs, connections };
 }
 
 // ==================== PHASE 1: NEW FUNCTIONS ====================
