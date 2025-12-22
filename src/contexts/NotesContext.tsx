@@ -269,20 +269,39 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   // Load initial data with migration
   useEffect(() => {
-    let { notes, folders } = loadFromStorage();
+    async function initializeApp() {
+      let { notes, folders } = loadFromStorage();
 
-    // Run migration if needed
-    if (needsMigration(notes, folders)) {
-      console.log('Migrating notes and folders to entity model...');
-      notes = migrateExistingNotes(notes);
-      folders = migrateExistingFolders(folders);
+      // Run migration if needed
+      if (needsMigration(notes, folders)) {
+        console.log('Migrating notes and folders to entity model...');
+        notes = migrateExistingNotes(notes);
+        folders = migrateExistingFolders(folders);
+      }
+
+      dispatch({ type: 'SET_NOTES', payload: notes });
+      dispatch({ type: 'SET_FOLDERS', payload: folders });
+
+      getGraphSync().hydrateFromNotesContext(notes, folders);
+      initialHydrationDone.current = true;
+
+      // Phase 1: Load Entity Registry
+      try {
+        const { loadEntityRegistry } = await import('@/lib/storage/entityStorage');
+        const { entityRegistry } = await import('@/lib/entities/entity-registry');
+
+        const savedRegistry = await loadEntityRegistry();
+        if (savedRegistry) {
+          // Replace global instance data
+          Object.assign(entityRegistry, savedRegistry);
+          console.log('Entity registry loaded:', entityRegistry.getGlobalStats());
+        }
+      } catch (error) {
+        console.error('Failed to load entity registry:', error);
+      }
     }
 
-    dispatch({ type: 'SET_NOTES', payload: notes });
-    dispatch({ type: 'SET_FOLDERS', payload: folders });
-
-    getGraphSync().hydrateFromNotesContext(notes, folders);
-    initialHydrationDone.current = true;
+    initializeApp();
   }, [getGraphSync]);
 
   // Auto-save with backup
@@ -461,11 +480,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         initialContent = JSON.stringify({
           type: 'doc',
           content: [
-            { 
-              type: 'paragraph', 
+            {
+              type: 'paragraph',
               content: [
                 { type: 'text', text: `<<${backlinkTitle}>>` }
-              ] 
+              ]
             },
             { type: 'paragraph', content: [] }
           ],

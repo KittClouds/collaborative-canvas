@@ -1,5 +1,6 @@
 import type { Note } from '@/contexts/NotesContext';
 import type { EntityKind } from '@/lib/entities/entityTypes';
+import { scanDocument } from '@/lib/entities/documentScanner';
 
 export interface WikiLink {
   sourceNoteId: string;
@@ -57,9 +58,10 @@ export class LinkIndex {
     }
 
     // Parse entity mentions: [KIND|Label] or [KIND:SUBTYPE|Label] or [KIND|Label|{attrs}]
-    const entityRegex = /\[([A-Z][A-Z_]*)(?::[A-Z_]+)?\|([^\]|]+)(?:\|[^\]]+)?\]/g;
+    const entityRegex = /\[([A-Z_]+(?::[A-Z_]+)?)\|([^\]|]+)(?:\|[^\]]+)?\]/g;
     while ((match = entityRegex.exec(plainText)) !== null) {
-      const entityKind = match[1] as EntityKind;
+      const fullKind = match[1];
+      const entityKind = fullKind.split(':')[0] as EntityKind;
       const entityLabel = match[2].trim();
       const context = this.getContext(plainText, match.index, match[0].length);
       links.push({
@@ -123,12 +125,25 @@ export class LinkIndex {
   private extractTextFromDoc(node: any): string {
     if (!node) return '';
 
+    // If node is already a string (fallback)
+    if (typeof node === 'string') return node;
+
+    // Handle text nodes
     if (node.type === 'text' && node.text) {
       return node.text;
     }
 
+    // Handle nodes with content (recursive)
     if (node.content && Array.isArray(node.content)) {
-      return node.content.map((child: any) => this.extractTextFromDoc(child)).join(' ');
+      // Use different join strategies based on node type
+      const isBlock = ['paragraph', 'heading', 'blockquote', 'codeBlock', 'listItem'].includes(node.type);
+      const text = node.content.map((child: any) => this.extractTextFromDoc(child)).join('');
+      return isBlock ? text + '\n' : text;
+    }
+
+    // Handle special nodes that might contain text in attributes (like task items)
+    if (node.type === 'taskItem' && node.content) {
+      return node.content.map((child: any) => this.extractTextFromDoc(child)).join('') + '\n';
     }
 
     return '';
@@ -173,10 +188,18 @@ export class LinkIndex {
     this.outgoingLinks.clear();
     this.backlinkMap.clear();
 
-    // First pass: parse all outgoing links
+    // First pass: parse all outgoing links and scan for entities
     for (const note of notes) {
       const links = this.parseNoteLinks(note.id, note.title, note.content);
       this.outgoingLinks.set(note.id, links);
+
+      // Phase 1: Scan for implicit/explicit entities
+      try {
+        const content = JSON.parse(note.content);
+        scanDocument(note.id, content);
+      } catch (error) {
+        // Ignore parse errors (handled partially by parseNoteLinks already)
+      }
     }
 
     // Second pass: build backlink map
@@ -268,7 +291,10 @@ export class LinkIndex {
   /**
    * Get all mentions of a specific entity across all notes
    */
-  getEntityMentions(entityLabel: string, entityKind?: EntityKind): BacklinkInfo[] {
+  getEntityMentions(
+    entityLabel: string,
+    entityKind?: EntityKind
+  ): BacklinkInfo[] {
     const key = this.getBacklinkKey(entityLabel, entityKind);
     return this.backlinkMap.get(key) || [];
   }
@@ -304,22 +330,14 @@ export class LinkIndex {
     appearanceCount: number;
   }> {
     const entities = this.getEntitiesInNote(noteId);
-    const stats: Array<{
-      entityKind: EntityKind;
-      entityLabel: string;
-      mentionsInThisNote: number;
-      mentionsAcrossVault: number;
-      appearanceCount: number;
-    }> = [];
+    const stats: Array<any> = [];
 
     entities.forEach((links, key) => {
-      const colonIdx = key.indexOf(':');
-      const kind = key.slice(0, colonIdx) as EntityKind;
-      const label = key.slice(colonIdx + 1);
-      const backlinks = this.getEntityMentions(label, kind);
+      const [kind, label] = key.split(':');
+      const backlinks = this.getEntityMentions(label, kind as EntityKind);
 
       stats.push({
-        entityKind: kind,
+        entityKind: kind as EntityKind,
         entityLabel: label,
         mentionsInThisNote: links.length,
         mentionsAcrossVault: backlinks.reduce((sum, bl) => sum + bl.linkCount, 0),

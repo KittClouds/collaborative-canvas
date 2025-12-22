@@ -1,6 +1,6 @@
 import type { IEntityExtractor, ExtractableNote } from '../EntityExtractor';
 import type { ExtractionResult, ExtractedEntity, ExtractedRelationship, EntityMention } from '../types';
-import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentParser';
+import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentScanner';
 import type { JSONContent } from '@tiptap/react';
 
 /**
@@ -13,7 +13,7 @@ export class RegexExtractor implements IEntityExtractor {
    */
   extract(note: ExtractableNote): ExtractionResult {
     const timestamp = new Date().toISOString();
-    
+
     // Handle empty content
     if (!note.content) {
       return {
@@ -118,13 +118,13 @@ export class RegexExtractor implements IEntityExtractor {
 
     const start = Math.max(0, charPosition - contextLength);
     const end = Math.min(plainText.length, charPosition + contextLength);
-    
+
     let context = plainText.slice(start, end);
-    
+
     // Add ellipsis if truncated
     if (start > 0) context = '...' + context;
     if (end < plainText.length) context = context + '...';
-    
+
     return context.trim();
   }
 
@@ -133,15 +133,15 @@ export class RegexExtractor implements IEntityExtractor {
    */
   private extractPlainText(node: any): string {
     if (!node) return '';
-    
+
     if (typeof node.text === 'string') {
       return node.text;
     }
-    
+
     if (Array.isArray(node.content)) {
       return node.content.map((child: any) => this.extractPlainText(child)).join(' ');
     }
-    
+
     return '';
   }
 }

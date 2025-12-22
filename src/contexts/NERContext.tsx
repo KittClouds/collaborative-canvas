@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import type { NEREntity, NERModelStatus } from '@/lib/ner/types';
+import type { NEREntity, NERModelStatus } from '@/lib/extraction';
 
 interface NERContextValue {
     // State
@@ -9,7 +9,7 @@ interface NERContextValue {
     error: string | null;
 
     // Actions
-    setEntities: (entities: NEREntity[]) => void;
+    setEntities: (entities: NEREntity[] | ((prev: NEREntity[]) => NEREntity[])) => void;
     clearEntities: () => void;
     setModelStatus: (status: NERModelStatus) => void;
     setIsAnalyzing: (analyzing: boolean) => void;

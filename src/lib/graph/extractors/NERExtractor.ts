@@ -1,4 +1,4 @@
-import { runNer } from '@/lib/ner/gliner-service';
+import { runNer } from '@/lib/extraction';
 import { getGraph } from '@/lib/graph/graphInstance';
 import type { UnifiedGraph } from '@/lib/graph/UnifiedGraph';
 import type { UnifiedNode, NodeId, ExtractionMethod } from '@/lib/graph/types';
@@ -93,11 +93,11 @@ export class NERExtractor {
 
         for (const span of spans) {
           const existingEdges = this.graph.getEdgesBetween(noteId, entityNode.data.id);
-          const hasMention = existingEdges.some(e => 
-            e.data.type === 'MENTIONS' && 
+          const hasMention = existingEdges.some(e =>
+            e.data.type === 'MENTIONS' &&
             e.data.extractionMethod === 'ner'
           );
-          
+
           if (!hasMention) {
             this.graph.addEdge({
               source: noteId,
@@ -147,9 +147,9 @@ export class NERExtractor {
     const cy = this.graph.getInstance();
     const edges = cy.edges().filter(edge => {
       const data = edge.data();
-      return data.source === noteId && 
-             data.type === 'MENTIONS' && 
-             data.extractionMethod === 'ner';
+      return data.source === noteId &&
+        data.type === 'MENTIONS' &&
+        data.extractionMethod === 'ner';
     });
     edges.forEach(edge => {
       this.graph.removeEdge(edge.id());

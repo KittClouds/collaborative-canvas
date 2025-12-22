@@ -3,7 +3,8 @@ import { Plugin, PluginKey, Selection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '../entities/entityTypes';
-import type { NEREntity } from '../ner/types';
+import type { NEREntity } from '../extraction';
+import { entityRegistry } from '../entities/entity-registry';
 
 export interface UnifiedSyntaxOptions {
   onWikilinkClick?: (title: string) => void;
@@ -118,11 +119,11 @@ function buildAllDecorations(
               key: `entity-${from}-${fullMatch}`,
             })
           );
-          // Hide original text
+          // Hide original text - use a more stable approach that keeps it in the flow
           decorations.push(
             Decoration.inline(from, to, {
               class: 'entity-hidden',
-              style: 'position: absolute; left: -9999px; pointer-events: none;',
+              style: 'display: none;', // Reverting to display: none as it's more stable for block flow than absolute positioning
             })
           );
         } else {
@@ -178,7 +179,7 @@ function buildAllDecorations(
         decorations.push(
           Decoration.inline(from, to, {
             class: 'wikilink-hidden',
-            style: 'position: absolute; left: -9999px; pointer-events: none;',
+            style: 'display: none;',
           })
         );
       } else {
@@ -243,7 +244,7 @@ function buildAllDecorations(
         decorations.push(
           Decoration.inline(from, to, {
             class: 'backlink-hidden',
-            style: 'position: absolute; left: -9999px; pointer-events: none;',
+            style: 'display: none;',
           })
         );
       } else {
@@ -365,6 +366,7 @@ function buildAllDecorations(
 
     if (nerEntities.length > 0) {
       for (const entity of nerEntities) {
+        // ... (existing NER code)
         const entityStart = entity.start;
         const entityEnd = entity.end;
         const nodeStart = pos;
@@ -401,6 +403,61 @@ function buildAllDecorations(
             'data-ner-end': entity.end.toString(),
           }, { inclusiveStart: false, inclusiveEnd: false })
         );
+      }
+    }
+
+    // 8. Registered Implicit Entities (Phase 1)
+    const allRegistered = entityRegistry.getAllEntities();
+
+    // Quick escape if no entities
+    if (allRegistered.length > 0) {
+      // Sort by length desc to handle overlapping (longest first)
+      // Note: This is a simple per-node check. For better perf with huge registries, 
+      // we'd use Aho-Corasick or similar. For now ( < 1000 entities), direct regex is fine.
+
+      for (const entity of allRegistered) {
+        const patterns = [entity.label, ...(entity.aliases || [])];
+
+        for (const pattern of patterns) {
+          // Naive regex matching for implicit mentions
+          // Using word boundaries to avoid partial matches
+          const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
+
+          let match;
+          while ((match = regex.exec(text)) !== null) {
+            const from = pos + match.index;
+            const to = from + match[0].length;
+
+            // Check overlap
+            let hasOverlap = false;
+            for (let i = match.index; i < match.index + match[0].length; i++) {
+              if (processed.has(i)) {
+                hasOverlap = true;
+                break;
+              }
+            }
+            if (hasOverlap) continue;
+
+            // Mark processed
+            for (let i = match.index; i < match.index + match[0].length; i++) {
+              processed.add(i);
+            }
+
+            const color = ENTITY_COLORS[entity.kind] || '#6b7280';
+
+            decorations.push(
+              Decoration.inline(from, to, {
+                class: 'entity-implicit-highlight',
+                style: `background-color: ${color}10; color: ${color}; padding: 0px 2px; border-bottom: 2px dotted ${color}; cursor: help;`,
+                'data-entity-id': entity.id,
+                'data-entity-kind': entity.kind,
+                'data-entity-label': entity.label,
+                'title': `${entity.kind}: ${entity.label}`
+              }, { inclusiveStart: false, inclusiveEnd: false })
+            );
+          }
+        }
       }
     }
   });
@@ -489,18 +546,30 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
             return buildAllDecorations(doc, options);
           },
           apply(tr, oldDecorations, oldState, newState) {
-            // Always rebuild on document change OR selection change (in widget mode)
-            if (!tr.docChanged && !tr.selectionSet) {
-              return oldDecorations.map(tr.mapping, tr.doc);
+            const useWidgets = options.useWidgetMode ?? false;
+
+            // Rebuild on doc change
+            if (tr.docChanged) {
+              const selection = { from: newState.selection.from, to: newState.selection.to };
+              return buildAllDecorations(newState.doc, options, selection);
             }
 
-            // 🆕 Pass selection to decoration builder (for edit detection)
-            const selection = {
-              from: newState.selection.from,
-              to: newState.selection.to,
-            };
+            // If only selection changed and we are in widget mode, 
+            // check if we NEED to rebuild (selection near a syntax element)
+            if (tr.selectionSet && useWidgets) {
+              const oldSelection = { from: oldState.selection.from, to: oldState.selection.to };
+              const newSelection = { from: newState.selection.from, to: newState.selection.to };
 
-            return buildAllDecorations(newState.doc, options, selection);
+              // Simple check: did selection cross a text block?
+              // Or better: just rebuild it less aggressively.
+              // For now, let's just make sure we don't return oldDecorations if selection changed
+              // BUT we can skip if the change is "outside" any widgets.
+              // Actually, to keep it simple and fix the drag menu, 
+              // let's only rebuild if the selection is within a small buffer of any entity syntax.
+              return buildAllDecorations(newState.doc, options, newSelection);
+            }
+
+            return oldDecorations.map(tr.mapping, tr.doc);
           },
         },
         props: {
@@ -520,7 +589,8 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
                   Selection.near(view.state.doc.resolve(pos))
                 );
                 view.dispatch(tr);
-                event.preventDefault();
+                // Removed event.preventDefault() to allow the event to flow to other parts of the system
+                // if they are listening for bubble selection/drag events.
                 return true;
               }
 

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, AlertCircle, ChevronDown, Check, X, RefreshCw } from 'lucide-react';
-import { glinerService, runNer } from '@/lib/ner/gliner-service';
-import type { NEREntity } from '@/lib/ner/types';
+import { Loader2, Sparkles, AlertCircle, ChevronDown, Check, X, RefreshCw, Book, Lightbulb } from 'lucide-react';
+import { extractionService, runNer } from '@/lib/extraction';
+import type { NEREntity } from '@/lib/extraction';
 import { cn } from '@/lib/utils';
 import { useNER } from '@/contexts/NERContext';
 import { useNotes } from '@/contexts/NotesContext';
@@ -16,6 +16,8 @@ import {
 import { ENTITY_KINDS, ENTITY_COLORS, EntityKind } from '@/lib/entities/entityTypes';
 import { getEntityStore, getEdgeStore } from '@/lib/storage/index';
 import { useToast } from '@/hooks/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RegisteredEntitiesView } from '@/components/entities/RegisteredEntitiesView';
 
 // Default fallback mapping (for backwards compatibility)
 const DEFAULT_NER_TO_ENTITY_MAP: Record<string, string[]> = {
@@ -238,7 +240,7 @@ export function EntitiesPanel() {
 
     // Load model on demand (not on mount)
     const loadModel = async (): Promise<boolean> => {
-        if (glinerService.isLoaded()) {
+        if (extractionService.isLoaded()) {
             setModelStatus('ready');
             return true;
         }
@@ -247,7 +249,7 @@ export function EntitiesPanel() {
         setError(null);
 
         try {
-            await glinerService.initialize();
+            await extractionService.initialize();
             setModelStatus('ready');
             return true;
         } catch (err) {
@@ -356,7 +358,7 @@ export function EntitiesPanel() {
             if (resolutionPolicy === 'entity_on_accept') {
                 const entityStore = getEntityStore();
                 const edgeStore = getEdgeStore();
-                
+
                 const createdEntity = await entityStore.upsertEntity({
                     name: entity.word,
                     entity_kind: kind,
@@ -407,116 +409,132 @@ export function EntitiesPanel() {
     };
 
     return (
-        <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="p-4 border-b space-y-3">
-                <div className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                    <h2 className="font-semibold">Entity Extraction</h2>
+        <div className="flex flex-col h-full bg-background">
+            <Tabs defaultValue="registry" className="flex flex-col h-full">
+                <div className="px-4 py-2 border-b">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="registry" className="gap-2">
+                            <Book className="h-4 w-4" />
+                            Registry
+                        </TabsTrigger>
+                        <TabsTrigger value="suggestions" className="gap-2">
+                            <Lightbulb className="h-4 w-4" />
+                            Suggestions
+                        </TabsTrigger>
+                    </TabsList>
                 </div>
 
-                {/* Model Status */}
-                <div className="flex items-center gap-2 text-sm">
-                    {modelStatus === 'idle' && (
-                        <>
-                            <div className="h-2 w-2 rounded-full bg-muted-foreground" />
-                            <span className="text-muted-foreground">Model loads on first analysis</span>
-                        </>
-                    )}
-                    {modelStatus === 'loading' && (
-                        <>
-                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                            <span className="text-muted-foreground">Downloading model (~50MB)...</span>
-                        </>
-                    )}
-                    {modelStatus === 'ready' && (
-                        <>
-                            <div className="h-2 w-2 rounded-full bg-green-500" />
-                            <span className="text-muted-foreground">Model ready</span>
-                        </>
-                    )}
-                    {modelStatus === 'error' && (
-                        <div className="flex flex-col gap-2 w-full">
-                            <div className="flex items-center gap-2">
-                                <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-                                <span className="text-destructive text-xs">{error}</span>
-                            </div>
+                <TabsContent value="registry" className="flex-1 mt-0 overflow-hidden">
+                    <RegisteredEntitiesView />
+                </TabsContent>
+
+                <TabsContent value="suggestions" className="flex-1 mt-0 overflow-hidden flex flex-col">
+                    {/* Header */}
+                    <div className="p-4 border-b space-y-3">
+                        {/* Model Status */}
+                        <div className="flex items-center gap-2 text-sm">
+                            {modelStatus === 'idle' && (
+                                <>
+                                    <div className="h-2 w-2 rounded-full bg-muted-foreground" />
+                                    <span className="text-muted-foreground">Model loads on first analysis</span>
+                                </>
+                            )}
+                            {modelStatus === 'loading' && (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                    <span className="text-muted-foreground">Downloading model (~50MB)...</span>
+                                </>
+                            )}
+                            {modelStatus === 'ready' && (
+                                <>
+                                    <div className="h-2 w-2 rounded-full bg-green-500" />
+                                    <span className="text-muted-foreground">Model ready</span>
+                                </>
+                            )}
+                            {modelStatus === 'error' && (
+                                <div className="flex flex-col gap-2 w-full">
+                                    <div className="flex items-center gap-2">
+                                        <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                                        <span className="text-destructive text-xs">{error}</span>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleRetry}
+                                        className="w-full"
+                                    >
+                                        <RefreshCw className="h-3 w-3 mr-2" />
+                                        Retry
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Analyze Button */}
+                        {modelStatus !== 'error' && (
                             <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleRetry}
+                                onClick={handleAnalyze}
+                                disabled={isAnalyzing || !selectedNote}
                                 className="w-full"
                             >
-                                <RefreshCw className="h-3 w-3 mr-2" />
-                                Retry
+                                {isAnalyzing ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        {modelStatus === 'loading' ? 'Loading model...' : 'Analyzing...'}
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="mr-2 h-4 w-4" />
+                                        {modelStatus === 'ready' ? 'Analyze Current Note' : 'Load Model & Analyze'}
+                                    </>
+                                )}
                             </Button>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
 
-                {/* Analyze Button */}
-                {modelStatus !== 'error' && (
-                    <Button
-                        onClick={handleAnalyze}
-                        disabled={isAnalyzing || !selectedNote}
-                        className="w-full"
-                    >
-                        {isAnalyzing ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                {modelStatus === 'loading' ? 'Loading model...' : 'Analyzing...'}
-                            </>
+                    {/* Results */}
+                    <div className="flex-1 overflow-auto p-4 space-y-3">
+                        {entities.length === 0 ? (
+                            <div className="text-center text-muted-foreground text-sm py-8">
+                                <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                <p>Click "Analyze" to detect entities</p>
+                                <p className="text-xs mt-1 opacity-70">
+                                    Detects characters, locations, factions, and story elements
+                                </p>
+                            </div>
                         ) : (
                             <>
-                                <Sparkles className="mr-2 h-4 w-4" />
-                                {modelStatus === 'ready' ? 'Analyze Current Note' : 'Load Model & Analyze'}
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm text-muted-foreground">
+                                        Found {entities.length} suggestions
+                                    </p>
+                                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setEntities([])}>
+                                        Clear All
+                                    </Button>
+                                </div>
+
+                                <div className="space-y-3 pb-8">
+                                    {entities.map((entity, idx) => {
+                                        const labelMappings = getLabelMappings();
+                                        const possibleKinds = labelMappings[entity.entity_type.toLowerCase()] || ['CONCEPT'];
+
+                                        return (
+                                            <EntityCard
+                                                key={`${entity.word}-${entity.start}-${idx}`}
+                                                entity={entity}
+                                                onAccept={handleAccept}
+                                                onDismiss={handleDismiss}
+                                                entityTypes={compiledBlueprint?.entityTypes}
+                                                possibleKinds={possibleKinds}
+                                            />
+                                        );
+                                    })}
+                                </div>
                             </>
                         )}
-                    </Button>
-                )}
-            </div>
-
-            {/* Results */}
-            <div className="flex-1 overflow-auto p-4 space-y-3">
-                {entities.length === 0 ? (
-                    <div className="text-center text-muted-foreground text-sm py-8">
-                        <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        <p>Click "Analyze" to detect entities</p>
-                        <p className="text-xs mt-1 opacity-70">
-                            Detects characters, locations, factions, and story elements
-                        </p>
                     </div>
-                ) : (
-                    <>
-                        <div className="flex items-center justify-between">
-                            <p className="text-sm text-muted-foreground">
-                                Found {entities.length} suggestions
-                            </p>
-                            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setEntities([])}>
-                                Clear All
-                            </Button>
-                        </div>
-
-                        <div className="space-y-3 pb-8">
-                            {entities.map((entity, idx) => {
-                                const labelMappings = getLabelMappings();
-                                const possibleKinds = labelMappings[entity.entity_type.toLowerCase()] || ['CONCEPT'];
-
-                                return (
-                                    <EntityCard
-                                        key={`${entity.word}-${entity.start}-${idx}`}
-                                        entity={entity}
-                                        onAccept={handleAccept}
-                                        onDismiss={handleDismiss}
-                                        entityTypes={compiledBlueprint?.entityTypes}
-                                        possibleKinds={possibleKinds}
-                                    />
-                                );
-                            })}
-                        </div>
-                    </>
-                )}
-            </div>
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

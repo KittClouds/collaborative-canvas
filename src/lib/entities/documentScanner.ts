@@ -1,9 +1,27 @@
+/**
+ * DocumentScanner - Unified document processing
+ * 
+ * Phase 0: Contains existing parsing functions (unchanged)
+ * Phase 1: Will add registry-based scanning
+ * Phase 2: Will integrate extraction service
+ * 
+ * All existing functions remain backward compatible.
+ */
+
 import type { JSONContent } from '@tiptap/react';
-import type { DocumentConnections, Entity, EntityKind, EntityReference } from './entityTypes';
+import type { DocumentConnections, Entity, EntityReference } from './entityTypes';
+import { regexEntityParser } from './regex-entity-parser';
+import { entityRegistry } from './entity-registry';
+import type { ParsedEntity, ScanResult } from './types/registry';
+import type { EntityKind } from './entityTypes';
+
+// ==================== EXISTING FUNCTIONS (UNCHANGED) ====================
 
 /**
  * Parse connections from TipTap JSONContent structure
  * Extracts entities, tags, mentions, links from the document
+ * 
+ * ✅ Phase 0: Unchanged - all existing consumers still work
  */
 export function parseNoteConnectionsFromDocument(
   content: JSONContent,
@@ -155,8 +173,8 @@ function extractRawSyntax(text: string, connections: DocumentConnections) {
   let entityMatch: RegExpExecArray | null;
   while ((entityMatch = entityRegex.exec(text)) !== null) {
     const [, kind, subtype, label, attrsJSON] = entityMatch;
-    const entity: EntityReference = { 
-      kind: kind as EntityKind, 
+    const entity: EntityReference = {
+      kind: kind as EntityKind,
       subtype: subtype || undefined,
       label,
       positions: [entityMatch.index],
@@ -227,4 +245,129 @@ export function hasRawEntitySyntax(content: JSONContent): boolean {
   };
 
   return walkNode(content);
+}
+
+// ==================== PHASE 1: NEW FUNCTIONS ====================
+
+/**
+ * Parse explicit entities from document WITH context
+ * Phase 1: Uses RegexEntityParser
+ */
+export function parseExplicitEntities(content: JSONContent): ParsedEntity[] {
+  return regexEntityParser.parseFromDocument(content);
+}
+
+import { autoSaveEntityRegistry } from '@/lib/storage/entityStorage';
+
+/**
+ * Unified document scan - explicit parsing + registry matching
+ * Phase 1: No ML, pure regex + registry lookups
+ */
+export function scanDocument(
+  noteId: string,
+  content: JSONContent
+): ScanResult {
+  // STEP 1: Parse explicit entity syntax
+  const explicitEntities = parseExplicitEntities(content);
+
+  // STEP 2: Register explicit entities
+  // Note: entityRegistry.registerEntity returns RegisteredEntity 
+  // (or similar compat types, ensuring TS check passes)
+  const registeredEntities: any[] = [];
+
+  for (const parsed of explicitEntities) {
+    const entity = entityRegistry.registerEntity(
+      parsed.label,
+      parsed.kind,
+      noteId,
+      {
+        subtype: parsed.subtype,
+        metadata: parsed.metadata,
+        aliases: parsed.metadata?.aliases as string[] | undefined,
+      }
+    );
+    registeredEntities.push(entity);
+  }
+
+  // STEP 3: Scan for registered entities in plain text
+  const plainText = extractPlainTextFromDocument(content);
+  const matchedEntities: ScanResult['matchedEntities'] = [];
+
+  for (const entity of entityRegistry.getAllEntities()) {
+    const positions = findEntityMentions(plainText, entity.label, entity.aliases);
+
+    if (positions.length > 0) {
+      // Update entity statistics
+      entity.totalMentions += positions.length;
+      entity.lastSeenDate = new Date();
+      entity.noteAppearances.add(noteId);
+
+      matchedEntities.push({
+        entity,
+        positions,
+      });
+    }
+  }
+
+  // TRIGGER AUTO-SAVE if any changes occurred
+  if (explicitEntities.length > 0 || matchedEntities.length > 0) {
+    autoSaveEntityRegistry(entityRegistry);
+  }
+
+  // STEP 4: Return scan result
+  return {
+    explicitEntities,
+    registeredEntities: entityRegistry.getAllEntities(),
+    matchedEntities,
+    relationships: [], // Phase 3
+    coOccurrences: [], // Phase 3
+  };
+}
+
+/**
+ * Extract plain text from document (helper)
+ */
+function extractPlainTextFromDocument(node: JSONContent): string {
+  if (!node) return '';
+
+  if (node.type === 'text' && node.text) {
+    return node.text;
+  }
+
+  if (node.content && Array.isArray(node.content)) {
+    return node.content.map(child => extractPlainTextFromDocument(child)).join(' ');
+  }
+
+  return '';
+}
+
+/**
+ * Find all positions where entity (or its aliases) appear
+ */
+function findEntityMentions(
+  text: string,
+  label: string,
+  aliases: string[] = []
+): number[] {
+  const positions: number[] = [];
+  const patterns = [label, ...aliases];
+
+  for (const pattern of patterns) {
+    // Word boundary regex for whole-word matching
+    const regex = new RegExp(`\\b${escapeRegex(pattern)}\\b`, 'gi');
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      positions.push(match.index);
+    }
+  }
+
+  return positions.sort((a, b) => a - b);
+}
+
+/**
+ * Escape special regex characters
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

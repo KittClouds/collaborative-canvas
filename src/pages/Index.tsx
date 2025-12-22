@@ -244,7 +244,7 @@ function NotesApp() {
             </header>
 
             {/* Editor Area */}
-            <main className="flex-1 min-h-0 overflow-hidden pb-16">
+            <main className="flex-1 min-h-0 pb-16">
               {selectedNote ? (
                 <RichEditor
                   content={selectedNote.content}

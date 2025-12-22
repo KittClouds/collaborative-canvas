@@ -77,6 +77,7 @@
     "graphology-communities-louvain": "^2.0.2",
     "graphology-metrics": "^2.4.0",
     "graphology-types": "^0.24.8",
+    "idb": "^8.0.3",
     "input-otp": "^1.4.2",
     "katex": "^0.16.27",
     "lucide-react": "^0.462.0",

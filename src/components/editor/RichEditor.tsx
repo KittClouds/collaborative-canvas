@@ -76,7 +76,7 @@ import 'react-image-crop/dist/ReactCrop.css';
 import EditorToolbar from './EditorToolbar';
 import EditorBubbleMenus from './EditorBubbleMenus';
 
-import { useLayoutDimensions } from '@/hooks/useLayoutDimensions';
+
 
 interface RichEditorProps {
   content: string;
@@ -313,9 +313,7 @@ const RichEditor = ({
     [] // Empty deps = never recreated
   );
 
-  const dimensions = useLayoutDimensions({
-    includeToolbar: toolbarVisible,
-  });
+
 
   // Parse content to JSON if needed
   const parseContent = useCallback((contentStr: string) => {
@@ -402,7 +400,6 @@ const RichEditor = ({
         {/* Editor Content Area */}
         <div
           className="flex-1 overflow-auto custom-scrollbar bg-background relative"
-          style={{ maxHeight: dimensions.availableHeight }}
         >
           <EditorContent editor={editor} className="min-h-full" />
         </div>

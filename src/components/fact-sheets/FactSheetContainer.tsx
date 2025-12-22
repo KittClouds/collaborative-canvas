@@ -1,7 +1,7 @@
 import React, { useMemo, useEffect, useCallback, useState } from 'react';
 import { useNotes } from '@/contexts/NotesContext';
 import { useEntitySelection } from '@/contexts/EntitySelectionContext';
-import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentParser';
+import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentScanner';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 import { FileQuestion, Sparkles, BrainCircuit, LayoutGrid, List } from 'lucide-react';
