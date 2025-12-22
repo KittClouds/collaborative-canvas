@@ -1,20 +1,76 @@
 import { pipeline } from '@huggingface/transformers';
 import type { NEREntity, NERSpan, ExtractionSpan } from './types';
+import type { EntityKind } from '@/lib/entities/entityTypes';
 
 type Pipeline = any;
 
 /**
- * ExtractionService - Handles ML-based entity extraction
- * Replaces old NER service with extraction model support
+ * Structured extraction output from LFM2-350M-Extract
+ */
+export interface StructuredExtraction {
+    entities: Array<{
+        label: string;
+        kind: EntityKind;
+        confidence: number;
+    }>;
+    relationships: Array<{
+        source: string;
+        target: string;
+        type: string;
+        confidence?: number;
+    }>;
+    coOccurrences: Array<{
+        entities: string[];
+        context: string;
+    }>;
+}
+
+/**
+ * Model configuration
+ */
+export type ModelType = 'ner' | 'extraction';
+
+interface ModelConfig {
+    type: ModelType;
+    modelId: string;
+    pipelineType: string;
+    supportsPrompts: boolean;
+}
+
+const MODEL_CONFIGS: Record<string, ModelConfig> = {
+    ner: {
+        type: 'ner',
+        modelId: 'onnx-community/NeuroBERT-NER-ONNX',
+        pipelineType: 'token-classification',
+        supportsPrompts: false,
+    },
+    extraction: {
+        type: 'extraction',
+        modelId: 'onnx-community/LFM2-350M-Extract-ONNX',
+        pipelineType: 'text2text-generation',
+        supportsPrompts: true,
+    },
+};
+
+/**
+ * ExtractionService - Handles both NER and structured extraction
  */
 class ExtractionService {
     private pipelineInstance: Pipeline | null = null;
     private loading: boolean = false;
     private loadError: Error | null = null;
+    private currentModel: ModelType = 'ner'; // Default to NER for backward compatibility
 
-    async initialize(): Promise<void> {
-        if (this.pipelineInstance) return;
+    /**
+     * Initialize model (defaults to NER, can load extraction model)
+     */
+    async initialize(modelType: ModelType = 'ner'): Promise<void> {
+        if (this.pipelineInstance && this.currentModel === modelType) {
+            return; // Already loaded
+        }
+
         if (this.loading) {
+            // Wait for existing load
             return new Promise((resolve) => {
                 const checkInterval = setInterval(() => {
                     if (!this.loading) {
@@ -28,22 +84,132 @@ class ExtractionService {
         this.loading = true;
         this.loadError = null;
 
+        const config = MODEL_CONFIGS[modelType];
+
         try {
-            // Load NER model (Phase 0: keep existing model)
-            // Phase 2 will swap to LFM2-350M-Extract
+            console.log(`Loading ${modelType} model: ${config.modelId}...`);
+
+            // Check if using WebGPU or WASM backend based on environment capabilities could be a future optimization
+            // For now, rely on default behavior or explicit options
+
             this.pipelineInstance = await pipeline(
-                'token-classification',
-                'onnx-community/NeuroBERT-NER-ONNX'
+                config.pipelineType as any,
+                config.modelId,
+                {
+                    quantized: true, // Use quantized model for smaller size and speed
+                    progress_callback: (progress: any) => {
+                        if (progress.status === 'progress') {
+                            const percent = Math.round((progress.loaded / progress.total) * 100);
+                            // Log less frequently to avoid spam
+                            if (percent % 10 === 0) {
+                                console.log(`Model download: ${percent}%`);
+                            }
+                        }
+                    },
+                } as any
             );
-            console.log('Extraction model loaded successfully');
+
+            this.currentModel = modelType;
+            console.log(`${modelType} model loaded successfully`);
+
         } catch (error) {
             this.loadError = error as Error;
-            console.error('Failed to load extraction model:', error);
+            console.error(`Failed to load ${modelType} model:`, error);
             throw error;
         } finally {
             this.loading = false;
         }
     }
+
+    /**
+     * Run structured extraction with LFM2-350M-Extract (Phase 2)
+     */
+    async extractStructured(
+        text: string,
+        systemPrompt: string,
+        options: { temperature?: number; maxNewTokens?: number } = {}
+    ): Promise<StructuredExtraction> {
+        const temperature = options.temperature ?? 0; // Greedy decoding recommended for extraction
+        const maxNewTokens = options.maxNewTokens ?? 1024; // Increased for structured JSON output
+
+        if (!this.pipelineInstance || this.currentModel !== 'extraction') {
+            await this.initialize('extraction');
+        }
+
+        try {
+            // LFM2 uses ChatML-like format
+            const prompt = this.buildLFM2Prompt(systemPrompt, text);
+
+            const result = await (this.pipelineInstance as any)(prompt, {
+                max_new_tokens: maxNewTokens,
+                temperature,
+                do_sample: temperature > 0,
+                return_full_text: false, // Only return generated part
+            });
+
+            // Parse JSON output from model
+            const generatedText = Array.isArray(result)
+                ? result[0].generated_text
+                : result.generated_text;
+
+            return this.parseExtractionOutput(generatedText);
+
+        } catch (error) {
+            console.error('Structured extraction failed:', error);
+            // Return empty result on error instead of throwing to prevent UI crash
+            return {
+                entities: [],
+                relationships: [],
+                coOccurrences: [],
+            };
+        }
+    }
+
+    /**
+     * Build LFM2-style prompt (ChatML format)
+     */
+    private buildLFM2Prompt(systemPrompt: string, userText: string): string {
+        return `<|startoftext|><|im_start|>system
+${systemPrompt}<|im_end|>
+<|im_start|>user
+${userText}<|im_end|>
+<|im_start|>assistant
+`;
+    }
+
+    /**
+     * Parse JSON output from LFM2 model
+     */
+    private parseExtractionOutput(text: string): StructuredExtraction {
+        try {
+            // Extract JSON from response (model might be chatty)
+            // Look for first '{' and last '}'
+            const start = text.indexOf('{');
+            const end = text.lastIndexOf('}');
+
+            if (start !== -1 && end !== -1 && end > start) {
+                const jsonStr = text.substring(start, end + 1);
+                const parsed = JSON.parse(jsonStr);
+
+                // Validate and normalize structure
+                return {
+                    entities: Array.isArray(parsed.entities) ? parsed.entities : [],
+                    relationships: Array.isArray(parsed.relationships) ? parsed.relationships : [],
+                    coOccurrences: Array.isArray(parsed.coOccurrences) ? parsed.coOccurrences : [],
+                };
+            }
+
+            console.warn('No valid JSON found in extraction output', text.substring(0, 50) + "...");
+            return { entities: [], relationships: [], coOccurrences: [] };
+
+        } catch (error) {
+            console.error('Failed to parse extraction output:', error);
+            // Attempt lenient parsing or fallback here if needed
+            return { entities: [], relationships: [], coOccurrences: [] };
+        }
+    }
+
+    // ==================== Legacy / Backward Compatibility Methods ====================
 
     /**
      * @deprecated Use extractSpans() instead
@@ -52,9 +218,9 @@ class ExtractionService {
         text: string,
         entityTypes: string[] = ['person', 'location', 'organization', 'event', 'artifact']
     ): Promise<NEREntity[]> {
-        // Keep existing implementation for backward compatibility
-        if (!this.pipelineInstance) {
-            throw new Error('Extraction model not initialized. Call initialize() first.');
+        // Warning: This forces a reload if we were in extraction mode
+        if (!this.pipelineInstance || this.currentModel !== 'ner') {
+            await this.initialize('ner');
         }
 
         try {
@@ -98,6 +264,10 @@ class ExtractionService {
     getError(): Error | null {
         return this.loadError;
     }
+
+    getCurrentModel(): ModelType {
+        return this.currentModel;
+    }
 }
 
 // Singleton instance
@@ -114,6 +284,7 @@ export interface RunExtractionOptions {
 
 /**
  * Run extraction on text - returns raw model output
+ * NOTE: This will implicitly use the NER model.
  */
 export async function runExtraction(
     text: string,
@@ -121,11 +292,13 @@ export async function runExtraction(
 ): Promise<ExtractionSpan[]> {
     const threshold = options.threshold ?? 0.4;
 
-    if (!extractionService.isLoaded()) {
-        await extractionService.initialize();
+    if (!extractionService.isLoaded() || extractionService.getCurrentModel() !== 'ner') {
+        await extractionService.initialize('ner');
     }
 
     try {
+        // Access private pipeline instance via any cast to run inference
+        // In a real scenario, we might expose a public method for this
         const results = await (extractionService as any).pipelineInstance(text, {
             ignore_labels: ['O'],
             score_threshold: threshold,

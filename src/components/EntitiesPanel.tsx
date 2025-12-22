@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, AlertCircle, ChevronDown, Check, X, RefreshCw, Book, Lightbulb } from 'lucide-react';
+import { Loader2, Sparkles, AlertCircle, ChevronDown, Check, X, RefreshCw, Book, Lightbulb, Brain, Zap, Settings } from 'lucide-react';
 import { extractionService, runNer } from '@/lib/extraction';
 import type { NEREntity } from '@/lib/extraction';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,9 @@ import { getEntityStore, getEdgeStore } from '@/lib/storage/index';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RegisteredEntitiesView } from '@/components/entities/RegisteredEntitiesView';
+import { RegistrySettings } from '@/components/entities/RegistrySettings';
+import { entityRegistry } from '@/lib/entities/entity-registry';
+import { scanDocumentWithExtraction, type EntitySuggestion } from '@/lib/entities/documentScanner';
 
 // Default fallback mapping (for backwards compatibility)
 const DEFAULT_NER_TO_ENTITY_MAP: Record<string, string[]> = {
@@ -203,10 +206,12 @@ export function EntitiesPanel() {
     } = useNER();
 
     const { selectedNote } = useNotes();
-    const { compiledBlueprint, isLoading: blueprintLoading } = useBlueprintHub();
+    const { compiledBlueprint } = useBlueprintHub();
     const { toast } = useToast();
 
-    // Get label mappings from compiled blueprint
+    // New state for model selection
+    const [modelType, setModelType] = useState<'ner' | 'extraction'>('ner');
+
     const getLabelMappings = (): Record<string, string[]> => {
         if (!compiledBlueprint?.extractionProfile?.labelMappings) {
             return DEFAULT_NER_TO_ENTITY_MAP;
@@ -220,48 +225,25 @@ export function EntitiesPanel() {
         return mappings;
     };
 
-    // Get ignore list from compiled blueprint
-    const getIgnoreList = (): Set<string> => {
-        if (!compiledBlueprint?.extractionProfile?.ignoreList) {
-            return new Set();
-        }
-
-        return new Set(
-            compiledBlueprint.extractionProfile.ignoreList
-                .filter(entry => entry.surface_form)
-                .map(entry => entry.surface_form!.toLowerCase())
-        );
-    };
-
-    // Get confidence threshold from compiled blueprint
-    const getConfidenceThreshold = (): number => {
-        return compiledBlueprint?.extractionProfile?.confidence_threshold ?? 0.4;
-    };
-
-    // Load model on demand (not on mount)
-    const loadModel = async (): Promise<boolean> => {
-        if (extractionService.isLoaded()) {
+    const loadModel = async (type: 'ner' | 'extraction') => {
+        // Don't reload if already loaded and type matches
+        if (extractionService.isLoaded() && extractionService.getCurrentModel() === type) {
             setModelStatus('ready');
             return true;
         }
 
         setModelStatus('loading');
         setError(null);
+        setModelType(type);
 
         try {
-            await extractionService.initialize();
+            await extractionService.initialize(type);
             setModelStatus('ready');
             return true;
         } catch (err) {
             setModelStatus('error');
             const errorMsg = err instanceof Error ? err.message : String(err);
-            if (errorMsg.includes('<!doctype') || errorMsg.includes('Unexpected token')) {
-                setError('Model download failed. Check your internet connection and try again.');
-            } else if (errorMsg.includes('Failed to fetch')) {
-                setError('Network error. Please check your connection.');
-            } else {
-                setError(errorMsg);
-            }
+            setError(errorMsg);
             return false;
         }
     };
@@ -269,9 +251,9 @@ export function EntitiesPanel() {
     const handleAnalyze = async () => {
         if (!selectedNote) return;
 
-        // Load model if not ready
-        if (modelStatus !== 'ready') {
-            const loaded = await loadModel();
+        // Ensure model is loaded
+        if (modelStatus !== 'ready' || extractionService.getCurrentModel() !== modelType) {
+            const loaded = await loadModel(modelType);
             if (!loaded) return;
         }
 
@@ -279,61 +261,80 @@ export function EntitiesPanel() {
         setError(null);
 
         try {
-            // Get plain text content
-            let textToAnalyze = '';
-
+            let jsonContent;
             try {
-                const json = typeof selectedNote.content === 'string'
+                jsonContent = typeof selectedNote.content === 'string'
                     ? JSON.parse(selectedNote.content)
                     : selectedNote.content;
+            } catch {
+                jsonContent = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: String(selectedNote.content) }] }] };
+            }
 
-                if (json.content && Array.isArray(json.content)) {
-                    // Recursive text extraction from Tiptap JSON
+            if (modelType === 'extraction') {
+                // Phase 2: Use LFM2 Extraction
+                const result = await scanDocumentWithExtraction(
+                    selectedNote.id,
+                    jsonContent,
+                    {
+                        useExtraction: true,
+                        autoRegisterHighConfidence: false,
+                        confidenceThreshold: 0.7
+                    }
+                );
+
+                // Map suggestions to NEREntity format
+                const newEntities: NEREntity[] = result.suggestions.map(s => ({
+                    word: s.label,
+                    entity_type: s.kind, // In extraction model, type IS kind
+                    score: s.confidence,
+                    start: 0, // Not available from structured output easily without re-scanning
+                    end: 0
+                }));
+
+                setEntities(deduplicateEntities(newEntities));
+
+            } else {
+                // Phase 1: Use NER (Existing Logic)
+
+                // Extract plain text for NER
+                let textToAnalyze = '';
+                if (jsonContent.content && Array.isArray(jsonContent.content)) {
                     const extractText = (node: any): string => {
                         if (node.text) return node.text;
                         if (node.content) return node.content.map(extractText).join(' ');
                         return '';
                     };
-                    textToAnalyze = json.content.map(extractText).join('\n');
+                    textToAnalyze = jsonContent.content.map(extractText).join('\n');
                 } else {
-                    textToAnalyze = String(selectedNote.content);
+                    textToAnalyze = JSON.stringify(jsonContent);
                 }
-            } catch (e) {
-                textToAnalyze = String(selectedNote.content);
+
+                if (!textToAnalyze || textToAnalyze.trim().length === 0) {
+                    setError('No text content to analyze');
+                    setIsAnalyzing(false);
+                    return;
+                }
+
+                const results = await runNer(textToAnalyze, { threshold: 0.4 });
+
+                const ignoreList = new Set(
+                    compiledBlueprint?.extractionProfile?.ignoreList
+                        ?.filter(entry => entry.surface_form)
+                        .map(entry => entry.surface_form!.toLowerCase()) || []
+                );
+
+                const entities: NEREntity[] = results
+                    .filter(span => span.confidence >= 0.4 && !ignoreList.has(span.text.toLowerCase()))
+                    .map(span => ({
+                        entity_type: span.nerLabel.toLowerCase(),
+                        word: span.text,
+                        start: span.start,
+                        end: span.end,
+                        score: span.confidence,
+                    }));
+
+                setEntities(deduplicateEntities(entities));
             }
-
-            if (!textToAnalyze || textToAnalyze.trim().length === 0) {
-                setError('No text content to analyze');
-                setIsAnalyzing(false);
-                return;
-            }
-
-            // Get threshold from blueprint
-            const threshold = getConfidenceThreshold();
-
-            // Extract entities using clean NER API
-            const results = await runNer(textToAnalyze, { threshold });
-
-            // Filter by confidence threshold and ignore list
-            const ignoreList = getIgnoreList();
-            const filteredResults = results.filter(span => {
-                return span.confidence >= threshold &&
-                    !ignoreList.has(span.text.toLowerCase());
-            });
-
-            // Convert to NEREntity format for compatibility
-            const entities: NEREntity[] = filteredResults.map(span => ({
-                entity_type: span.nerLabel.toLowerCase(),
-                word: span.text,
-                start: span.start,
-                end: span.end,
-                score: span.confidence,
-            }));
-
-            // Deduplicate
-            const uniqueEntities = deduplicateEntities(entities);
-
-            setEntities(uniqueEntities);
 
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Analysis failed');
@@ -345,67 +346,50 @@ export function EntitiesPanel() {
     const handleRetry = () => {
         setError(null);
         setModelStatus('idle');
-        loadModel();
+        loadModel(modelType);
     };
 
     const handleAccept = async (entity: NEREntity, kind: string) => {
         if (!selectedNote) return;
 
         try {
-            const resolutionPolicy = compiledBlueprint?.extractionProfile?.resolution_policy || 'entity_on_accept';
-            const groupId = selectedNote.id;
+            // Phase 1: Register in EntityRegistry (Singleton)
+            // We do extensive import here to emulate lazy loading if needed,
+            // but cleaner to just use the one we have globally or import at top.
+            // We already imported entityRegistry from lib/entities/entity-registry in other files.
+            // But wait, this file doesn't import entityRegistry yet?
+            // Let's rely on dynamic import or add it to imports.
+            // Actually, I'll add the import dynamically inside this handler to avoid modifying imports again if possible,
+            // BUT I already modified imports in previous step.
 
-            if (resolutionPolicy === 'entity_on_accept') {
-                const entityStore = getEntityStore();
-                const edgeStore = getEdgeStore();
+            // Wait, I did NOT import entityRegistry in previous step.
+            // I'll use dynamic import for safety.
 
-                const createdEntity = await entityStore.upsertEntity({
-                    name: entity.word,
-                    entity_kind: kind,
-                    group_id: groupId,
-                    scope_type: 'note',
-                });
+            const { entityRegistry } = await import('@/lib/entities/entity-registry');
+            const { autoSaveEntityRegistry } = await import('@/lib/storage/entityStorage');
 
-                await edgeStore.createMentionEdge({
-                    source_id: selectedNote.id,
-                    target_id: createdEntity.id,
-                    group_id: groupId,
-                    edge_type: 'MENTIONS',
-                    confidence: entity.score,
-                    note_id: selectedNote.id,
-                });
+            entityRegistry.registerEntity(entity.word, kind as EntityKind, selectedNote.id);
+            autoSaveEntityRegistry(entityRegistry);
 
-                toast({
-                    title: 'Entity Created',
-                    description: `"${entity.word}" added as ${kind}`,
-                });
+            toast({
+                title: 'Entity Created',
+                description: `"${entity.word}" added as ${kind}`,
+            });
 
-                setEntities(prev => prev.filter(e => e !== entity));
-            } else {
-                toast({
-                    title: 'Mention Saved',
-                    description: `"${entity.word}" marked for review`,
-                });
+            setEntities(prev => prev.filter(e => e !== entity));
 
-                setEntities(prev => prev.filter(e => e !== entity));
-            }
         } catch (err) {
             toast({
                 title: 'Error',
-                description: err instanceof Error ? err.message : 'Failed to create entity',
+                description: 'Failed to create entity',
                 variant: 'destructive',
             });
+            console.error(err);
         }
     };
 
     const handleDismiss = (entity: NEREntity) => {
-        // Optionally could add to ignore list in the future
         setEntities(prev => prev.filter(e => e !== entity));
-
-        toast({
-            title: 'Entity Dismissed',
-            description: `"${entity.word}" removed from suggestions`,
-        });
     };
 
     return (
@@ -421,6 +405,10 @@ export function EntitiesPanel() {
                             <Lightbulb className="h-4 w-4" />
                             Suggestions
                         </TabsTrigger>
+                        <TabsTrigger value="settings" className="gap-2">
+                            <Settings className="h-4 w-4" />
+                            Settings
+                        </TabsTrigger>
                     </TabsList>
                 </div>
 
@@ -431,65 +419,68 @@ export function EntitiesPanel() {
                 <TabsContent value="suggestions" className="flex-1 mt-0 overflow-hidden flex flex-col">
                     {/* Header */}
                     <div className="p-4 border-b space-y-3">
+                        {/* Model Selector */}
+                        <div className="flex gap-2">
+                            <Button
+                                variant={modelType === 'ner' ? 'secondary' : 'ghost'}
+                                size="sm"
+                                className="flex-1 h-7 text-xs"
+                                onClick={() => setModelType('ner')}
+                            >
+                                <Zap className="h-3 w-3 mr-1" />
+                                Fast (NER)
+                            </Button>
+                            <Button
+                                variant={modelType === 'extraction' ? 'secondary' : 'ghost'}
+                                size="sm"
+                                className="flex-1 h-7 text-xs"
+                                onClick={() => setModelType('extraction')}
+                            >
+                                <Brain className="h-3 w-3 mr-1" />
+                                Smart (LLM)
+                            </Button>
+                        </div>
+
                         {/* Model Status */}
                         <div className="flex items-center gap-2 text-sm">
                             {modelStatus === 'idle' && (
-                                <>
-                                    <div className="h-2 w-2 rounded-full bg-muted-foreground" />
-                                    <span className="text-muted-foreground">Model loads on first analysis</span>
-                                </>
+                                <span className="text-muted-foreground text-xs">Ready to load {modelType === 'ner' ? 'NeuroBERT' : 'LFM2 (350M)'}</span>
                             )}
                             {modelStatus === 'loading' && (
                                 <>
                                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                                    <span className="text-muted-foreground">Downloading model (~50MB)...</span>
+                                    <span className="text-muted-foreground text-xs">Loading model...</span>
                                 </>
                             )}
                             {modelStatus === 'ready' && (
-                                <>
-                                    <div className="h-2 w-2 rounded-full bg-green-500" />
-                                    <span className="text-muted-foreground">Model ready</span>
-                                </>
+                                <span className="text-green-600 text-xs flex items-center gap-1">
+                                    <Check className="h-3 w-3" /> Model active
+                                </span>
                             )}
                             {modelStatus === 'error' && (
-                                <div className="flex flex-col gap-2 w-full">
-                                    <div className="flex items-center gap-2">
-                                        <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-                                        <span className="text-destructive text-xs">{error}</span>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleRetry}
-                                        className="w-full"
-                                    >
-                                        <RefreshCw className="h-3 w-3 mr-2" />
-                                        Retry
-                                    </Button>
-                                </div>
+                                <span className="text-destructive text-xs">{error}</span>
                             )}
                         </div>
 
                         {/* Analyze Button */}
-                        {modelStatus !== 'error' && (
-                            <Button
-                                onClick={handleAnalyze}
-                                disabled={isAnalyzing || !selectedNote}
-                                className="w-full"
-                            >
-                                {isAnalyzing ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        {modelStatus === 'loading' ? 'Loading model...' : 'Analyzing...'}
-                                    </>
-                                ) : (
-                                    <>
-                                        <Sparkles className="mr-2 h-4 w-4" />
-                                        {modelStatus === 'ready' ? 'Analyze Current Note' : 'Load Model & Analyze'}
-                                    </>
-                                )}
-                            </Button>
-                        )}
+                        <Button
+                            onClick={handleAnalyze}
+                            disabled={isAnalyzing || !selectedNote}
+                            className="w-full"
+                            size="sm"
+                        >
+                            {isAnalyzing ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Scanning...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles className="mr-2 h-4 w-4" />
+                                    {modelStatus === 'ready' ? 'Analyze Note' : 'Load & Analyze'}
+                                </>
+                            )}
+                        </Button>
                     </div>
 
                     {/* Results */}
@@ -497,9 +488,9 @@ export function EntitiesPanel() {
                         {entities.length === 0 ? (
                             <div className="text-center text-muted-foreground text-sm py-8">
                                 <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                <p>Click "Analyze" to detect entities</p>
+                                <p>No suggestions found</p>
                                 <p className="text-xs mt-1 opacity-70">
-                                    Detects characters, locations, factions, and story elements
+                                    Try switching models or adding more text
                                 </p>
                             </div>
                         ) : (
@@ -512,15 +503,20 @@ export function EntitiesPanel() {
                                         Clear All
                                     </Button>
                                 </div>
-
                                 <div className="space-y-3 pb-8">
                                     {entities.map((entity, idx) => {
-                                        const labelMappings = getLabelMappings();
-                                        const possibleKinds = labelMappings[entity.entity_type.toLowerCase()] || ['CONCEPT'];
+                                        // For LFM2, the entity_type IS the target kind, so map directly
+                                        let possibleKinds = [entity.entity_type];
+
+                                        // For NER, we map broad categories to specific kinds
+                                        if (modelType === 'ner') {
+                                            const labelMappings = getLabelMappings();
+                                            possibleKinds = labelMappings[entity.entity_type.toLowerCase()] || ['CONCEPT'];
+                                        }
 
                                         return (
                                             <EntityCard
-                                                key={`${entity.word}-${entity.start}-${idx}`}
+                                                key={`${entity.word}-${idx}`}
                                                 entity={entity}
                                                 onAccept={handleAccept}
                                                 onDismiss={handleDismiss}
@@ -533,6 +529,10 @@ export function EntitiesPanel() {
                             </>
                         )}
                     </div>
+                </TabsContent>
+
+                <TabsContent value="settings" className="flex-1 mt-0 overflow-auto p-4">
+                    <RegistrySettings registry={entityRegistry} />
                 </TabsContent>
             </Tabs>
         </div>

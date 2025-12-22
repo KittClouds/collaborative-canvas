@@ -12,8 +12,14 @@ import type { JSONContent } from '@tiptap/react';
 import type { DocumentConnections, Entity, EntityReference } from './entityTypes';
 import { regexEntityParser } from './regex-entity-parser';
 import { entityRegistry } from './entity-registry';
-import type { ParsedEntity, ScanResult } from './types/registry';
+import type { ParsedEntity, ScanResult, RegisteredEntity } from './types/registry';
 import type { EntityKind } from './entityTypes';
+import { autoSaveEntityRegistry } from '@/lib/storage/entityStorage';
+
+// Phase 2 Imports
+import { extractionService } from '@/lib/extraction/ExtractionService';
+import { promptTemplateBuilder } from '@/lib/extraction/PromptTemplateBuilder';
+import type { StructuredExtraction } from '@/lib/extraction/ExtractionService';
 
 // ==================== EXISTING FUNCTIONS (UNCHANGED) ====================
 
@@ -257,8 +263,6 @@ export function parseExplicitEntities(content: JSONContent): ParsedEntity[] {
   return regexEntityParser.parseFromDocument(content);
 }
 
-import { autoSaveEntityRegistry } from '@/lib/storage/entityStorage';
-
 /**
  * Unified document scan - explicit parsing + registry matching
  * Phase 1: No ML, pure regex + registry lookups
@@ -297,15 +301,16 @@ export function scanDocument(
     const positions = findEntityMentions(plainText, entity.label, entity.aliases);
 
     if (positions.length > 0) {
-      // Update entity statistics
-      entity.totalMentions += positions.length;
-      entity.lastSeenDate = new Date();
-      entity.noteAppearances.add(noteId);
+      // Update entity statistics (idempotent)
+      entityRegistry.updateNoteMentions(entity.id, noteId, positions.length);
 
       matchedEntities.push({
         entity,
         positions,
       });
+    } else {
+      // Clear mentions for this note if none found anymore
+      entityRegistry.updateNoteMentions(entity.id, noteId, 0);
     }
   }
 
@@ -370,4 +375,140 @@ function findEntityMentions(
  */
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ==================== PHASE 2: ML-POWERED FUNCTIONS ====================
+
+/**
+ * Entity suggestion from extraction
+ */
+export interface EntitySuggestion {
+  label: string;
+  kind: EntityKind;
+  confidence: number;
+  context: string;
+  action: 'suggest' | 'auto-register';
+}
+
+/**
+ * Unified document scan WITH extraction LLM (Phase 2)
+ * Falls back to regex-only if model not loaded
+ */
+export async function scanDocumentWithExtraction(
+  noteId: string,
+  content: JSONContent,
+  options: {
+    useExtraction?: boolean;
+    autoRegisterHighConfidence?: boolean;
+    confidenceThreshold?: number;
+  } = {}
+): Promise<ScanResult & { suggestions: EntitySuggestion[] }> {
+  const {
+    useExtraction = false,
+    autoRegisterHighConfidence = false,
+    confidenceThreshold = 0.7,
+  } = options;
+
+  // STEP 1: Run standard explicit scan first (ALWAYS)
+  const baseResult = scanDocument(noteId, content);
+
+  const suggestions: EntitySuggestion[] = [];
+
+  // STEP 2: Run extraction LLM (Phase 2 - optional)
+  if (useExtraction && extractionService.isLoaded() && extractionService.getCurrentModel() === 'extraction') {
+    try {
+      const plainText = extractPlainTextFromDocument(content);
+
+      // Build prompt from document context
+      const systemPrompt = promptTemplateBuilder.buildSystemPrompt({
+        explicitEntities: baseResult.explicitEntities.map(e => ({
+          label: e.label,
+          kind: e.kind,
+        })),
+        registryEntities: entityRegistry.getAllEntities(),
+        includeRelationships: true,
+        includeCoOccurrences: true,
+      });
+
+      // Run extraction
+      const extractedData: StructuredExtraction = await extractionService.extractStructured(
+        plainText,
+        systemPrompt
+      );
+
+      // STEP 3: Process extracted entities into suggestions
+      for (const extracted of extractedData.entities) {
+        // Skip if already registered
+        const existing = entityRegistry.findEntity(extracted.label);
+        if (existing) continue;
+
+        // Skip if confidence too low
+        if (extracted.confidence < 0.4) continue;
+
+        // Auto-register high confidence entities
+        if (autoRegisterHighConfidence && extracted.confidence >= confidenceThreshold) {
+
+          // Register and track
+          const entity = entityRegistry.registerEntity(
+            extracted.label,
+            extracted.kind,
+            noteId
+          );
+
+          // Add to base result (mutate/update)
+          // Note: In real setup, we might need to be careful about mutating baseResult
+          // For now, it's fine as we are returning a composite
+          // baseResult.baseResult.registeredEntities isn't updated ref-wise in this strict sense
+          // but the registry itself IS updated.
+        } else {
+          // Add as suggestion
+          suggestions.push({
+            label: extracted.label,
+            kind: extracted.kind,
+            confidence: extracted.confidence,
+            context: '', // TODO: Extract context snippet from text around entity
+            action: 'suggest',
+          });
+        }
+      }
+
+      // STEP 4: Process relationships (Auto-learn)
+      for (const rel of extractedData.relationships) {
+        entityRegistry.addRelationship(
+          rel.source,
+          rel.target,
+          rel.type,
+          noteId
+        );
+      }
+
+      // STEP 5: Process co-occurrences (Auto-learn)
+      for (const coOcc of extractedData.coOccurrences) {
+        entityRegistry.recordCoOccurrence(
+          coOcc.entities,
+          coOcc.context,
+          noteId
+        );
+      }
+
+      // Persist learned relationships/co-occurrences
+      if (extractedData.relationships.length > 0 || extractedData.coOccurrences.length > 0) {
+        autoSaveEntityRegistry(entityRegistry);
+      }
+
+    } catch (error) {
+      console.error('Extraction failed:', error);
+      // Continue with regex-only results if ML fails
+    }
+  }
+
+  // STEP 6: Return complete scan result
+  return {
+    ...baseResult,
+    suggestions,
+    // Note: relationships/coOccurrences in baseResult are currently empty arrays,
+    // but the Registry has been updated with them.
+    // If we want to return them here, we should pull from registry or the extractions.
+    // For now, we follow the pattern that the Registry is the Source of Truth.
+  };
 }

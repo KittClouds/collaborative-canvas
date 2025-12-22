@@ -9,6 +9,7 @@ import { EntityRegistry } from '@/lib/entities/entity-registry';
 
 const DB_NAME = 'inklings-db';
 const REGISTRY_STORE = 'entity_registry';
+const BACKUP_STORE = 'entity_backups';
 const REGISTRY_KEY = 'global';
 
 /**
@@ -20,6 +21,10 @@ export async function initEntityStorage(): Promise<IDBPDatabase> {
             // Create registry store if it doesn't exist
             if (!db.objectStoreNames.contains(REGISTRY_STORE)) {
                 db.createObjectStore(REGISTRY_STORE);
+            }
+            // Create backup store if it doesn't exist
+            if (!db.objectStoreNames.contains(BACKUP_STORE)) {
+                db.createObjectStore(BACKUP_STORE, { keyPath: 'id' });
             }
         },
     });
@@ -61,6 +66,30 @@ export async function clearEntityRegistry(): Promise<void> {
     await db.delete(REGISTRY_STORE, REGISTRY_KEY);
 }
 
+/**
+ * Save backup to IndexedDB
+ */
+export async function saveRegistryBackup(backup: any): Promise<void> {
+    const db = await initEntityStorage();
+    await db.put(BACKUP_STORE, backup);
+}
+
+/**
+ * List all backups from IndexedDB
+ */
+export async function listRegistryBackups(): Promise<any[]> {
+    const db = await initEntityStorage();
+    return db.getAll(BACKUP_STORE);
+}
+
+/**
+ * Delete a specific backup
+ */
+export async function deleteRegistryBackup(id: string): Promise<void> {
+    const db = await initEntityStorage();
+    await db.delete(BACKUP_STORE, id);
+}
+
 // ==================== AUTO-SAVE WITH DEBOUNCE ====================
 
 let saveTimeout: NodeJS.Timeout | null = null;
@@ -82,3 +111,13 @@ export function autoSaveEntityRegistry(registry: EntityRegistry): void {
         }
     }, 1000);
 }
+// Export as object for better mocking/usage
+export const registryStorage = {
+    saveRegistry: saveEntityRegistry,
+    loadRegistry: loadEntityRegistry,
+    clearRegistry: clearEntityRegistry,
+    autoSave: autoSaveEntityRegistry,
+    saveBackup: saveRegistryBackup,
+    listBackups: listRegistryBackups,
+    deleteBackup: deleteRegistryBackup
+};

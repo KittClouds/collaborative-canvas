@@ -539,6 +539,13 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       if (existingNote) {
         const updatedNote = { ...existingNote, ...updates, updatedAt: new Date() };
         getGraphSync().onNoteUpdated(updatedNote, state.notes);
+
+        // Entity Registry Hook (Hardening)
+        if (updates.title) {
+          import('@/lib/entities/entity-registry').then(({ entityRegistry }) => {
+            entityRegistry.onNoteRenamed(id, updates.title!);
+          }).catch(console.error);
+        }
       }
     }
   }, [state.notes, getGraphSync]);
@@ -561,6 +568,15 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
     if (initialHydrationDone.current) {
       getGraphSync().onNoteDeleted(id);
+
+      // Entity Registry Cleanup (Hardening)
+      Promise.all([
+        import('@/lib/entities/entity-registry'),
+        import('@/lib/storage/entityStorage')
+      ]).then(([{ entityRegistry }, { autoSaveEntityRegistry }]) => {
+        entityRegistry.onNoteDeleted(id);
+        autoSaveEntityRegistry(entityRegistry);
+      }).catch(err => console.error('Failed to cleanup entity registry:', err));
     }
   }, [getGraphSync]);
 

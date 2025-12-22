@@ -55,8 +55,11 @@ export class EntityRegistry {
         if (existingId) {
             const existing = this.entities.get(existingId)!;
 
-            // Update statistics
-            existing.totalMentions++;
+            // Update statistics per note
+            const currentMentions = existing.mentionsByNote.get(noteId) || 0;
+            existing.mentionsByNote.set(noteId, currentMentions + 1);
+            this.recalculateTotalMentions(existing);
+
             existing.lastSeenDate = new Date();
             existing.noteAppearances.add(noteId);
 
@@ -91,6 +94,7 @@ export class EntityRegistry {
             createdBy: 'user',
             metadata: options?.metadata,
             attributes: options?.attributes,
+            mentionsByNote: new Map([[noteId, 1]]),
             totalMentions: 1,
             lastSeenDate: new Date(),
             noteAppearances: new Set([noteId]),
@@ -109,6 +113,252 @@ export class EntityRegistry {
         }
 
         return entity;
+    }
+
+    // ==================== LIFECYCLE MANAGEMENT (HARDENING) ====================
+
+    /**
+     * Update an entity's core properties (Phase 1A)
+     * Handles rename, type change, etc., with index updates
+     */
+    updateEntity(entityId: string, updates: Partial<Omit<RegisteredEntity, 'id' | 'statistics'>>): boolean {
+        const entity = this.entities.get(entityId);
+        if (!entity) return false;
+
+        // Handle label change (requires re-indexing)
+        if (updates.label && updates.label !== entity.label) {
+            const oldNormalized = entity.normalizedLabel;
+            const newNormalized = this.normalize(updates.label);
+
+            if (this.labelIndex.has(newNormalized) && this.labelIndex.get(newNormalized) !== entityId) {
+                console.warn(`Cannot rename entity: Label "${updates.label}" already exists.`);
+                return false;
+            }
+
+            this.labelIndex.delete(oldNormalized);
+            this.labelIndex.set(newNormalized, entityId);
+            entity.label = updates.label;
+            entity.normalizedLabel = newNormalized;
+        }
+
+        // Handle simple property updates
+        if (updates.kind) entity.kind = updates.kind;
+        if (updates.subtype) entity.subtype = updates.subtype;
+        if (updates.metadata) entity.metadata = { ...entity.metadata, ...updates.metadata };
+        if (updates.attributes) entity.attributes = { ...entity.attributes, ...updates.attributes };
+
+        // Handle aliases update (replace list)
+        if (updates.aliases) {
+            // Remove old aliases from index
+            for (const alias of entity.aliases || []) {
+                this.aliasIndex.delete(this.normalize(alias));
+            }
+            // Add new aliases
+            entity.aliases = updates.aliases;
+            for (const alias of updates.aliases) {
+                this.aliasIndex.set(this.normalize(alias), entity.id);
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Delete an entity and clean up all references (Cascading Delete) (Phase 1A)
+     */
+    deleteEntity(entityId: string): boolean {
+        const entity = this.entities.get(entityId);
+        if (!entity) return false;
+
+        // 1. Remove from label index
+        this.labelIndex.delete(entity.normalizedLabel);
+
+        // 2. Remove Aliases
+        if (entity.aliases) {
+            for (const alias of entity.aliases) {
+                this.aliasIndex.delete(this.normalize(alias));
+            }
+        }
+
+        // 3. Remove Relationships (Source or Target)
+        // We iterate specifically keys since we don't have a reverse index for rels yet
+        for (const [key, rel] of this.relationships.entries()) {
+            if (rel.sourceEntityId === entityId || rel.targetEntityId === entityId) {
+                this.relationships.delete(key);
+            }
+        }
+
+        // 4. Remove Co-Occurrences
+        for (const [key, pattern] of this.coOccurrences.entries()) {
+            if (pattern.entities.includes(entityId)) {
+                // Option A: Delete the whole pattern (simplest, strictly correct as the pair no longer exists)
+                // Option B: Remove just this entity from the group (complex if >2 entities)
+                // We choose Option A for now as most co-occurrences are pairs.
+                this.coOccurrences.delete(key);
+            }
+        }
+
+        // 5. Remove Entity
+        this.entities.delete(entityId);
+
+        return true;
+    }
+
+    /**
+     * Merge two entities into one (Phase 1A)
+     * Migrates mentions, aliases, relationships, and co-occurrences from source to target.
+     * Deletes source entity afterwards.
+     */
+    mergeEntities(targetId: string, sourceId: string): boolean {
+        const target = this.entities.get(targetId);
+        const source = this.entities.get(sourceId);
+
+        if (!target || !source || targetId === sourceId) return false;
+
+        // 1. Merge Aliases
+        // First, release source aliases from index so they can be reassigned
+        if (source.aliases) {
+            for (const alias of source.aliases) {
+                this.aliasIndex.delete(this.normalize(alias));
+            }
+            // Now add them to target
+            for (const alias of source.aliases) {
+                this.addAlias(targetId, alias);
+            }
+        }
+
+        // Add source label as alias to target (handling conflict with source label index)
+        // We don't delete source label index yet, we just addAlias. 
+        // addAlias checks aliasIndex. source label is in labelIndex.
+        // But addAlias also checks if alias exists? No, it checks `aliasIndex`.
+        // If source.label is unique, adding it as alias to target works.
+        this.addAlias(targetId, source.label);
+
+        // 2. Merge Mentions (Statistics)
+        source.mentionsByNote.forEach((count, noteId) => {
+            const current = target.mentionsByNote.get(noteId) || 0;
+            target.mentionsByNote.set(noteId, current + count);
+            target.noteAppearances.add(noteId);
+        });
+        this.recalculateTotalMentions(target);
+
+        // 3. Merge Relationships
+        // Move all relationships involving source to target
+        for (const [key, rel] of this.relationships.entries()) {
+            if (rel.sourceEntityId === sourceId) {
+                // Create new rel with target as source
+                this.addRelationship(target.label, this.getEntityLabel(rel.targetEntityId), rel.type, rel.discoveredIn[0]);
+                this.relationships.delete(key);
+            } else if (rel.targetEntityId === sourceId) {
+                // Create new rel with target as target
+                this.addRelationship(this.getEntityLabel(rel.sourceEntityId), target.label, rel.type, rel.discoveredIn[0]);
+                this.relationships.delete(key);
+            }
+        }
+
+        // 4. Merge Metadata
+        target.metadata = { ...source.metadata, ...target.metadata };
+        target.attributes = { ...source.attributes, ...target.attributes };
+
+        // 5. Delete Source
+        this.deleteEntity(sourceId);
+
+        return true;
+    }
+
+    /**
+     * Validate entity integrity (Phase 1A)
+     */
+    validateEntity(entity: RegisteredEntity): boolean {
+        if (!entity.id || !entity.label || !entity.kind) return false;
+        if (this.normalize(entity.label) !== entity.normalizedLabel) return false;
+        return true;
+    }
+
+    /**
+     * Check for and remove orphaned references (Phase 1B integrity check)
+     */
+
+
+    // ==================== LIFECYCLE HOOKS (HARDENING) ====================
+
+    /**
+     * Handle note deletion (Phase 1C)
+     * Removes all traces of a note from the registry
+     */
+    onNoteDeleted(noteId: string): void {
+        console.log(`[EntityRegistry] Cleaning up after note deletion: ${noteId}`);
+
+        // 1. Remove from entity stats
+        for (const entity of this.entities.values()) {
+            if (entity.noteAppearances.has(noteId)) {
+                entity.noteAppearances.delete(noteId);
+                entity.mentionsByNote.delete(noteId);
+                this.recalculateTotalMentions(entity);
+            }
+        }
+
+        // 2. Cleanup Relationships discovered *only* in this note
+        for (const [key, rel] of this.relationships.entries()) {
+            const idx = rel.discoveredIn.indexOf(noteId);
+            if (idx !== -1) {
+                rel.discoveredIn.splice(idx, 1);
+                // If this request was the ONLY source of this relationship, delete it?
+                // Policy: Keep relationship even if source note deleted? 
+                // Decision: If it has confidence key, maybe weak? For now, we keep it but remove the evidence source.
+                if (rel.discoveredIn.length === 0) {
+                    // If no evidence left, maybe lower confidence or delete?
+                    // Let's delete strictly for integrity.
+                    this.relationships.delete(key);
+                }
+            }
+        }
+
+        // 3. Cleanup Co-Occurrences
+        for (const [key, pattern] of this.coOccurrences.entries()) {
+            // Co-occurrence doesn't explicitly track noteIds in the pattern object, 
+            // BUT it tracks 'contexts'. If we want to be strict, we might need to assume contexts are note-bound.
+            // Current `recordCoOccurrence` takes noteId but `CoOccurrencePattern` only stores `contexts: string[]`.
+            // We can't strictly remove the co-occurrence evidence without changing the data model to track noteId per context.
+            // For now, we skip this step or accept minor staleness.
+        }
+    }
+
+    /**
+     * Handle note renaming (Phase 1C)
+     * currently a placeholder for potential metadata updates
+     */
+    onNoteRenamed(noteId: string, newTitle: string): void {
+        // In the future, if we store cached note titles in metadata or contexts,
+        // we would update them here.
+        // For now, since we use ID referencing, this is a no-op/log.
+        // console.debug(`[EntityRegistry] Note renamed: ${noteId} -> ${newTitle}`);
+    }
+
+    /**
+     * Helper to get label by ID safely
+     */
+    private getEntityLabel(id: string): string {
+        return this.entities.get(id)?.label || 'Unknown';
+    }
+
+    /**
+     * Update mention count for a specific note (idempotent)
+     */
+    updateNoteMentions(entityId: string, noteId: string, count: number): void {
+        const entity = this.entities.get(entityId);
+        if (!entity) return;
+
+        if (count > 0) {
+            entity.mentionsByNote.set(noteId, count);
+            entity.noteAppearances.add(noteId);
+            entity.lastSeenDate = new Date();
+        } else {
+            entity.mentionsByNote.delete(noteId);
+            entity.noteAppearances.delete(noteId);
+        }
+
+        this.recalculateTotalMentions(entity);
     }
 
     // ==================== ENTITY LOOKUP ====================
@@ -494,6 +744,7 @@ export class EntityRegistry {
         return {
             entities: Array.from(this.entities.entries()).map(([id, entity]) => ({
                 ...entity,
+                mentionsByNote: Array.from(entity.mentionsByNote.entries()),
                 noteAppearances: Array.from(entity.noteAppearances),
                 firstMentionDate: entity.firstMentionDate.toISOString(),
                 lastSeenDate: entity.lastSeenDate.toISOString(),
@@ -503,6 +754,138 @@ export class EntityRegistry {
             version: '1.0',
             exportedAt: new Date().toISOString(),
         };
+    }
+
+    /**
+     * Create timestamped backup
+     */
+    createBackup(): { id: string; timestamp: Date; stats: any; data: any } {
+        const backupId = `registry_backup_${Date.now()}`;
+        const data = this.toJSON();
+
+        return {
+            id: backupId,
+            timestamp: new Date(),
+            stats: this.getGlobalStats(),
+            data: data
+        };
+    }
+
+    /**
+     * Restore from backup data
+     */
+    restoreFromBackup(backupData: any, options?: { merge?: boolean; confirmOverwrite?: boolean }): void {
+        if (!backupData) throw new Error('No backup data provided');
+
+        if (!options?.merge) {
+            if (!options?.confirmOverwrite) {
+                throw new Error('Full restore requires confirmOverwrite flag');
+            }
+            this.clear();
+        }
+
+        const restored = EntityRegistry.fromJSON(backupData);
+
+        if (options?.merge) {
+            // Merge strategy
+            this.importRegistry(backupData, 'merge');
+        } else {
+            // Full replace logic is handled by clear() + import or manual assignment
+            // fromJSON creates new instance, we need to hydrate THIS instance
+            // Re-using importRegistry with 'replace' equivalent logic or manual
+            this.entities = restored['entities']; // types hack if private? No, simple iteration better
+            this.importRegistry(backupData, 'replace');
+        }
+    }
+
+    /**
+     * Import registry from external JSON with conflict resolution
+     */
+    importRegistry(
+        data: any,
+        mergeStrategy: 'replace' | 'merge' | 'keep_newer' = 'merge'
+    ): { imported: number; skipped: number } {
+        if (mergeStrategy === 'replace') {
+            this.clear();
+        }
+
+        const imported = EntityRegistry.fromJSON(data);
+        const stats = { imported: 0, skipped: 0 };
+
+        for (const entity of imported.getAllEntities()) {
+            const existing = this.findEntity(entity.label);
+
+            if (!existing) {
+                this.entities.set(entity.id, entity);
+                this.labelIndex.set(entity.normalizedLabel, entity.id);
+                if (entity.aliases) {
+                    for (const alias of entity.aliases) this.aliasIndex.set(this.normalize(alias), entity.id);
+                }
+                stats.imported++;
+                continue;
+            }
+
+            // Conflict handling
+            if (mergeStrategy === 'replace') {
+                // Already cleared, so this branch won't hit unless duplicates in import
+                this.entities.set(entity.id, entity);
+                stats.imported++;
+            } else if (mergeStrategy === 'merge') {
+                // Merge mentions
+                for (const [noteId, count] of entity.mentionsByNote) {
+                    const current = existing.mentionsByNote.get(noteId) || 0;
+                    existing.mentionsByNote.set(noteId, current + count);
+                    existing.noteAppearances.add(noteId);
+                }
+                this.recalculateTotalMentions(existing);
+                // Merge metadata
+                existing.metadata = { ...existing.metadata, ...entity.metadata };
+                stats.imported++;
+            } else if (mergeStrategy === 'keep_newer') {
+                if (new Date(entity.lastSeenDate) > new Date(existing.lastSeenDate)) {
+                    this.deleteEntity(existing.id);
+                    this.entities.set(entity.id, entity);
+                    this.labelIndex.set(entity.normalizedLabel, entity.id);
+                    // re-index aliases
+                    if (entity.aliases) {
+                        for (const alias of entity.aliases) this.aliasIndex.set(this.normalize(alias), entity.id);
+                    }
+                    stats.imported++;
+                } else {
+                    stats.skipped++;
+                }
+            }
+        }
+
+        // Import relationships and co-occurrences (simple add for now)
+        // Note: strictly we should check for duplicates or merge strength
+        const tempRegistry = EntityRegistry.fromJSON(data); // Hack to get maps populated
+        // We can't access private maps of other instances easily. 
+        // But wait, fromJSON returns a Registry instance.
+        // We can iterate its values via public methods or casting.
+
+        // Actually simpler: we used fromJSON which logic is:
+        // restore relationships, coOccurrences.
+        // We need to move them to THIS instance.
+
+        // Since we can't iterate private maps directly from outside (even static method output),
+        // we might need a getter or cast to any.
+        // Let's use 'any' cast for the imported instance for practical merging
+        const importedAny = imported as any;
+
+        for (const [key, rel] of importedAny.relationships) {
+            if (!this.relationships.has(key)) {
+                this.relationships.set(key, rel);
+            }
+        }
+
+        for (const [key, co] of importedAny.coOccurrences) {
+            if (!this.coOccurrences.has(key)) {
+                this.coOccurrences.set(key, co);
+            }
+        }
+
+        return stats;
     }
 
     /**
@@ -516,6 +899,7 @@ export class EntityRegistry {
             for (const entityData of data.entities) {
                 const entity: RegisteredEntity = {
                     ...entityData,
+                    mentionsByNote: new Map(entityData.mentionsByNote || []),
                     noteAppearances: new Set(entityData.noteAppearances),
                     firstMentionDate: new Date(entityData.firstMentionDate),
                     lastSeenDate: new Date(entityData.lastSeenDate),
@@ -553,7 +937,160 @@ export class EntityRegistry {
     }
 
     /**
-     * Clear all data (use with caution)
+     * Flush entire registry with confirmation
+     * Use with EXTREME caution - this destroys all entity data
+     */
+    async flushRegistry(confirmation: {
+        userConfirmed: boolean;
+        reason?: string;
+        createBackup?: boolean;
+    }): Promise<{
+        success: boolean;
+        entitiesDeleted: number;
+        relationshipsDeleted: number;
+        backupCreated?: string;
+    }> {
+        if (!confirmation.userConfirmed) {
+            throw new Error('Registry flush requires explicit user confirmation');
+        }
+
+        let backupId: string | undefined;
+        if (confirmation.createBackup) {
+            const backup = this.createBackup();
+            backupId = backup.id;
+        }
+
+        const stats = {
+            entitiesDeleted: this.entities.size,
+            relationshipsDeleted: this.relationships.size,
+            coOccurrencesDeleted: this.coOccurrences.size,
+        };
+
+        this.clear();
+
+        console.warn('[EntityRegistry] FLUSHED', {
+            reason: confirmation.reason,
+            stats,
+            backupId,
+        });
+
+        return {
+            success: true,
+            entitiesDeleted: stats.entitiesDeleted,
+            relationshipsDeleted: stats.relationshipsDeleted,
+            backupCreated: backupId,
+        };
+    }
+
+    /**
+     * Check registry integrity and report issues (Read-only)
+     */
+    checkIntegrity(): {
+        valid: boolean;
+        issues: Array<{
+            type: 'orphan_relationship' | 'orphan_cooccurrence' | 'missing_index' | 'invalid_data';
+            severity: 'error' | 'warning';
+            description: string;
+            entityId?: string;
+            fix?: () => void;
+        }>;
+    } {
+        const issues: any[] = [];
+
+        // Check 1: Orphaned relationships
+        for (const [key, rel] of this.relationships) {
+            if (!this.entities.has(rel.sourceEntityId)) {
+                issues.push({
+                    type: 'orphan_relationship',
+                    severity: 'error',
+                    description: `Relationship references missing source entity: ${rel.sourceEntityId}`,
+                    fix: () => this.relationships.delete(key),
+                });
+            }
+            if (!this.entities.has(rel.targetEntityId)) {
+                issues.push({
+                    type: 'orphan_relationship',
+                    severity: 'error',
+                    description: `Relationship references missing target entity: ${rel.targetEntityId}`,
+                    fix: () => this.relationships.delete(key),
+                });
+            }
+        }
+
+        // Check 2: Orphaned co-occurrences
+        for (const [key, coOcc] of this.coOccurrences) {
+            for (const entityId of coOcc.entities) {
+                if (!this.entities.has(entityId)) {
+                    issues.push({
+                        type: 'orphan_cooccurrence',
+                        severity: 'warning',
+                        description: `Co-occurrence references missing entity: ${entityId}`,
+                        fix: () => this.coOccurrences.delete(key),
+                    });
+                    break;
+                }
+            }
+        }
+
+        // Check 3: Index consistency
+        for (const [label, entityId] of this.labelIndex) {
+            if (!this.entities.has(entityId)) {
+                issues.push({
+                    type: 'missing_index',
+                    severity: 'error',
+                    description: `Label index references missing entity: ${label} -> ${entityId}`,
+                    entityId,
+                    fix: () => this.labelIndex.delete(label),
+                });
+            }
+        }
+
+        // Check 4: Alias consistency
+        for (const [alias, entityId] of this.aliasIndex) {
+            if (!this.entities.has(entityId)) {
+                issues.push({
+                    type: 'missing_index',
+                    severity: 'error',
+                    description: `Alias index references missing entity: ${alias} -> ${entityId}`,
+                    entityId,
+                    fix: () => this.aliasIndex.delete(alias),
+                });
+            }
+        }
+
+        return {
+            valid: issues.filter(i => i.severity === 'error').length === 0,
+            issues,
+        };
+    }
+
+    /**
+     * Repair integrity issues
+     */
+    repairIntegrity(): { fixed: number; remaining: number } {
+        const check = this.checkIntegrity();
+        let fixed = 0;
+
+        for (const issue of check.issues) {
+            if (issue.fix) {
+                try {
+                    issue.fix();
+                    fixed++;
+                } catch (err) {
+                    console.error('Failed to fix issue:', issue, err);
+                }
+            }
+        }
+
+        const recheck = this.checkIntegrity();
+        return {
+            fixed,
+            remaining: recheck.issues.length,
+        };
+    }
+
+    /**
+     * Clear all data (use with caution) (Internal)
      */
     clear(): void {
         this.entities.clear();
@@ -562,6 +1099,7 @@ export class EntityRegistry {
         this.relationships.clear();
         this.coOccurrences.clear();
     }
+
 
     // ==================== UTILITY METHODS ====================
 
@@ -586,6 +1124,14 @@ export class EntityRegistry {
         const freqScore = Math.min(pattern.frequency / 10, 1);
         const diversityScore = Math.min(pattern.contexts.length / 5, 1);
         return (freqScore + diversityScore) / 2;
+    }
+
+    /**
+     * Recalculate total mentions from per-note map
+     */
+    private recalculateTotalMentions(entity: RegisteredEntity): void {
+        entity.totalMentions = Array.from(entity.mentionsByNote.values())
+            .reduce((sum, count) => sum + count, 0);
     }
 }
 

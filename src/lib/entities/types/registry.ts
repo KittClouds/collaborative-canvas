@@ -19,7 +19,8 @@ interface RegisteredEntity {
     attributes?: Record<string, any>;
 
     // Statistics
-    totalMentions: number;
+    mentionsByNote: Map<string, number>; // noteId -> mention count
+    totalMentions: number;            // Total across all notes
     lastSeenDate: Date;
     noteAppearances: Set<string>;
 }
