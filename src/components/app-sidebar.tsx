@@ -45,6 +45,7 @@ import {
 import { SemanticSearchPanel } from "@/components/search/SemanticSearchPanel";
 import { EntitiesPanel } from "@/components/EntitiesPanel";
 import { SettingsPanel } from "@/components/settings";
+import { ArboristTreeView } from '@/components/tree/ArboristTreeView';
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -72,28 +73,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useNotes, FolderWithChildren, Note } from "@/contexts/NotesContext";
-import { ENTITY_COLORS, ENTITY_SUBTYPES, EntityKind, getSubtypesForKind } from "@/lib/entities/entityTypes";
+import { ENTITY_COLORS, ENTITY_SUBTYPES, EntityKind, ENTITY_ICONS, getSubtypesForKind } from "@/lib/entities/entityTypes";
 import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName, formatSubtypeFolderName } from "@/lib/entities/titleParser";
 import { useBlueprintHub } from "@/features/blueprint-hub/hooks/useBlueprintHub";
 
 
-// Entity kind icons mapping
-const ENTITY_ICONS: Record<EntityKind, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  CHARACTER: User,
-  LOCATION: MapPin,
-  NPC: Users,
-  ITEM: Package,
-  FACTION: Flag,
-  SCENE: Film,
-  EVENT: Calendar,
-  CONCEPT: Lightbulb,
-  ARC: Waves,
-  ACT: Drama,
-  CHAPTER: BookOpen,
-  BEAT: Zap,
-  TIMELINE: Hourglass,
-  NARRATIVE: Book,
-};
+
 
 // Entity types for folder creation menu
 const ENTITY_TYPES: Array<{ kind: EntityKind; label: string }> = [
@@ -284,78 +269,6 @@ function EntityFolderCreationMenu() {
   );
 }
 
-// Subtype folder creation dropdown menu (shown inside typed folders)
-interface SubtypeFolderMenuProps {
-  parentId: string;
-  parentKind: EntityKind;
-  onComplete?: () => void;
-}
-
-function SubtypeFolderMenu({ parentId, parentKind, onComplete }: SubtypeFolderMenuProps) {
-  const { createFolder } = useNotes();
-  const [isOpen, setIsOpen] = React.useState(false);
-
-  const subtypes = getSubtypesForKind(parentKind);
-
-  const handleCreateSubtypeFolder = (subtype: string) => {
-    createFolder(formatSubtypeFolderName(parentKind, subtype), parentId, {
-      entityKind: parentKind,
-      entitySubtype: subtype,
-      isSubtypeRoot: true,
-      color: ENTITY_COLORS[parentKind],
-    });
-    setIsOpen(false);
-    onComplete?.();
-  };
-
-  const handleCreateRegularSubfolder = () => {
-    createFolder("New Folder", parentId);
-    setIsOpen(false);
-    onComplete?.();
-  };
-
-  return (
-    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-5 w-5 p-0" aria-label="Create subfolder">
-          <FolderPlus className="h-3 w-3" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 bg-popover">
-        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-          {parentKind} Subtypes
-        </div>
-        {subtypes.map((subtype) => (
-          <DropdownMenuItem
-            key={subtype}
-            textValue={subtype}
-            onClick={() => handleCreateSubtypeFolder(subtype)}
-            className="gap-2"
-          >
-            <FolderIcon className="h-4 w-4" style={{ color: ENTITY_COLORS[parentKind] }} />
-            <span>{subtype}</span>
-            <span
-              className="ml-auto text-[10px] px-1.5 py-0.5 rounded font-medium"
-              style={{
-                backgroundColor: `${ENTITY_COLORS[parentKind]}20`,
-                color: ENTITY_COLORS[parentKind],
-              }}
-            >
-              {parentKind}:{subtype}
-            </span>
-          </DropdownMenuItem>
-        ))}
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem onClick={handleCreateRegularSubfolder} className="gap-2">
-          <FolderIcon className="h-4 w-4" />
-          <span>Regular Subfolder</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 // Settings Button Component
 function SettingsButton() {
@@ -374,344 +287,6 @@ function SettingsButton() {
       </Button>
       <SettingsPanel open={isOpen} onOpenChange={setIsOpen} />
     </>
-  );
-}
-
-interface FolderItemProps {
-  folder: FolderWithChildren;
-  depth?: number;
-  parentColor?: string;
-}
-
-function FolderItem({ folder, depth = 0, parentColor }: FolderItemProps) {
-  const { selectNote, createNote, createFolder, updateFolder, deleteFolder, updateNote, deleteNote, state } = useNotes();
-  const [isExpanded, setIsExpanded] = React.useState(false);
-  const [isHovered, setIsHovered] = React.useState(false);
-  const [isRenaming, setIsRenaming] = React.useState(false);
-  const [newlyCreatedNoteId, setNewlyCreatedNoteId] = React.useState<string | null>(null);
-
-  // Color inheritance: folder.color → parentColor → default palette
-  const folderColor = folder.color || parentColor || DEFAULT_COLORS[depth % DEFAULT_COLORS.length];
-  const hasContent = folder.subfolders.length > 0 || folder.notes.length > 0;
-
-  // Get effective kind for this folder (for subtype menu and note creation)
-  const effectiveKind = folder.entityKind || folder.inheritedKind;
-  const effectiveSubtype = folder.entitySubtype || folder.inheritedSubtype;
-
-  const handleCreateSubfolder = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    createFolder("New Folder", folder.id);
-    setIsExpanded(true);
-  };
-
-  const handleCreateChildEntityFolder = (childKind: EntityKind) => {
-    createFolder(`[${childKind}]`, folder.id, {
-      entityKind: childKind,
-      isTypedRoot: true,
-      color: ENTITY_COLORS[childKind],
-    });
-    setIsExpanded(true);
-  };
-
-  const handleCreateNote = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    // Get the inherited kind and subtype for this folder
-    const kind = folder.entityKind || folder.inheritedKind;
-    const subtype = folder.entitySubtype || folder.inheritedSubtype;
-
-    let newNote: ReturnType<typeof createNote>;
-    if (kind && subtype) {
-      // Create note with kind:subtype prefix for subtyped folders
-      newNote = createNote(folder.id, `[${kind}:${subtype}|`);
-    } else if (kind) {
-      // Create note with just kind prefix for typed folders
-      newNote = createNote(folder.id, `[${kind}|`);
-    } else {
-      newNote = createNote(folder.id);
-    }
-
-    setIsExpanded(true);
-
-    // Trigger auto-rename for the new note (only for typed folders)
-    if (newNote && kind) {
-      setNewlyCreatedNoteId(newNote.id);
-    }
-  };
-
-  const handleChangeColor = (e: React.MouseEvent, color: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    updateFolder(folder.id, { color });
-  };
-
-  const handleDeleteFolder = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    deleteFolder(folder.id);
-  };
-
-  const handleRename = (newName: string) => {
-    const parsed = parseFolderEntityFromName(newName);
-    updateFolder(folder.id, {
-      name: newName,
-      entityKind: parsed?.kind,
-      entityLabel: parsed?.label,
-      isTypedRoot: parsed?.isTypedRoot,
-      color: parsed?.kind && !folder.entityKind ? ENTITY_COLORS[parsed.kind] : folder.color,
-    });
-    setIsRenaming(false);
-  };
-
-  const handleStartRename = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsRenaming(true);
-  };
-
-  return (
-    <div className="relative w-full">
-      {/* Tree lines - matching folder color */}
-      {depth > 0 && (
-        <>
-          {/* Vertical line */}
-          <div
-            className="absolute top-0 bottom-0 w-[2px] opacity-40 pointer-events-none"
-            style={{
-              left: `${(depth - 1) * 20 + 10}px`,
-              borderLeft: `2px solid ${folderColor}`,
-            }}
-          />
-          {/* Horizontal connector */}
-          <div
-            className="absolute top-[18px] w-3 h-[2px] opacity-40 pointer-events-none"
-            style={{
-              left: `${(depth - 1) * 20 + 10}px`,
-              backgroundColor: folderColor,
-            }}
-          />
-        </>
-      )}
-
-      <SidebarMenuItem
-        className="relative z-10"
-        style={{ paddingLeft: `${depth * 20}px` }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        <Collapsible open={isExpanded} onOpenChange={setIsExpanded} className="group/collapsible w-full">
-          {isRenaming ? (
-            <RenameInput
-              initialValue={folder.name}
-              onSave={handleRename}
-              onCancel={() => setIsRenaming(false)}
-              placeholder="Folder name"
-              showEntityHint={folder.isTypedRoot || folder.entityKind !== undefined}
-            />
-          ) : (
-            <div className="flex items-center gap-1 w-full">
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn("h-6 w-6 p-0 shrink-0", !hasContent && "invisible")}
-                  disabled={!hasContent}
-                >
-                  {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                </Button>
-              </CollapsibleTrigger>
-
-              <div className="flex-1 flex items-center gap-2 min-w-0">
-                {isExpanded ? (
-                  <FolderOpen className="h-4 w-4 shrink-0" style={{ color: folderColor }} />
-                ) : (
-                  <FolderIcon className="h-4 w-4 shrink-0" style={{ color: folderColor }} />
-                )}
-                <span className="truncate text-sm font-medium">{getDisplayName(folder.name) || "New Folder"}</span>
-                {/* Entity badges for typed folders */}
-                {folder.entityKind && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
-                    style={{
-                      backgroundColor: `${ENTITY_COLORS[folder.entityKind]}20`,
-                      color: ENTITY_COLORS[folder.entityKind],
-                    }}
-                  >
-                    {folder.entitySubtype ? `${folder.entityKind}:${folder.entitySubtype}` : folder.entityKind}
-                  </span>
-                )}
-              </div>
-
-              {/* Action buttons - visible on hover */}
-              <div className={cn("flex items-center shrink-0 gap-1 transition-opacity", !isHovered && "opacity-0")}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 p-0"
-                  onClick={handleCreateNote}
-                  aria-label="Add note"
-                >
-                  <Plus className="h-3 w-3" />
-                </Button>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 p-0" aria-label="More options">
-                      <MoreVertical className="h-3 w-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56 bg-popover">
-                    <DropdownMenuItem onClick={handleStartRename}>
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Rename folder
-                    </DropdownMenuItem>
-
-                    <DropdownMenuSeparator />
-
-                    {/* Different menu options based on folder kind */}
-                    {effectiveKind === 'NARRATIVE' ? (
-                      <div className="px-2 py-1">
-                        <div className="text-xs text-muted-foreground mb-1.5">Add Story Element</div>
-                        <div className="flex flex-col gap-1">
-                          {['ARC', 'ACT', 'CHAPTER', 'SCENE', 'EVENT'].map((k) => {
-                            const kind = k as EntityKind;
-                            const Icon = ENTITY_ICONS[kind];
-                            return (
-                              <DropdownMenuItem
-                                key={kind}
-                                onClick={(e) => {
-                                  e.preventDefault(); e.stopPropagation();
-                                  handleCreateChildEntityFolder(kind);
-                                }}
-                                className="gap-2"
-                              >
-                                <Icon className="h-4 w-4" style={{ color: ENTITY_COLORS[kind] }} />
-                                <span>{kind} Folder</span>
-                              </DropdownMenuItem>
-                            );
-                          })}
-                          <DropdownMenuSeparator className="my-1" />
-                          <DropdownMenuItem onClick={handleCreateSubfolder} className="gap-2">
-                            <FolderPlus className="h-4 w-4" />
-                            <span>Regular subfolder</span>
-                          </DropdownMenuItem>
-                        </div>
-                      </div>
-                    ) : effectiveKind ? (
-                      <div className="px-2 py-1">
-                        <div className="text-xs text-muted-foreground mb-1.5">Create Subfolder</div>
-                        <div className="flex flex-col gap-1">
-                          {getSubtypesForKind(effectiveKind).slice(0, 4).map((subtype) => (
-                            <DropdownMenuItem
-                              key={subtype}
-                              textValue={subtype}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                createFolder(formatSubtypeFolderName(effectiveKind, subtype), folder.id, {
-                                  entityKind: effectiveKind,
-                                  entitySubtype: subtype,
-                                  isSubtypeRoot: true,
-                                  color: ENTITY_COLORS[effectiveKind],
-                                });
-                                setIsExpanded(true);
-                              }}
-                              className="gap-2"
-                            >
-                              <FolderIcon className="h-4 w-4" style={{ color: ENTITY_COLORS[effectiveKind] }} />
-                              <span>{subtype}</span>
-                            </DropdownMenuItem>
-                          ))}
-                          <DropdownMenuItem onClick={handleCreateSubfolder} className="gap-2">
-                            <FolderPlus className="mr-2 h-4 w-4" />
-                            Regular subfolder
-                          </DropdownMenuItem>
-                        </div>
-                      </div>
-                    ) : (
-                      <DropdownMenuItem onClick={handleCreateSubfolder}>
-                        <FolderPlus className="mr-2 h-4 w-4" />
-                        New subfolder
-                      </DropdownMenuItem>
-                    )}
-
-                    <DropdownMenuItem onClick={handleCreateNote}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      New note
-                    </DropdownMenuItem>
-
-                    <DropdownMenuSeparator />
-
-                    {/* Color picker */}
-                    <div className="p-2">
-                      <div className="text-sm font-medium mb-2">Folder Color</div>
-                      <div className="flex flex-wrap gap-2">
-                        {DEFAULT_COLORS.map((color) => (
-                          <button
-                            key={color}
-                            onClick={(e) => handleChangeColor(e, color)}
-                            className="w-6 h-6 rounded border-2 hover:scale-110 transition-transform cursor-pointer"
-                            style={{
-                              backgroundColor: color,
-                              borderColor: color === folderColor ? "hsl(var(--foreground))" : "transparent",
-                            }}
-                            aria-label={`Change color to ${color}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <DropdownMenuSeparator />
-
-                    <DropdownMenuItem onClick={handleDeleteFolder} className="text-destructive focus:text-destructive">
-                      <X className="mr-2 h-4 w-4" />
-                      Delete folder
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-          )}
-
-          <CollapsibleContent>
-            <SidebarMenuSub className="ml-0 pl-0 border-l-0">
-              {/* Render subfolders recursively - passing color down */}
-              {folder.subfolders.map((subfolder) => (
-                <FolderItem
-                  key={subfolder.id}
-                  folder={subfolder}
-                  depth={depth + 1}
-                  parentColor={folderColor}
-                />
-              ))}
-
-              {/* Render notes in this folder */}
-              {folder.notes.map((note) => (
-                <NoteItem
-                  key={note.id}
-                  note={note}
-                  depth={depth + 1}
-                  folderColor={folderColor}
-                  autoRename={note.id === newlyCreatedNoteId}
-                  onRenameComplete={() => setNewlyCreatedNoteId(null)}
-                />
-              ))}
-
-              {!hasContent && (
-                <div
-                  className="text-xs text-muted-foreground py-1 italic"
-                  style={{ paddingLeft: `${(depth + 1) * 20 + 16}px` }}
-                >
-                  Empty folder
-                </div>
-              )}
-            </SidebarMenuSub>
-          </CollapsibleContent>
-        </Collapsible>
-      </SidebarMenuItem>
-    </div>
   );
 }
 
@@ -1014,53 +589,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               )}
 
               {/* Quick Notes (global notes without folder) */}
+              {/* Unified Tree View (Folders & Quick Notes) */}
               <SidebarGroup>
                 <div className="flex items-center justify-between px-2 mb-1">
                   <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider p-0">
-                    Quick Notes
+                    Files
                   </SidebarGroupLabel>
-                  <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={() => createNote()} aria-label="Create quick note">
-                    <Plus className="h-3 w-3" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-5 w-5 p-0" onClick={() => createNote()} aria-label="Create quick note">
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                    <EntityFolderCreationMenu />
+                  </div>
                 </div>
                 <SidebarGroupContent>
-                  <SidebarMenu>
-                    {globalNotes.length === 0 ? (
-                      <div className="px-3 py-4 text-center text-muted-foreground">
-                        <FileText className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                        <p className="text-xs">No notes yet</p>
-                      </div>
-                    ) : (
-                      globalNotes.map((note) => (
-                        <NoteItem key={note.id} note={note} depth={0} />
-                      ))
-                    )}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-
-              {/* Folders section with entity creation menu */}
-              <SidebarGroup>
-                <div className="flex items-center justify-between px-2 mb-1">
-                  <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider p-0">
-                    Folders
-                  </SidebarGroupLabel>
-                  <EntityFolderCreationMenu />
-                </div>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {folderTree.length === 0 ? (
-                      <div className="px-3 py-4 text-center text-muted-foreground">
-                        <FolderIcon className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                        <p className="text-xs">No folders yet</p>
-                        <p className="text-[10px] mt-1">Click + to create entity folder</p>
-                      </div>
-                    ) : (
-                      folderTree.map((folder) => (
-                        <FolderItem key={folder.id} folder={folder} depth={0} />
-                      ))
-                    )}
-                  </SidebarMenu>
+                  <ArboristTreeView
+                    searchTerm={state.searchQuery}
+                    className="mt-2"
+                  />
                 </SidebarGroupContent>
               </SidebarGroup>
             </div>
@@ -1102,7 +648,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarFooter>
 
       <SidebarRail />
-    </Sidebar>
+    </Sidebar >
   );
 }
 

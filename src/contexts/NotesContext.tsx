@@ -6,6 +6,7 @@ import { parseEntityFromTitle, parseFolderEntityFromName } from '@/lib/entities/
 import { migrateExistingNotes, migrateExistingFolders, needsMigration } from '@/lib/entities/migration';
 import { NARRATIVE_FOLDER_CONFIGS, getTemplateForKind } from '@/lib/templates/narrativeTemplates';
 import { getGraphSyncManager, type GraphSyncManager } from '@/lib/graph/integration';
+import { UnifiedEntityLifecycle } from '@/lib/entities/unified-lifecycle';
 
 // Types
 export interface Note {
@@ -510,7 +511,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SELECT_NOTE', payload: newNote.id });
 
     if (initialHydrationDone.current) {
-      getGraphSync().onNoteCreated(newNote);
+      UnifiedEntityLifecycle.onNoteCreated(newNote);
     }
 
     return newNote;
@@ -540,11 +541,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         const updatedNote = { ...existingNote, ...updates, updatedAt: new Date() };
         getGraphSync().onNoteUpdated(updatedNote, state.notes);
 
-        // Entity Registry Hook (Hardening)
-        if (updates.title) {
-          import('@/lib/entities/entity-registry').then(({ entityRegistry }) => {
-            entityRegistry.onNoteRenamed(id, updates.title!);
-          }).catch(console.error);
+        // Unified Entity Lifecycle Hook
+        if (updates.title && updates.title !== existingNote.title) {
+          UnifiedEntityLifecycle.onNoteTitleChanged(updatedNote, existingNote.title);
         }
       }
     }
@@ -567,16 +566,12 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'DELETE_NOTE', payload: id });
 
     if (initialHydrationDone.current) {
-      getGraphSync().onNoteDeleted(id);
-
-      // Entity Registry Cleanup (Hardening)
-      Promise.all([
-        import('@/lib/entities/entity-registry'),
-        import('@/lib/storage/entityStorage')
-      ]).then(([{ entityRegistry }, { autoSaveEntityRegistry }]) => {
-        entityRegistry.onNoteDeleted(id);
-        autoSaveEntityRegistry(entityRegistry);
-      }).catch(err => console.error('Failed to cleanup entity registry:', err));
+      const note = state.notes.find(n => n.id === id);
+      UnifiedEntityLifecycle.onNoteDeleted(
+        id,
+        note?.isEntity || false,
+        note?.entityLabel
+      );
     }
   }, [getGraphSync]);
 
@@ -617,7 +612,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'ADD_FOLDER', payload: newFolder });
 
     if (initialHydrationDone.current) {
-      getGraphSync().onFolderCreated(newFolder);
+      UnifiedEntityLifecycle.onFolderCreated(newFolder);
     }
 
     return newFolder;
@@ -657,7 +652,12 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'DELETE_FOLDER', payload: id });
 
     if (initialHydrationDone.current) {
-      getGraphSync().onFolderDeleted(id);
+      const folder = state.folders.find(f => f.id === id);
+      UnifiedEntityLifecycle.onFolderDeleted(
+        id,
+        !!(folder?.entityKind),
+        folder?.entityKind
+      );
     }
   }, [getGraphSync]);
 

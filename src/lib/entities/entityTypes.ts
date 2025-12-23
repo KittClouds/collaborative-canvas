@@ -1,3 +1,20 @@
+import {
+  User,
+  MapPin,
+  Users,
+  Package,
+  Flag,
+  Film,
+  Calendar,
+  Lightbulb,
+  Waves,
+  Drama,
+  BookOpen,
+  Zap,
+  Hourglass,
+  Book
+} from "lucide-react";
+
 export const ENTITY_KINDS = [
   "CHARACTER",
   "LOCATION",
@@ -110,6 +127,24 @@ export const ENTITY_COLORS: Record<EntityKind, string> = {
   BEAT: '#f97316', // Orange
   TIMELINE: '#eab308', // Gold
   NARRATIVE: '#4f46e5', // Indigo/Deep Purple
+};
+
+// Icon mapping for entity kinds
+export const ENTITY_ICONS: Record<EntityKind, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+  CHARACTER: User,
+  LOCATION: MapPin,
+  NPC: Users,
+  ITEM: Package,
+  FACTION: Flag,
+  SCENE: Film,
+  EVENT: Calendar,
+  CONCEPT: Lightbulb,
+  ARC: Waves,
+  ACT: Drama,
+  CHAPTER: BookOpen,
+  BEAT: Zap,
+  TIMELINE: Hourglass,
+  NARRATIVE: Book,
 };
 
 /**
