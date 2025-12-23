@@ -41,6 +41,9 @@ export interface Folder {
   isSubtypeRoot?: boolean;
   inheritedKind?: EntityKind;
   inheritedSubtype?: string;
+  // Network properties
+  networkId?: string;           // If this folder IS a network root
+  networkSchemaId?: string;     // Schema this network uses
 }
 
 // Helper type for building folder tree

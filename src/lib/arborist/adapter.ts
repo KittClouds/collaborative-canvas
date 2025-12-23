@@ -64,6 +64,7 @@ function transformFolderToNode(
         isSubtypeRoot: folder.isSubtypeRoot,
         inheritedKind: folder.inheritedKind,
         inheritedSubtype: folder.inheritedSubtype,
+        networkId: folder.networkId,  // Network folder support
         effectiveColor,
         depth,
         count: children.length,  // D3-style metric

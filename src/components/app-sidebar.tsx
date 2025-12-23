@@ -46,6 +46,7 @@ import { SemanticSearchPanel } from "@/components/search/SemanticSearchPanel";
 import { EntitiesPanel } from "@/components/EntitiesPanel";
 import { SettingsPanel } from "@/components/settings";
 import { ArboristTreeView } from '@/components/tree/ArboristTreeView';
+import { NetworkFolderCreationMenu } from '@/components/network/NetworkFolderCreation';
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -600,6 +601,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       <Plus className="h-3 w-3" />
                     </Button>
                     <EntityFolderCreationMenu />
+                    <NetworkFolderCreationMenu />
                   </div>
                 </div>
                 <SidebarGroupContent>

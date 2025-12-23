@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useBlueprintHubContext } from '../../context/BlueprintHubContext';
 import { useRelationshipTypes } from '../../hooks/useRelationshipTypes';
 import { useEntityTypes } from '../../hooks/useEntityTypes';
@@ -6,15 +6,7 @@ import { RelationshipPreview } from '../previews/RelationshipPreview';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+
 import {
   Select,
   SelectContent,
@@ -23,8 +15,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, ArrowRight } from 'lucide-react';
-import type { RelationshipDirection } from '../types';
+import { Plus, Trash2, ArrowRight, ArrowLeft } from 'lucide-react';
+import type { RelationshipDirection } from '../../types';
 
 interface RelationshipTypesTabProps {
   isLoading: boolean;
@@ -34,7 +26,7 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
   const { versionId } = useBlueprintHubContext();
   const { relationshipTypes, isLoading: hookLoading, create, remove } = useRelationshipTypes(versionId);
   const { entityTypes } = useEntityTypes(versionId);
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'create'>('list');
   const [formData, setFormData] = useState({
     relationship_name: '',
     display_label: '',
@@ -46,6 +38,16 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
   });
 
   const isLoading = contextLoading || hookLoading;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && view !== 'list') {
+        setView('list');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [view]);
 
   // Get entity type for preview
   const sourceEntityType = entityTypes.find(et => et.entity_kind === formData.source_entity_kind);
@@ -77,7 +79,7 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
         inverse_label: '',
         description: '',
       });
-      setIsCreateDialogOpen(false);
+      setView('list');
     } catch (err) {
       console.error('Failed to create relationship type:', err);
     }
@@ -101,166 +103,178 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Relationship Types</h3>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="w-4 h-4 mr-2" />
+  if (view === 'create') {
+    return (
+      <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-200">
+        <div className="flex items-center gap-2 mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setView('list')}
+            className="h-8 w-8 p-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h3 className="text-lg font-semibold">Create Relationship Type</h3>
+            <p className="text-sm text-muted-foreground">
+              Define a new relationship type between entity types.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-6 max-w-3xl">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="relationship_name">Relationship Name (Key)</Label>
+              <Input
+                id="relationship_name"
+                value={formData.relationship_name}
+                onChange={(e) => setFormData({ ...formData, relationship_name: e.target.value })}
+                placeholder="e.g., character_belongs_to_faction"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="display_label">Display Label</Label>
+              <Input
+                id="display_label"
+                value={formData.display_label}
+                onChange={(e) => setFormData({ ...formData, display_label: e.target.value })}
+                placeholder="e.g., belongs to"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="source_entity_kind">From Type</Label>
+              <Select
+                value={formData.source_entity_kind}
+                onValueChange={(value) => setFormData({ ...formData, source_entity_kind: value })}
+              >
+                <SelectTrigger id="source_entity_kind">
+                  <SelectValue placeholder="Select source type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {entityTypes.map((et) => (
+                    <SelectItem key={et.entity_type_id} value={et.entity_kind}>
+                      {et.display_name} ({et.entity_kind})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="target_entity_kind">To Type</Label>
+              <Select
+                value={formData.target_entity_kind}
+                onValueChange={(value) => setFormData({ ...formData, target_entity_kind: value })}
+              >
+                <SelectTrigger id="target_entity_kind">
+                  <SelectValue placeholder="Select target type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {entityTypes.map((et) => (
+                    <SelectItem key={et.entity_type_id} value={et.entity_kind}>
+                      {et.display_name} ({et.entity_kind})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="direction">Direction</Label>
+            <Select
+              value={formData.direction}
+              onValueChange={(value) => setFormData({ ...formData, direction: value as RelationshipDirection })}
+            >
+              <SelectTrigger id="direction">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="directed">Directed (one-way)</SelectItem>
+                <SelectItem value="bidirectional">Bidirectional (two-way)</SelectItem>
+                <SelectItem value="undirected">Undirected (symmetric)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {formData.direction === 'bidirectional' && (
+            <div className="space-y-2">
+              <Label htmlFor="inverse_label">Inverse Label (Optional)</Label>
+              <Input
+                id="inverse_label"
+                value={formData.inverse_label}
+                onChange={(e) => setFormData({ ...formData, inverse_label: e.target.value })}
+                placeholder="e.g., has member"
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Description (Optional)</Label>
+            <Input
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Brief description"
+            />
+          </div>
+
+          {formData.source_entity_kind && formData.target_entity_kind && (
+            <div className="space-y-2">
+              <Label>Preview</Label>
+              <RelationshipPreview
+                fromType={{
+                  display_name: sourceEntityType?.display_name || formData.source_entity_kind,
+                  color: sourceEntityType?.color,
+                }}
+                toType={{
+                  display_name: targetEntityType?.display_name || formData.target_entity_kind,
+                  color: targetEntityType?.color,
+                }}
+                relationship={{
+                  direction: formData.direction,
+                  display_label: formData.display_label || 'relates to',
+                  inverse_label: formData.inverse_label,
+                }}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setView('list')}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={
+                !formData.relationship_name ||
+                !formData.display_label ||
+                !formData.source_entity_kind ||
+                !formData.target_entity_kind
+              }
+            >
               Create Relationship Type
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create Relationship Type</DialogTitle>
-              <DialogDescription>
-                Define a new relationship type between entity types.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="relationship_name">Relationship Name (Key)</Label>
-                  <Input
-                    id="relationship_name"
-                    value={formData.relationship_name}
-                    onChange={(e) => setFormData({ ...formData, relationship_name: e.target.value })}
-                    placeholder="e.g., character_belongs_to_faction"
-                  />
-                </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-                <div className="space-y-2">
-                  <Label htmlFor="display_label">Display Label</Label>
-                  <Input
-                    id="display_label"
-                    value={formData.display_label}
-                    onChange={(e) => setFormData({ ...formData, display_label: e.target.value })}
-                    placeholder="e.g., belongs to"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="source_entity_kind">From Type</Label>
-                  <Select
-                    value={formData.source_entity_kind}
-                    onValueChange={(value) => setFormData({ ...formData, source_entity_kind: value })}
-                  >
-                    <SelectTrigger id="source_entity_kind">
-                      <SelectValue placeholder="Select source type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {entityTypes.map((et) => (
-                        <SelectItem key={et.entity_type_id} value={et.entity_kind}>
-                          {et.display_name} ({et.entity_kind})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="target_entity_kind">To Type</Label>
-                  <Select
-                    value={formData.target_entity_kind}
-                    onValueChange={(value) => setFormData({ ...formData, target_entity_kind: value })}
-                  >
-                    <SelectTrigger id="target_entity_kind">
-                      <SelectValue placeholder="Select target type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {entityTypes.map((et) => (
-                        <SelectItem key={et.entity_type_id} value={et.entity_kind}>
-                          {et.display_name} ({et.entity_kind})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="direction">Direction</Label>
-                <Select
-                  value={formData.direction}
-                  onValueChange={(value) => setFormData({ ...formData, direction: value as RelationshipDirection })}
-                >
-                  <SelectTrigger id="direction">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="directed">Directed (one-way)</SelectItem>
-                    <SelectItem value="bidirectional">Bidirectional (two-way)</SelectItem>
-                    <SelectItem value="undirected">Undirected (symmetric)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {formData.direction === 'bidirectional' && (
-                <div className="space-y-2">
-                  <Label htmlFor="inverse_label">Inverse Label (Optional)</Label>
-                  <Input
-                    id="inverse_label"
-                    value={formData.inverse_label}
-                    onChange={(e) => setFormData({ ...formData, inverse_label: e.target.value })}
-                    placeholder="e.g., has member"
-                  />
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description (Optional)</Label>
-                <Input
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Brief description"
-                />
-              </div>
-
-              {/* Live Preview */}
-              {formData.source_entity_kind && formData.target_entity_kind && (
-                <div className="space-y-2">
-                  <Label>Preview</Label>
-                  <RelationshipPreview
-                    fromType={{
-                      display_name: sourceEntityType?.display_name || formData.source_entity_kind,
-                      color: sourceEntityType?.color,
-                    }}
-                    toType={{
-                      display_name: targetEntityType?.display_name || formData.target_entity_kind,
-                      color: targetEntityType?.color,
-                    }}
-                    relationship={{
-                      direction: formData.direction,
-                      display_label: formData.display_label || 'relates to',
-                      inverse_label: formData.inverse_label,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleCreate}
-                disabled={
-                  !formData.relationship_name || 
-                  !formData.display_label || 
-                  !formData.source_entity_kind || 
-                  !formData.target_entity_kind
-                }
-              >
-                Create
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+  return (
+    <div className="space-y-4 animate-in fade-in duration-200">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Relationship Types</h3>
+        <Button size="sm" onClick={() => setView('create')}>
+          <Plus className="w-4 h-4 mr-2" />
+          Create Relationship Type
+        </Button>
       </div>
 
       {relationshipTypes.length === 0 ? (

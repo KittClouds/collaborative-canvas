@@ -4,17 +4,9 @@ import { useEntityTypes } from '../../hooks/useEntityTypes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ArrowLeft } from 'lucide-react';
 import { ENTITY_KINDS, ENTITY_COLORS } from '@/lib/entities/entityTypes';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -31,7 +23,7 @@ export function EntityTypesTab({ isLoading: contextLoading }: EntityTypesTabProp
   const { versionId } = useBlueprintHubContext();
   const { entityTypes, isLoading: hookLoading, create, remove } = useEntityTypes(versionId);
   const { toast } = useToast();
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'create'>('list');
   const [showKindSuggestions, setShowKindSuggestions] = useState(false);
   const kindInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -44,13 +36,23 @@ export function EntityTypesTab({ isLoading: contextLoading }: EntityTypesTabProp
 
   const isLoading = contextLoading || hookLoading;
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && view !== 'list') {
+        setView('list');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [view]);
+
   const existingKinds = entityTypes.map(et => et.entity_kind);
   const allSuggestions = [...new Set([...ENTITY_KINDS, ...existingKinds])];
   const filteredSuggestions = formData.entity_kind
-    ? allSuggestions.filter(kind => 
-        kind.toLowerCase().includes(formData.entity_kind.toLowerCase()) &&
-        kind !== formData.entity_kind
-      )
+    ? allSuggestions.filter(kind =>
+      kind.toLowerCase().includes(formData.entity_kind.toLowerCase()) &&
+      kind !== formData.entity_kind
+    )
     : allSuggestions;
 
   useEffect(() => {
@@ -101,7 +103,7 @@ export function EntityTypesTab({ isLoading: contextLoading }: EntityTypesTabProp
         color: '',
         description: '',
       });
-      setIsCreateDialogOpen(false);
+      setView('list');
       toast({
         title: 'Success',
         description: 'Entity type created successfully',
@@ -134,129 +136,142 @@ export function EntityTypesTab({ isLoading: contextLoading }: EntityTypesTabProp
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Entity Types</h3>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="w-4 h-4 mr-2" />
+  if (view === 'create') {
+    return (
+      <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-200">
+        <div className="flex items-center gap-2 mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setView('list')}
+            className="h-8 w-8 p-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h3 className="text-lg font-semibold">Create Entity Type</h3>
+            <p className="text-sm text-muted-foreground">
+              Define a new entity type for your blueprint.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-6 max-w-2xl">
+          <div className="space-y-2">
+            <Label htmlFor="entity_kind">Entity Kind</Label>
+            <p className="text-xs text-muted-foreground">
+              Choose from suggestions or type a custom kind (auto-formatted to UPPER_SNAKE_CASE)
+            </p>
+            <div className="relative">
+              <div className="relative">
+                <Input
+                  ref={kindInputRef}
+                  id="entity_kind"
+                  value={formData.entity_kind}
+                  onChange={(e) => handleKindChange(e.target.value)}
+                  onFocus={() => setShowKindSuggestions(true)}
+                  placeholder="e.g., CHARACTER, SPELL, PROPHECY..."
+                  className="pr-8"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-2 hover:bg-transparent"
+                  onClick={() => setShowKindSuggestions(!showKindSuggestions)}
+                >
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", showKindSuggestions && "rotate-180")} />
+                </Button>
+              </div>
+              {showKindSuggestions && filteredSuggestions.length > 0 && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute z-50 w-full mt-1 max-h-48 overflow-auto rounded-md border bg-popover p-1 shadow-md"
+                >
+                  {filteredSuggestions.map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => selectKindSuggestion(kind)}
+                      className={cn(
+                        "w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground",
+                        existingKinds.includes(kind) && "text-muted-foreground"
+                      )}
+                    >
+                      <span>{kind}</span>
+                      {existingKinds.includes(kind) && (
+                        <span className="ml-2 text-xs text-muted-foreground">(already defined)</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="display_name">Display Name</Label>
+            <Input
+              id="display_name"
+              value={formData.display_name}
+              onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+              placeholder="e.g., Main Character"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="color">Color</Label>
+            <div className="flex gap-2">
+              <Input
+                id="color"
+                type="color"
+                value={formData.color}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                className="w-12 h-10 p-1"
+              />
+              <Input
+                value={formData.color}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                placeholder="#8b5cf6"
+                className="flex-1"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Description (Optional)</Label>
+            <Input
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Brief description"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setView('list')}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!formData.entity_kind || !formData.display_name}
+            >
               Create Entity Type
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Entity Type</DialogTitle>
-              <DialogDescription>
-                Define a new entity type for your blueprint.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="entity_kind">Entity Kind</Label>
-                <p className="text-xs text-muted-foreground">
-                  Choose from suggestions or type a custom kind (auto-formatted to UPPER_SNAKE_CASE)
-                </p>
-                <div className="relative">
-                  <div className="relative">
-                    <Input
-                      ref={kindInputRef}
-                      id="entity_kind"
-                      value={formData.entity_kind}
-                      onChange={(e) => handleKindChange(e.target.value)}
-                      onFocus={() => setShowKindSuggestions(true)}
-                      placeholder="e.g., CHARACTER, SPELL, PROPHECY..."
-                      className="pr-8"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-2 hover:bg-transparent"
-                      onClick={() => setShowKindSuggestions(!showKindSuggestions)}
-                    >
-                      <ChevronDown className={cn("w-4 h-4 transition-transform", showKindSuggestions && "rotate-180")} />
-                    </Button>
-                  </div>
-                  {showKindSuggestions && filteredSuggestions.length > 0 && (
-                    <div
-                      ref={suggestionsRef}
-                      className="absolute z-50 w-full mt-1 max-h-48 overflow-auto rounded-md border bg-popover p-1 shadow-md"
-                    >
-                      {filteredSuggestions.map((kind) => (
-                        <button
-                          key={kind}
-                          type="button"
-                          onClick={() => selectKindSuggestion(kind)}
-                          className={cn(
-                            "w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground",
-                            existingKinds.includes(kind) && "text-muted-foreground"
-                          )}
-                        >
-                          <span>{kind}</span>
-                          {existingKinds.includes(kind) && (
-                            <span className="ml-2 text-xs text-muted-foreground">(already defined)</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-              <div className="space-y-2">
-                <Label htmlFor="display_name">Display Name</Label>
-                <Input
-                  id="display_name"
-                  value={formData.display_name}
-                  onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
-                  placeholder="e.g., Main Character"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="color">Color</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="color"
-                    type="color"
-                    value={formData.color}
-                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                    className="w-20 h-10"
-                  />
-                  <Input
-                    value={formData.color}
-                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                    placeholder="#8b5cf6"
-                    className="flex-1"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description (Optional)</Label>
-                <Input
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Brief description"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleCreate}
-                disabled={!formData.entity_kind || !formData.display_name}
-              >
-                Create
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+  return (
+    <div className="space-y-4 animate-in fade-in duration-200">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Entity Types</h3>
+        <Button size="sm" onClick={() => setView('create')}>
+          <Plus className="w-4 h-4 mr-2" />
+          Create Entity Type
+        </Button>
       </div>
 
       {entityTypes.length === 0 ? (

@@ -4,11 +4,12 @@ import { useBlueprintHubContext } from '../context/BlueprintHubContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, Sparkles, Box, Network, Database, FileCode, Tag, Eye, Play, HelpCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Sparkles, Box, Network, Database, FileCode, Tag, Eye, Play, HelpCircle, Users } from 'lucide-react';
 import { EntityTypesTab } from './tabs/EntityTypesTab';
 import { FieldsTab } from './tabs/FieldsTab';
 import { RelationshipTypesTab } from './tabs/RelationshipTypesTab';
 import { AttributeBlueprintsTab } from './tabs/AttributeBlueprintsTab';
+import { NetworksTab } from './tabs/NetworksTab';
 import { ViewTemplatesTab } from './ViewTemplatesTab';
 import { MocsTab } from './MocsTab';
 import { ExtractionTab } from './tabs/ExtractionTab';
@@ -208,6 +209,10 @@ export function BlueprintHubPanel() {
                                     <Network className="w-4 h-4 mr-2" />
                                     MOCs
                                 </TabsTrigger>
+                                <TabsTrigger value="networks" className="data-[state=active]:bg-muted data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-4">
+                                    <Users className="w-4 h-4 mr-2" />
+                                    Networks
+                                </TabsTrigger>
                                 <TabsTrigger value="extraction" className="data-[state=active]:bg-muted data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-4">
                                     <Play className="w-4 h-4 mr-2" />
                                     Extraction
@@ -245,6 +250,10 @@ export function BlueprintHubPanel() {
 
                             <TabsContent value="mocs" className="mt-0 h-full">
                                 <MocsTab isLoading={isLoading} />
+                            </TabsContent>
+
+                            <TabsContent value="networks" className="mt-0 h-full">
+                                <NetworksTab isLoading={isLoading} />
                             </TabsContent>
 
                             <TabsContent value="extraction" className="mt-0 h-full">

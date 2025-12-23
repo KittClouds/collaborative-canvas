@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useBlueprintHubContext } from '../../context/BlueprintHubContext';
 import { useRelationshipTypes } from '../../hooks/useRelationshipTypes';
 import { useAttributeBlueprints } from '../../hooks/useAttributeBlueprints';
@@ -7,15 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+
 import {
   Select,
   SelectContent,
@@ -24,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, ArrowRight, ArrowLeft } from 'lucide-react';
 import type { FieldDataType } from '../../types';
 
 const ATTRIBUTE_DATA_TYPES: FieldDataType[] = [
@@ -44,11 +36,11 @@ interface AttributeBlueprintsTabProps {
 export function AttributeBlueprintsTab({ isLoading: contextLoading }: AttributeBlueprintsTabProps) {
   const { versionId } = useBlueprintHubContext();
   const { relationshipTypes, isLoading: relationshipsLoading } = useRelationshipTypes(versionId);
-  
+
   const [selectedRelationshipTypeId, setSelectedRelationshipTypeId] = useState<string | null>(null);
   const { attributes, isLoading: attributesLoading, create, remove } = useAttributeBlueprints(selectedRelationshipTypeId);
-  
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+
+  const [view, setView] = useState<'list' | 'create'>('list');
   const [formData, setFormData] = useState({
     attribute_name: '',
     display_label: '',
@@ -59,6 +51,16 @@ export function AttributeBlueprintsTab({ isLoading: contextLoading }: AttributeB
   });
 
   const isLoading = contextLoading || relationshipsLoading || attributesLoading;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && view !== 'list') {
+        setView('list');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [view]);
 
   const selectedRelationshipType = relationshipTypes.find(rt => rt.relationship_type_id === selectedRelationshipTypeId);
 
@@ -86,7 +88,7 @@ export function AttributeBlueprintsTab({ isLoading: contextLoading }: AttributeB
         description: '',
         default_value: '',
       });
-      setIsCreateDialogOpen(false);
+      setView('list');
     } catch (err) {
       console.error('Failed to create attribute:', err);
     }
@@ -121,20 +123,128 @@ export function AttributeBlueprintsTab({ isLoading: contextLoading }: AttributeB
     );
   }
 
+  if (view === 'create' && selectedRelationshipType) {
+    return (
+      <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-200">
+        <div className="flex items-center gap-2 mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setView('list')}
+            className="h-8 w-8 p-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h3 className="text-lg font-semibold">Add Attribute to {selectedRelationshipType.display_label}</h3>
+            <p className="text-sm text-muted-foreground">
+              Define a new attribute for this relationship type.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-6 max-w-2xl">
+          <div className="space-y-2">
+            <Label htmlFor="attribute_name">Attribute Name (camelCase)</Label>
+            <Input
+              id="attribute_name"
+              value={formData.attribute_name}
+              onChange={(e) => setFormData({ ...formData, attribute_name: e.target.value })}
+              placeholder="e.g., strength"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="display_label">Display Label</Label>
+            <Input
+              id="display_label"
+              value={formData.display_label}
+              onChange={(e) => setFormData({ ...formData, display_label: e.target.value })}
+              placeholder="e.g., Relationship Strength"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="data_type">Data Type</Label>
+            <Select
+              value={formData.data_type}
+              onValueChange={(value) => setFormData({ ...formData, data_type: value as FieldDataType })}
+            >
+              <SelectTrigger id="data_type">
+                <SelectValue placeholder="Select data type" />
+              </SelectTrigger>
+              <SelectContent>
+                {ATTRIBUTE_DATA_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="is_required"
+              checked={formData.is_required}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_required: checked === true })}
+            />
+            <Label htmlFor="is_required" className="font-normal cursor-pointer">Required</Label>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="default_value">Default Value (Optional)</Label>
+            <Input
+              id="default_value"
+              value={formData.default_value}
+              onChange={(e) => setFormData({ ...formData, default_value: e.target.value })}
+              placeholder="Initial value for this attribute"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Description (Optional)</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Helpful context for this attribute"
+              rows={3}
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setView('list')}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!formData.attribute_name || !formData.display_label || !formData.data_type}
+            >
+              Create Attribute
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full gap-4">
+    <div className="flex h-full gap-4 animate-in fade-in duration-200">
       <div className="w-80 border-r pr-4 space-y-2">
-        <h4 className="text-sm font-semibold mb-3">Relationship Types</h4>
+        <h4 className="text-sm font-semibold mb-3 px-3">Relationship Types</h4>
         <div className="space-y-1">
           {relationshipTypes.map((relType) => (
             <button
               key={relType.relationship_type_id}
-              onClick={() => setSelectedRelationshipTypeId(relType.relationship_type_id)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                selectedRelationshipTypeId === relType.relationship_type_id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              }`}
+              onClick={() => {
+                setSelectedRelationshipTypeId(relType.relationship_type_id);
+                setView('list');
+              }}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${selectedRelationshipTypeId === relType.relationship_type_id
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                }`}
             >
               <div className="space-y-1">
                 <div className="font-medium truncate">{relType.display_label}</div>
@@ -144,11 +254,11 @@ export function AttributeBlueprintsTab({ isLoading: contextLoading }: AttributeB
                   <span className="truncate">{relType.target_entity_kind}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant={selectedRelationshipTypeId === relType.relationship_type_id ? "outline" : "secondary"} className="text-xs">
                     {relType.cardinality.replace(/_/g, '-')}
                   </Badge>
                   {selectedRelationshipTypeId === relType.relationship_type_id && (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline" className="text-xs pointer-events-none">
                       {attributes.length} attr{attributes.length !== 1 ? 's' : ''}
                     </Badge>
                   )}
@@ -177,103 +287,10 @@ export function AttributeBlueprintsTab({ isLoading: contextLoading }: AttributeB
                   {attributes.length} attribute{attributes.length !== 1 ? 's' : ''}
                 </p>
               </div>
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Attribute
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Add Relationship Attribute</DialogTitle>
-                    <DialogDescription>
-                      Define a new attribute for the {selectedRelationshipType.display_label} relationship.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="attribute_name">Attribute Name (camelCase)</Label>
-                      <Input
-                        id="attribute_name"
-                        value={formData.attribute_name}
-                        onChange={(e) => setFormData({ ...formData, attribute_name: e.target.value })}
-                        placeholder="e.g., strength"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="display_label">Display Label</Label>
-                      <Input
-                        id="display_label"
-                        value={formData.display_label}
-                        onChange={(e) => setFormData({ ...formData, display_label: e.target.value })}
-                        placeholder="e.g., Relationship Strength"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="data_type">Data Type</Label>
-                      <Select
-                        value={formData.data_type}
-                        onValueChange={(value) => setFormData({ ...formData, data_type: value as FieldDataType })}
-                      >
-                        <SelectTrigger id="data_type">
-                          <SelectValue placeholder="Select data type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ATTRIBUTE_DATA_TYPES.map((type) => (
-                            <SelectItem key={type} value={type}>
-                              {type}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="is_required"
-                        checked={formData.is_required}
-                        onCheckedChange={(checked) => setFormData({ ...formData, is_required: checked === true })}
-                      />
-                      <Label htmlFor="is_required" className="font-normal">Required</Label>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="default_value">Default Value (Optional)</Label>
-                      <Input
-                        id="default_value"
-                        value={formData.default_value}
-                        onChange={(e) => setFormData({ ...formData, default_value: e.target.value })}
-                        placeholder="Default value"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description (Optional)</Label>
-                      <Textarea
-                        id="description"
-                        value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        placeholder="Attribute description"
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button 
-                      onClick={handleCreate}
-                      disabled={!formData.attribute_name || !formData.display_label || !formData.data_type}
-                    >
-                      Create
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              <Button size="sm" onClick={() => setView('create')}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Attribute
+              </Button>
             </div>
 
             {selectedRelationshipType.description && (

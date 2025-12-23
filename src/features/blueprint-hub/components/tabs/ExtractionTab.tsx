@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useBlueprintHubContext } from '../../context/BlueprintHubContext';
 import { useExtractionProfile } from '../../hooks/useExtractionProfile';
 import { Button } from '@/components/ui/button';
@@ -13,17 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface ExtractionTabProps {
@@ -44,9 +36,8 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
     removeIgnore,
   } = useExtractionProfile(versionId);
 
-  const [isMappingDialogOpen, setIsMappingDialogOpen] = useState(false);
-  const [isIgnoreDialogOpen, setIsIgnoreDialogOpen] = useState(false);
-  
+  const [view, setView] = useState<'list' | 'createMapping' | 'createIgnore'>('list');
+
   const [mappingForm, setMappingForm] = useState({
     ner_label: '',
     target_entity_kinds: '',
@@ -59,6 +50,16 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
   });
 
   const isLoading = contextLoading || hookLoading;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && view !== 'list') {
+        setView('list');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [view]);
 
   const handleToggleNER = async (enabled: boolean) => {
     if (!profile) return;
@@ -81,7 +82,7 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
   const handleResolutionPolicyChange = async (value: string) => {
     if (!profile) return;
     try {
-      await updateProfile({ resolution_policy: value as 'create_entity' | 'mention_first' });
+      await updateProfile({ resolution_policy: value as 'entity_on_accept' | 'mention_first' });
     } catch (err) {
       console.error('Failed to update resolution policy:', err);
     }
@@ -103,7 +104,7 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
       });
 
       setMappingForm({ ner_label: '', target_entity_kinds: '', priority: 0 });
-      setIsMappingDialogOpen(false);
+      setView('list');
     } catch (err) {
       console.error('Failed to add mapping:', err);
     }
@@ -129,7 +130,7 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
       });
 
       setIgnoreForm({ surface_form: '', ner_label: '' });
-      setIsIgnoreDialogOpen(false);
+      setView('list');
     } catch (err) {
       console.error('Failed to add to ignore list:', err);
     }
@@ -161,12 +162,140 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
     );
   }
 
+  if (view === 'createMapping') {
+    return (
+      <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-200 p-4">
+        <div className="flex items-center gap-2 mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setView('list')}
+            className="h-8 w-8 p-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h3 className="text-lg font-semibold">Add Label Mapping</h3>
+            <p className="text-sm text-muted-foreground">
+              Map a NER label to target entity kinds.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-6 max-w-2xl">
+          <div className="space-y-2">
+            <Label htmlFor="ner_label">NER Label</Label>
+            <Input
+              id="ner_label"
+              value={mappingForm.ner_label}
+              onChange={(e) => setMappingForm({ ...mappingForm, ner_label: e.target.value })}
+              placeholder="e.g., PER, ORG, LOC"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="target_kinds">Target Entity Kinds (comma-separated)</Label>
+            <Input
+              id="target_kinds"
+              value={mappingForm.target_entity_kinds}
+              onChange={(e) => setMappingForm({ ...mappingForm, target_entity_kinds: e.target.value })}
+              placeholder="e.g., CHARACTER, NPC"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="priority">Priority (Higher numbers resolved first)</Label>
+            <Input
+              id="priority"
+              type="number"
+              value={mappingForm.priority}
+              onChange={(e) => setMappingForm({ ...mappingForm, priority: parseInt(e.target.value) || 0 })}
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setView('list')}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddMapping}
+              disabled={!mappingForm.ner_label || !mappingForm.target_entity_kinds}
+            >
+              Add Mapping
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'createIgnore') {
+    return (
+      <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-200 p-4">
+        <div className="flex items-center gap-2 mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setView('list')}
+            className="h-8 w-8 p-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h3 className="text-lg font-semibold">Add to Ignore List</h3>
+            <p className="text-sm text-muted-foreground">
+              Prevent specific terms or labels from being extracted.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-6 max-w-2xl">
+          <div className="space-y-2">
+            <Label htmlFor="ignore_surface_form">Surface Form (optional)</Label>
+            <Input
+              id="ignore_surface_form"
+              value={ignoreForm.surface_form}
+              onChange={(e) => setIgnoreForm({ ...ignoreForm, surface_form: e.target.value })}
+              placeholder="e.g., 'the', 'is'"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ignore_ner_label">NER Label (optional)</Label>
+            <Input
+              id="ignore_ner_label"
+              value={ignoreForm.ner_label}
+              onChange={(e) => setIgnoreForm({ ...ignoreForm, ner_label: e.target.value })}
+              placeholder="e.g., 'MISC'"
+            />
+          </div>
+
+          <p className="text-xs text-muted-foreground italic">
+            At least one of the fields above must be specified.
+          </p>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setView('list')}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddIgnore}
+              disabled={!ignoreForm.surface_form && !ignoreForm.ner_label}
+            >
+              Add to Ignore List
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-6 p-4 animate-in fade-in duration-200">
       {/* NER Configuration */}
-      <div className="space-y-4 border rounded-lg p-4">
+      <div className="space-y-4 border rounded-lg p-4 bg-card shadow-sm">
         <h3 className="text-lg font-semibold">NER Configuration</h3>
-        
+
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
             <Label>Enable NER Extraction</Label>
@@ -223,8 +352,8 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
               </Label>
             </div>
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="create_entity" id="create_entity" />
-              <Label htmlFor="create_entity" className="font-normal">
+              <RadioGroupItem value="entity_on_accept" id="entity_on_accept" />
+              <Label htmlFor="entity_on_accept" className="font-normal cursor-pointer">
                 Create entity on accept (automatic, skips mention step)
               </Label>
             </div>
@@ -233,65 +362,13 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
       </div>
 
       {/* Label Mappings */}
-      <div className="space-y-4 border rounded-lg p-4">
+      <div className="space-y-4 border rounded-lg p-4 bg-card shadow-sm">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Label Mappings</h3>
-          <Dialog open={isMappingDialogOpen} onOpenChange={setIsMappingDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Mapping
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Label Mapping</DialogTitle>
-                <DialogDescription>
-                  Map a NER label to target entity kinds
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ner_label">NER Label</Label>
-                  <Input
-                    id="ner_label"
-                    value={mappingForm.ner_label}
-                    onChange={(e) => setMappingForm({ ...mappingForm, ner_label: e.target.value })}
-                    placeholder="PER, ORG, LOC, etc."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="target_kinds">Target Entity Kinds (comma-separated)</Label>
-                  <Input
-                    id="target_kinds"
-                    value={mappingForm.target_entity_kinds}
-                    onChange={(e) =>
-                      setMappingForm({ ...mappingForm, target_entity_kinds: e.target.value })
-                    }
-                    placeholder="CHARACTER, NPC"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="priority">Priority</Label>
-                  <Input
-                    id="priority"
-                    type="number"
-                    value={mappingForm.priority}
-                    onChange={(e) =>
-                      setMappingForm({ ...mappingForm, priority: parseInt(e.target.value) || 0 })
-                    }
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsMappingDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleAddMapping}>Add Mapping</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button size="sm" onClick={() => setView('createMapping')}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Mapping
+          </Button>
         </div>
 
         <div className="border rounded-md">
@@ -345,54 +422,13 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
       </div>
 
       {/* Ignore List */}
-      <div className="space-y-4 border rounded-lg p-4">
+      <div className="space-y-4 border rounded-lg p-4 bg-card shadow-sm">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Ignore List</h3>
-          <Dialog open={isIgnoreDialogOpen} onOpenChange={setIsIgnoreDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                Add to Ignore
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add to Ignore List</DialogTitle>
-                <DialogDescription>
-                  Ignore specific surface forms or NER labels
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ignore_surface_form">Surface Form (optional)</Label>
-                  <Input
-                    id="ignore_surface_form"
-                    value={ignoreForm.surface_form}
-                    onChange={(e) => setIgnoreForm({ ...ignoreForm, surface_form: e.target.value })}
-                    placeholder="e.g., 'the'"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ignore_ner_label">NER Label (optional)</Label>
-                  <Input
-                    id="ignore_ner_label"
-                    value={ignoreForm.ner_label}
-                    onChange={(e) => setIgnoreForm({ ...ignoreForm, ner_label: e.target.value })}
-                    placeholder="e.g., 'MISC'"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  At least one field must be filled
-                </p>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsIgnoreDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleAddIgnore}>Add to Ignore</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button size="sm" onClick={() => setView('createIgnore')}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add to Ignore
+          </Button>
         </div>
 
         <div className="border rounded-md">

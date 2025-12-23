@@ -151,7 +151,7 @@ export function PatternManager({ onBack }: { onBack?: () => void }) {
     const [patterns, setPatterns] = useState<PatternDefinition[]>(() =>
         patternRegistry.getAllPatterns()
     );
-    const [view, setView] = useState<'list' | 'editor'>('list');
+    const [view, setView] = useState<'list' | 'editor' | 'tester'>('list');
     const [editingPattern, setEditingPattern] = useState<PatternDefinition | null>(null);
     const [testingPattern, setTestingPattern] = useState<PatternDefinition | null>(null);
     const [isCreating, setIsCreating] = useState(false);
@@ -247,6 +247,19 @@ export function PatternManager({ onBack }: { onBack?: () => void }) {
         );
     }
 
+    // TESTER VIEW
+    if (view === 'tester' && testingPattern) {
+        return (
+            <PatternTester
+                pattern={testingPattern}
+                onClose={() => {
+                    setTestingPattern(null);
+                    setView('list');
+                }}
+            />
+        );
+    }
+
     // LIST VIEW
     return (
         <div className="h-full flex flex-col">
@@ -293,7 +306,10 @@ export function PatternManager({ onBack }: { onBack?: () => void }) {
                                         onToggle={handleToggle}
                                         onEdit={handleEdit}
                                         onDelete={handleDelete}
-                                        onTest={setTestingPattern}
+                                        onTest={(p) => {
+                                            setTestingPattern(p);
+                                            setView('tester');
+                                        }}
                                     />
                                 ))}
                             </div>
@@ -303,13 +319,7 @@ export function PatternManager({ onBack }: { onBack?: () => void }) {
                 </div>
             </ScrollArea>
 
-            {/* Pattern Tester Dialog */}
-            {testingPattern && (
-                <PatternTester
-                    pattern={testingPattern}
-                    onClose={() => setTestingPattern(null)}
-                />
-            )}
+
         </div>
     );
 }

@@ -1,0 +1,57 @@
+/* react-arborist overrides */
+
+.arborist-tree {
+    outline: none;
+}
+
+/* Hide default cursor/drop indicator if needed since we use custom styles */
+.arborist-tree [role="treeitem"] {
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.15s ease;
+}
+
+.arborist-tree [role="treeitem"]:hover {
+    background-color: var(--sidebar-accent);
+}
+
+.arborist-tree [role="treeitem"][aria-selected="true"] {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+}
+
+/* Drag and Drop indicators */
+.arborist-tree .drag-layer {
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.arborist-tree .drop-cursor {
+    height: 2px;
+    background: var(--sidebar-ring);
+    position: absolute;
+    z-index: 100;
+    pointer-events: none;
+}
+
+/* Custom scrollbar for the tree */
+.arborist-tree::-webkit-scrollbar {
+    width: 4px;
+}
+
+.arborist-tree::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.arborist-tree::-webkit-scrollbar-thumb {
+    background: var(--muted);
+    border-radius: 10px;
+}
+
+.arborist-tree::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+}

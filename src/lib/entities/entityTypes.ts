@@ -12,7 +12,8 @@ import {
   BookOpen,
   Zap,
   Hourglass,
-  Book
+  Book,
+  Network
 } from "lucide-react";
 
 export const ENTITY_KINDS = [
@@ -28,9 +29,9 @@ export const ENTITY_KINDS = [
   "ACT",
   "CHAPTER",
   "BEAT",
-  "EVENT",
   "TIMELINE",
   "NARRATIVE",
+  "NETWORK", // NEW: Container for relationship networks
 ] as const;
 
 export type EntityKind = typeof ENTITY_KINDS[number];
@@ -76,6 +77,7 @@ export const ENTITY_SUBTYPES: Record<EntityKind, readonly string[]> = {
   BEAT: ["ACTION", "DIALOGUE", "DESCRIPTION", "INTERNAL", "REVELATION", "DECISION"] as const,
   TIMELINE: ["MASTER", "ARC", "CHARACTER", "LOCATION", "CUSTOM"] as const,
   NARRATIVE: ["MASTER", "SERIES", "BOOK", "FILM", "GAME"] as const,
+  NETWORK: ["FAMILY", "ORGANIZATION", "FACTION_NET", "ALLIANCE", "GUILD", "FRIENDSHIP", "RIVALRY", "CUSTOM"] as const,
 };
 
 export type EntitySubtype = typeof ENTITY_SUBTYPES[EntityKind][number];
@@ -127,6 +129,7 @@ export const ENTITY_COLORS: Record<EntityKind, string> = {
   BEAT: '#f97316', // Orange
   TIMELINE: '#eab308', // Gold
   NARRATIVE: '#4f46e5', // Indigo/Deep Purple
+  NETWORK: '#9333ea', // Purple (network relationships)
 };
 
 // Icon mapping for entity kinds
@@ -145,6 +148,7 @@ export const ENTITY_ICONS: Record<EntityKind, React.ComponentType<{ className?: 
   BEAT: Zap,
   TIMELINE: Hourglass,
   NARRATIVE: Book,
+  NETWORK: Network,
 };
 
 /**

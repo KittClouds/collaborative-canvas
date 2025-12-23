@@ -30,6 +30,9 @@ export interface ArboristNode {
     isPinned?: boolean;
     folderId?: string;
 
+    // Network-specific properties
+    networkId?: string;  // If this folder IS a network root
+
     // D3-style metrics (optional - for future enhancements)
     size?: number;    // Content length in bytes
     count?: number;   // Child count for folders

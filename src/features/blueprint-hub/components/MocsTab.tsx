@@ -1,20 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useBlueprintHubContext } from '../context/BlueprintHubContext';
 import { useMOCs } from '../hooks/useMOCs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft } from 'lucide-react';
 
 interface MocsTabProps {
   isLoading: boolean;
@@ -23,13 +15,23 @@ interface MocsTabProps {
 export function MocsTab({ isLoading: contextLoading }: MocsTabProps) {
   const { versionId } = useBlueprintHubContext();
   const { mocs, isLoading: hookLoading, create, remove } = useMOCs(versionId);
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'create'>('list');
   const [formData, setFormData] = useState({
     moc_name: '',
     description: '',
   });
 
   const isLoading = contextLoading || hookLoading;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && view !== 'list') {
+        setView('list');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [view]);
 
   const handleCreate = async () => {
     if (!formData.moc_name) {
@@ -47,7 +49,7 @@ export function MocsTab({ isLoading: contextLoading }: MocsTabProps) {
         moc_name: '',
         description: '',
       });
-      setIsCreateDialogOpen(false);
+      setView('list');
     } catch (err) {
       console.error('Failed to create MOC:', err);
     }
@@ -71,58 +73,71 @@ export function MocsTab({ isLoading: contextLoading }: MocsTabProps) {
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Maps of Content (MOCs)</h3>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="w-4 h-4 mr-2" />
+  if (view === 'create') {
+    return (
+      <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-200">
+        <div className="flex items-center gap-2 mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setView('list')}
+            className="h-8 w-8 p-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h3 className="text-lg font-semibold">Create MOC</h3>
+            <p className="text-sm text-muted-foreground">
+              Define a new Map of Content for organizing entities.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-6 max-w-2xl">
+          <div className="space-y-2">
+            <Label htmlFor="moc_name">MOC Name</Label>
+            <Input
+              id="moc_name"
+              value={formData.moc_name}
+              onChange={(e) => setFormData({ ...formData, moc_name: e.target.value })}
+              placeholder="e.g., World Index"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Description (Optional)</Label>
+            <Input
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Describe the purpose of this MOC"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setView('list')}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!formData.moc_name}
+            >
               Create MOC
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create MOC</DialogTitle>
-              <DialogDescription>
-                Define a new Map of Content for organizing entities.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="moc_name">MOC Name</Label>
-                <Input
-                  id="moc_name"
-                  value={formData.moc_name}
-                  onChange={(e) => setFormData({ ...formData, moc_name: e.target.value })}
-                  placeholder="e.g., World Index"
-                />
-              </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-              <div className="space-y-2">
-                <Label htmlFor="description">Description (Optional)</Label>
-                <Input
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Describe the purpose of this MOC"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleCreate}
-                disabled={!formData.moc_name}
-              >
-                Create
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+  return (
+    <div className="space-y-4 animate-in fade-in duration-200">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Maps of Content (MOCs)</h3>
+        <Button size="sm" onClick={() => setView('create')}>
+          <Plus className="w-4 h-4 mr-2" />
+          Create MOC
+        </Button>
       </div>
 
       {mocs.length === 0 ? (
