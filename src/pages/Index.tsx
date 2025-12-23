@@ -1,5 +1,7 @@
+
 import { AppSidebar } from '@/components/app-sidebar';
 import { FooterLinksPanel } from '@/components/FooterLinksPanel';
+import { useBlueprintHub } from '@/features/blueprint-hub/hooks/useBlueprintHub';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -41,6 +43,7 @@ import {
 
 function NotesApp() {
   const { theme } = useTheme();
+  const { toggleHub, isHubOpen } = useBlueprintHub();
   const [toolbarVisible, setToolbarVisible] = useState(() => {
     const saved = localStorage.getItem('editor-toolbar-visible');
     return saved !== null ? JSON.parse(saved) : true;
@@ -292,6 +295,11 @@ function NotesApp() {
           notes={state.notes}
           getEntityMentions={getEntityMentions}
           onNavigate={handleNavigateToNote}
+          isHubOpen={isHubOpen}
+          toggleHub={toggleHub}
+          isSaving={state.isSaving}
+          lastSaved={state.lastSaved}
+          notesCount={state.notes.length}
         />
 
       </SidebarProvider>

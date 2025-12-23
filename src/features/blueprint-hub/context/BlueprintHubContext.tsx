@@ -19,6 +19,7 @@ interface BlueprintHubContextType {
   isHubOpen: boolean;
   openHub: () => void;
   closeHub: () => void;
+  toggleHub: () => void;
   refresh: () => Promise<void>;
   reloadActiveVersion: () => Promise<void>;
   setActiveBlueprint: (blueprint: CompiledBlueprint | null) => void;
@@ -77,6 +78,10 @@ export function BlueprintHubProvider({ children }: { children: React.ReactNode }
 
   const closeHub = useCallback(() => {
     setIsHubOpen(false);
+  }, []);
+
+  const toggleHub = useCallback(() => {
+    setIsHubOpen(prev => !prev);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -160,6 +165,7 @@ export function BlueprintHubProvider({ children }: { children: React.ReactNode }
     isHubOpen,
     openHub,
     closeHub,
+    toggleHub,
     refresh,
     reloadActiveVersion,
     setActiveBlueprint,

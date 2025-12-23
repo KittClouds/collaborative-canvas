@@ -935,7 +935,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setSearchQuery,
   } = useNotes();
 
-  const { openHub } = useBlueprintHub();
+  const { toggleHub, isHubOpen } = useBlueprintHub();
 
   const [activeTab, setActiveTab] = React.useState(() => {
     return localStorage.getItem('sidebar-tab') || 'folders';
@@ -1077,8 +1077,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <Button
             variant="outline"
             size="sm"
-            className="flex-1 gap-2"
-            onClick={openHub}
+            onClick={toggleHub}
+            className={cn("flex-1 gap-2", isHubOpen && "bg-accent text-accent-foreground")}
           >
             <Boxes className="h-4 w-4" />
             Blueprint Hub

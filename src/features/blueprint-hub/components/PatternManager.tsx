@@ -27,7 +27,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, MoreVertical, Pencil, Trash2, RotateCcw, Code2 } from 'lucide-react';
+import { Plus, MoreVertical, Pencil, Trash2, RotateCcw, Code2, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { patternRegistry, type PatternDefinition, type RefKind } from '@/lib/refs';
 import { PatternEditor } from './PatternEditor';
@@ -85,7 +85,7 @@ function PatternCard({ pattern, onToggle, onEdit, onDelete, onTest }: PatternCar
                                         <MoreVertical className="h-4 w-4" />
                                     </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
+                                <DropdownMenuContent align="end" className="z-[70]">
                                     <DropdownMenuItem onClick={() => onTest(pattern)}>
                                         <Code2 className="h-4 w-4 mr-2" />
                                         Test Pattern
@@ -122,7 +122,7 @@ function PatternCard({ pattern, onToggle, onEdit, onDelete, onTest }: PatternCar
             </Card>
 
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                <AlertDialogContent>
+                <AlertDialogContent className="z-[70]">
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete Pattern</AlertDialogTitle>
                         <AlertDialogDescription>
@@ -147,10 +147,11 @@ function PatternCard({ pattern, onToggle, onEdit, onDelete, onTest }: PatternCar
     );
 }
 
-export function PatternManager() {
+export function PatternManager({ onBack }: { onBack?: () => void }) {
     const [patterns, setPatterns] = useState<PatternDefinition[]>(() =>
         patternRegistry.getAllPatterns()
     );
+    const [view, setView] = useState<'list' | 'editor'>('list');
     const [editingPattern, setEditingPattern] = useState<PatternDefinition | null>(null);
     const [testingPattern, setTestingPattern] = useState<PatternDefinition | null>(null);
     const [isCreating, setIsCreating] = useState(false);
@@ -186,6 +187,7 @@ export function PatternManager() {
         refreshPatterns();
         setEditingPattern(null);
         setIsCreating(false);
+        setView('list');
     }, [refreshPatterns]);
 
     const handleDelete = useCallback((id: string) => {
@@ -217,20 +219,51 @@ export function PatternManager() {
         };
         setEditingPattern(newPattern);
         setIsCreating(true);
+        setView('editor');
+    }, []);
+
+    const handleEdit = useCallback((pattern: PatternDefinition) => {
+        setEditingPattern(pattern);
+        setIsCreating(false);
+        setView('editor');
     }, []);
 
     const customPatternCount = patterns.filter(p => !p.isBuiltIn).length;
     const enabledCount = patterns.filter(p => p.enabled).length;
 
+    // EDITOR VIEW
+    if (view === 'editor' && editingPattern) {
+        return (
+            <PatternEditor
+                pattern={editingPattern}
+                isNew={isCreating}
+                onSave={handleSave}
+                onCancel={() => {
+                    setEditingPattern(null);
+                    setIsCreating(false);
+                    setView('list');
+                }}
+            />
+        );
+    }
+
+    // LIST VIEW
     return (
         <div className="h-full flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b">
-                <div>
-                    <h2 className="text-lg font-semibold">Pattern Manager</h2>
-                    <p className="text-sm text-muted-foreground">
-                        {patterns.length} patterns ({enabledCount} enabled, {customPatternCount} custom)
-                    </p>
+                <div className="flex items-center gap-3">
+                    {onBack && (
+                        <Button variant="ghost" size="icon" onClick={onBack} className="h-8 w-8">
+                            <ArrowLeft className="h-4 w-4" />
+                        </Button>
+                    )}
+                    <div>
+                        <h2 className="text-lg font-semibold">Pattern Manager</h2>
+                        <p className="text-sm text-muted-foreground">
+                            {patterns.length} patterns ({enabledCount} enabled, {customPatternCount} custom)
+                        </p>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={handleReset}>
@@ -258,7 +291,7 @@ export function PatternManager() {
                                         key={pattern.id}
                                         pattern={pattern}
                                         onToggle={handleToggle}
-                                        onEdit={setEditingPattern}
+                                        onEdit={handleEdit}
                                         onDelete={handleDelete}
                                         onTest={setTestingPattern}
                                     />
@@ -269,19 +302,6 @@ export function PatternManager() {
                     ))}
                 </div>
             </ScrollArea>
-
-            {/* Pattern Editor Dialog */}
-            {editingPattern && (
-                <PatternEditor
-                    pattern={editingPattern}
-                    isNew={isCreating}
-                    onSave={handleSave}
-                    onCancel={() => {
-                        setEditingPattern(null);
-                        setIsCreating(false);
-                    }}
-                />
-            )}
 
             {/* Pattern Tester Dialog */}
             {testingPattern && (

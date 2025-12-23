@@ -107,7 +107,7 @@ export function PatternTester({ pattern, onClose }: PatternTesterProps) {
 
     return (
         <Dialog open onOpenChange={() => onClose()}>
-            <DialogContent className="max-w-4xl max-h-[90vh]">
+            <DialogContent className="max-w-4xl max-h-[90vh] z-[70]">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Code2 className="h-5 w-5" />

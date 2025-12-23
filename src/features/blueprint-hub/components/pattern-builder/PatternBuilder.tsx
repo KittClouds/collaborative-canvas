@@ -30,15 +30,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from '@/components/ui/popover';
-import { Plus } from 'lucide-react';
+import { Plus as ButtonIcon } from 'lucide-react';
 import type { RefKind } from '@/lib/refs';
 import { TokenChipInline } from './TokenChipInline';
-import { AddTokenMenu } from './AddTokenMenu';
 import { LiveMatchHighlighter } from './LiveMatchHighlighter';
 import type { PatternToken, TokenPatternDefinition } from './types';
 import { compileTokensToRegex, renderPatternExample } from './types';
@@ -46,14 +40,14 @@ import { compileTokensToRegex, renderPatternExample } from './types';
 interface PatternBuilderProps {
     pattern: TokenPatternDefinition;
     onChange: (pattern: TokenPatternDefinition) => void;
+    onRequestAddToken: () => void;
 }
 
 const REF_KINDS: RefKind[] = ['entity', 'wikilink', 'backlink', 'tag', 'mention', 'triple', 'temporal', 'custom'];
 
-export function PatternBuilder({ pattern, onChange }: PatternBuilderProps) {
+export function PatternBuilder({ pattern, onChange, onRequestAddToken }: PatternBuilderProps) {
     const [tokens, setTokens] = useState<PatternToken[]>(pattern.tokens || []);
     const [testInput, setTestInput] = useState('');
-    const [showAddMenu, setShowAddMenu] = useState(false);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -68,15 +62,7 @@ export function PatternBuilder({ pattern, onChange }: PatternBuilderProps) {
         onChange({ ...pattern, tokens, compiledPattern: compiled });
     }, [tokens]);
 
-    const addToken = (token: PatternToken) => {
-        setTokens([...tokens, token]);
-        setShowAddMenu(false);
-    };
 
-    const addMultipleTokens = (newTokens: PatternToken[]) => {
-        setTokens([...tokens, ...newTokens]);
-        setShowAddMenu(false);
-    };
 
     const removeToken = (id: string) => {
         setTokens(tokens.filter((t) => t.id !== id));
@@ -193,22 +179,15 @@ export function PatternBuilder({ pattern, onChange }: PatternBuilderProps) {
                 </div>
 
                 {/* ADD TOKEN BUTTON */}
-                <div className="mt-3 relative">
-                    <Popover open={showAddMenu} onOpenChange={setShowAddMenu}>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full">
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add Token
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[700px] p-0" align="start">
-                            <AddTokenMenu
-                                onAdd={addToken}
-                                onAddMultiple={addMultipleTokens}
-                                onClose={() => setShowAddMenu(false)}
-                            />
-                        </PopoverContent>
-                    </Popover>
+                <div className="mt-3">
+                    <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={onRequestAddToken}
+                    >
+                        <ButtonIcon className="w-4 h-4 mr-2" />
+                        Add Token
+                    </Button>
                 </div>
             </div>
 

@@ -7,14 +7,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,10 +23,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AlertCircle, CheckCircle2, Plus, X, Blocks, Code } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Plus, X, Blocks, Code, ArrowLeft } from 'lucide-react';
 import { validatePatternSyntax, type PatternDefinition, type RefKind, type CaptureMapping } from '@/lib/refs';
 import { PatternBuilder } from './pattern-builder';
-import type { TokenPatternDefinition } from './pattern-builder';
+import { AddTokenMenu } from './pattern-builder/AddTokenMenu';
+import type { TokenPatternDefinition, PatternToken } from './pattern-builder';
 
 interface PatternEditorProps {
     pattern: PatternDefinition;
@@ -46,6 +40,7 @@ const REF_KINDS: RefKind[] = ['entity', 'wikilink', 'backlink', 'tag', 'mention'
 
 export function PatternEditor({ pattern, isNew, onSave, onCancel }: PatternEditorProps) {
     const [mode, setMode] = useState<'builder' | 'advanced'>('builder');
+    const [subView, setSubView] = useState<'form' | 'add-token'>('form');
     const [draft, setDraft] = useState<PatternDefinition>({ ...pattern });
     const [captureKeys, setCaptureKeys] = useState<string[]>(Object.keys(pattern.captures));
     const [newCaptureKey, setNewCaptureKey] = useState('');
@@ -146,335 +141,376 @@ export function PatternEditor({ pattern, isNew, onSave, onCancel }: PatternEdito
         });
     };
 
+    const handleAddToken = (token: PatternToken) => {
+        setTokenPattern(prev => ({
+            ...prev,
+            tokens: [...(prev.tokens || []), token]
+        }));
+        setSubView('form');
+    };
+
+    const handleAddMultipleTokens = (newTokens: PatternToken[]) => {
+        setTokenPattern(prev => ({
+            ...prev,
+            tokens: [...(prev.tokens || []), ...newTokens]
+        }));
+        setSubView('form');
+    };
+
     const canSave = mode === 'builder'
         ? (tokenPattern.compiledPattern && tokenPattern.name)
         : validation.valid;
 
-    return (
-        <Dialog open onOpenChange={() => onCancel()}>
-            <DialogContent className="max-w-3xl max-h-[90vh]">
-                <DialogHeader>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <DialogTitle>{isNew ? 'Create Pattern' : 'Edit Pattern'}</DialogTitle>
-                            <DialogDescription>
-                                {isNew
-                                    ? 'Define a new pattern for detecting references in your notes.'
-                                    : `Editing pattern: ${pattern.name}`}
-                            </DialogDescription>
-                        </div>
-
-                        {/* Mode Toggle */}
-                        <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
-                            <Button
-                                variant={mode === 'builder' ? 'secondary' : 'ghost'}
-                                size="sm"
-                                onClick={() => setMode('builder')}
-                                className="gap-1.5"
-                            >
-                                <Blocks className="h-4 w-4" />
-                                Builder
-                            </Button>
-                            <Button
-                                variant={mode === 'advanced' ? 'secondary' : 'ghost'}
-                                size="sm"
-                                onClick={() => setMode('advanced')}
-                                className="gap-1.5"
-                            >
-                                <Code className="h-4 w-4" />
-                                Advanced
-                            </Button>
-                        </div>
+    if (subView === 'add-token') {
+        return (
+            <div className="h-full flex flex-col">
+                <div className="flex items-center gap-3 p-4 border-b">
+                    <Button variant="ghost" size="icon" onClick={() => setSubView('form')} className="h-8 w-8">
+                        <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                    <div>
+                        <h2 className="text-lg font-semibold">Add Token</h2>
+                        <p className="text-sm text-muted-foreground">Select a token type to add to your pattern</p>
                     </div>
-                </DialogHeader>
+                </div>
+                <div className="flex-1 overflow-auto">
+                    <AddTokenMenu
+                        onAdd={handleAddToken}
+                        onAddMultiple={handleAddMultipleTokens}
+                        onClose={() => setSubView('form')}
+                    />
+                </div>
+            </div>
+        );
+    }
 
-                <ScrollArea className="max-h-[60vh] pr-4">
-                    {mode === 'builder' ? (
-                        <PatternBuilder
-                            pattern={tokenPattern}
-                            onChange={handleTokenPatternChange}
-                        />
-                    ) : (
-                        <Tabs defaultValue="basic" className="w-full">
-                            <TabsList className="mb-4">
-                                <TabsTrigger value="basic">Basic</TabsTrigger>
-                                <TabsTrigger value="captures">Captures</TabsTrigger>
-                                <TabsTrigger value="rendering">Rendering</TabsTrigger>
-                            </TabsList>
+    return (
+        <div className="h-full flex flex-col bg-background">
+            <div className="flex items-center justify-between p-4 border-b">
+                <div className="flex items-center gap-3">
+                    <Button variant="ghost" size="icon" onClick={onCancel} className="h-8 w-8">
+                        <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                    <div>
+                        <h2 className="text-lg font-semibold">{isNew ? 'Create Pattern' : 'Edit Pattern'}</h2>
+                        <p className="text-sm text-muted-foreground">
+                            {isNew
+                                ? 'Define a new pattern for detecting references.'
+                                : `Editing pattern: ${pattern.name}`}
+                        </p>
+                    </div>
+                </div>
 
-                            <TabsContent value="basic" className="space-y-4">
-                                {/* Name */}
+                {/* Mode Toggle */}
+                <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
+                    <Button
+                        variant={mode === 'builder' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        onClick={() => setMode('builder')}
+                        className="gap-1.5"
+                    >
+                        <Blocks className="h-4 w-4" />
+                        Builder
+                    </Button>
+                    <Button
+                        variant={mode === 'advanced' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        onClick={() => setMode('advanced')}
+                        className="gap-1.5"
+                    >
+                        <Code className="h-4 w-4" />
+                        Advanced
+                    </Button>
+                </div>
+            </div>
+
+            <ScrollArea className="flex-1 p-4">
+                {mode === 'builder' ? (
+                    <PatternBuilder
+                        pattern={tokenPattern}
+                        onChange={handleTokenPatternChange}
+                        onRequestAddToken={() => setSubView('add-token')}
+                    />
+                ) : (
+                    <Tabs defaultValue="basic" className="w-full">
+                        <TabsList className="mb-4">
+                            <TabsTrigger value="basic">Basic</TabsTrigger>
+                            <TabsTrigger value="captures">Captures</TabsTrigger>
+                            <TabsTrigger value="rendering">Rendering</TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="basic" className="space-y-4">
+                            {/* Name */}
+                            <div className="space-y-2">
+                                <Label htmlFor="name">Name</Label>
+                                <Input
+                                    id="name"
+                                    value={draft.name}
+                                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                                    placeholder="My Pattern"
+                                />
+                            </div>
+
+                            {/* Description */}
+                            <div className="space-y-2">
+                                <Label htmlFor="description">Description</Label>
+                                <Input
+                                    id="description"
+                                    value={draft.description || ''}
+                                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                                    placeholder="What does this pattern match?"
+                                />
+                            </div>
+
+                            {/* Kind & Priority */}
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="name">Name</Label>
+                                    <Label>Kind</Label>
+                                    <Select
+                                        value={draft.kind}
+                                        onValueChange={(value: RefKind) => setDraft({ ...draft, kind: value })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {REF_KINDS.map(kind => (
+                                                <SelectItem key={kind} value={kind} className="capitalize">
+                                                    {kind}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="priority">Priority (higher = first)</Label>
                                     <Input
-                                        id="name"
-                                        value={draft.name}
-                                        onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                                        placeholder="My Pattern"
+                                        id="priority"
+                                        type="number"
+                                        value={draft.priority}
+                                        onChange={(e) => setDraft({ ...draft, priority: parseInt(e.target.value) || 0 })}
+                                        min={0}
+                                        max={1000}
                                     />
                                 </div>
+                            </div>
 
-                                {/* Description */}
-                                <div className="space-y-2">
-                                    <Label htmlFor="description">Description</Label>
-                                    <Input
-                                        id="description"
-                                        value={draft.description || ''}
-                                        onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                                        placeholder="What does this pattern match?"
-                                    />
+                            {/* Regex Pattern */}
+                            <div className="space-y-2">
+                                <Label htmlFor="pattern">Regex Pattern</Label>
+                                <Textarea
+                                    id="pattern"
+                                    value={draft.pattern}
+                                    onChange={(e) => setDraft({ ...draft, pattern: e.target.value })}
+                                    className="font-mono text-sm"
+                                    rows={3}
+                                    placeholder="\\[([A-Z_]+)\\|([^\\]]+)\\]"
+                                />
+                                {validation.valid ? (
+                                    <div className="flex items-center gap-2 text-sm text-green-600">
+                                        <CheckCircle2 className="h-4 w-4" />
+                                        Valid pattern ({captureGroupCount} capture groups)
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-sm text-destructive">
+                                        <AlertCircle className="h-4 w-4" />
+                                        {validation.error}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Flags */}
+                            <div className="space-y-2">
+                                <Label htmlFor="flags">Flags</Label>
+                                <Input
+                                    id="flags"
+                                    value={draft.flags}
+                                    onChange={(e) => setDraft({ ...draft, flags: e.target.value })}
+                                    placeholder="g, gi, gm"
+                                    className="w-24"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    g = global, i = case-insensitive, m = multiline
+                                </p>
+                            </div>
+
+                            {/* Enabled */}
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <Label>Enabled</Label>
+                                    <p className="text-xs text-muted-foreground">Pattern will be used for detection</p>
                                 </div>
+                                <Switch
+                                    checked={draft.enabled}
+                                    onCheckedChange={(enabled) => setDraft({ ...draft, enabled })}
+                                />
+                            </div>
+                        </TabsContent>
 
-                                {/* Kind & Priority */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Kind</Label>
-                                        <Select
-                                            value={draft.kind}
-                                            onValueChange={(value: RefKind) => setDraft({ ...draft, kind: value })}
+                        <TabsContent value="captures" className="space-y-4">
+                            <Alert>
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>
+                                    Map capture groups from your regex to named fields. Group numbers are 1-indexed.
+                                </AlertDescription>
+                            </Alert>
+
+                            {/* Existing captures */}
+                            <div className="space-y-3">
+                                {captureKeys.map(key => (
+                                    <div key={key} className="flex items-center gap-3 p-3 border rounded-lg">
+                                        <div className="flex-1">
+                                            <Label className="text-sm font-medium">{key}</Label>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Label className="text-xs text-muted-foreground">Group:</Label>
+                                            <Input
+                                                type="number"
+                                                value={draft.captures[key]?.group || 1}
+                                                onChange={(e) => updateCapture(key, { group: parseInt(e.target.value) || 1 })}
+                                                className="w-16 h-8"
+                                                min={1}
+                                                max={10}
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Switch
+                                                checked={draft.captures[key]?.required || false}
+                                                onCheckedChange={(required) => updateCapture(key, { required })}
+                                            />
+                                            <Label className="text-xs">Required</Label>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => removeCapture(key)}
                                         >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {REF_KINDS.map(kind => (
-                                                    <SelectItem key={kind} value={kind} className="capitalize">
-                                                        {kind}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                            <X className="h-4 w-4" />
+                                        </Button>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="priority">Priority (higher = first)</Label>
-                                        <Input
-                                            id="priority"
-                                            type="number"
-                                            value={draft.priority}
-                                            onChange={(e) => setDraft({ ...draft, priority: parseInt(e.target.value) || 0 })}
-                                            min={0}
-                                            max={1000}
-                                        />
-                                    </div>
-                                </div>
+                                ))}
+                            </div>
 
-                                {/* Regex Pattern */}
-                                <div className="space-y-2">
-                                    <Label htmlFor="pattern">Regex Pattern</Label>
-                                    <Textarea
-                                        id="pattern"
-                                        value={draft.pattern}
-                                        onChange={(e) => setDraft({ ...draft, pattern: e.target.value })}
-                                        className="font-mono text-sm"
-                                        rows={3}
-                                        placeholder="\\[([A-Z_]+)\\|([^\\]]+)\\]"
-                                    />
-                                    {validation.valid ? (
-                                        <div className="flex items-center gap-2 text-sm text-green-600">
-                                            <CheckCircle2 className="h-4 w-4" />
-                                            Valid pattern ({captureGroupCount} capture groups)
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center gap-2 text-sm text-destructive">
-                                            <AlertCircle className="h-4 w-4" />
-                                            {validation.error}
-                                        </div>
-                                    )}
-                                </div>
+                            {/* Add new capture */}
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    value={newCaptureKey}
+                                    onChange={(e) => setNewCaptureKey(e.target.value)}
+                                    placeholder="Capture name (e.g., 'label')"
+                                    className="flex-1"
+                                />
+                                <Button variant="outline" size="sm" onClick={addCapture} disabled={!newCaptureKey}>
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Add
+                                </Button>
+                            </div>
+                        </TabsContent>
 
-                                {/* Flags */}
-                                <div className="space-y-2">
-                                    <Label htmlFor="flags">Flags</Label>
-                                    <Input
-                                        id="flags"
-                                        value={draft.flags}
-                                        onChange={(e) => setDraft({ ...draft, flags: e.target.value })}
-                                        placeholder="g, gi, gm"
-                                        className="w-24"
-                                    />
+                        <TabsContent value="rendering" className="space-y-4">
+                            {/* Widget Mode */}
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <Label>Widget Mode</Label>
                                     <p className="text-xs text-muted-foreground">
-                                        g = global, i = case-insensitive, m = multiline
+                                        Render as a compact widget instead of inline highlight
                                     </p>
                                 </div>
+                                <Switch
+                                    checked={draft.rendering.widgetMode || false}
+                                    onCheckedChange={(widgetMode) =>
+                                        setDraft({ ...draft, rendering: { ...draft.rendering, widgetMode } })
+                                    }
+                                />
+                            </div>
 
-                                {/* Enabled */}
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <Label>Enabled</Label>
-                                        <p className="text-xs text-muted-foreground">Pattern will be used for detection</p>
-                                    </div>
-                                    <Switch
-                                        checked={draft.enabled}
-                                        onCheckedChange={(enabled) => setDraft({ ...draft, enabled })}
-                                    />
-                                </div>
-                            </TabsContent>
-
-                            <TabsContent value="captures" className="space-y-4">
-                                <Alert>
-                                    <AlertCircle className="h-4 w-4" />
-                                    <AlertDescription>
-                                        Map capture groups from your regex to named fields. Group numbers are 1-indexed.
-                                    </AlertDescription>
-                                </Alert>
-
-                                {/* Existing captures */}
-                                <div className="space-y-3">
-                                    {captureKeys.map(key => (
-                                        <div key={key} className="flex items-center gap-3 p-3 border rounded-lg">
-                                            <div className="flex-1">
-                                                <Label className="text-sm font-medium">{key}</Label>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <Label className="text-xs text-muted-foreground">Group:</Label>
-                                                <Input
-                                                    type="number"
-                                                    value={draft.captures[key]?.group || 1}
-                                                    onChange={(e) => updateCapture(key, { group: parseInt(e.target.value) || 1 })}
-                                                    className="w-16 h-8"
-                                                    min={1}
-                                                    max={10}
-                                                />
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <Switch
-                                                    checked={draft.captures[key]?.required || false}
-                                                    onCheckedChange={(required) => updateCapture(key, { required })}
-                                                />
-                                                <Label className="text-xs">Required</Label>
-                                            </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={() => removeCapture(key)}
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Add new capture */}
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        value={newCaptureKey}
-                                        onChange={(e) => setNewCaptureKey(e.target.value)}
-                                        placeholder="Capture name (e.g., 'label')"
-                                        className="flex-1"
-                                    />
-                                    <Button variant="outline" size="sm" onClick={addCapture} disabled={!newCaptureKey}>
-                                        <Plus className="h-4 w-4 mr-2" />
-                                        Add
-                                    </Button>
-                                </div>
-                            </TabsContent>
-
-                            <TabsContent value="rendering" className="space-y-4">
-                                {/* Widget Mode */}
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <Label>Widget Mode</Label>
-                                        <p className="text-xs text-muted-foreground">
-                                            Render as a compact widget instead of inline highlight
-                                        </p>
-                                    </div>
-                                    <Switch
-                                        checked={draft.rendering.widgetMode || false}
-                                        onCheckedChange={(widgetMode) =>
-                                            setDraft({ ...draft, rendering: { ...draft.rendering, widgetMode } })
-                                        }
-                                    />
-                                </div>
-
-                                {/* Color */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="color">Text Color</Label>
-                                        <Input
-                                            id="color"
-                                            value={draft.rendering.color || ''}
-                                            onChange={(e) =>
-                                                setDraft({ ...draft, rendering: { ...draft.rendering, color: e.target.value } })
-                                            }
-                                            placeholder="#3b82f6 or hsl(var(--primary))"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="bgColor">Background Color</Label>
-                                        <Input
-                                            id="bgColor"
-                                            value={draft.rendering.backgroundColor || ''}
-                                            onChange={(e) =>
-                                                setDraft({ ...draft, rendering: { ...draft.rendering, backgroundColor: e.target.value } })
-                                            }
-                                            placeholder="#3b82f620"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Template */}
+                            {/* Color */}
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="template">Display Template</Label>
+                                    <Label htmlFor="color">Text Color</Label>
                                     <Input
-                                        id="template"
-                                        value={draft.rendering.template || ''}
+                                        id="color"
+                                        value={draft.rendering.color || ''}
                                         onChange={(e) =>
-                                            setDraft({ ...draft, rendering: { ...draft.rendering, template: e.target.value } })
+                                            setDraft({ ...draft, rendering: { ...draft.rendering, color: e.target.value } })
                                         }
-                                        placeholder="{{label}} or {{displayText || target}}"
+                                        placeholder="#3b82f6 or hsl(var(--primary))"
                                     />
-                                    <p className="text-xs text-muted-foreground">
-                                        Use {'{{captureName}}'} to insert captured values
-                                    </p>
                                 </div>
-
-                                {/* CSS Class */}
                                 <div className="space-y-2">
-                                    <Label htmlFor="className">CSS Class</Label>
+                                    <Label htmlFor="bgColor">Background Color</Label>
                                     <Input
-                                        id="className"
-                                        value={draft.rendering.className || ''}
+                                        id="bgColor"
+                                        value={draft.rendering.backgroundColor || ''}
                                         onChange={(e) =>
-                                            setDraft({ ...draft, rendering: { ...draft.rendering, className: e.target.value } })
+                                            setDraft({ ...draft, rendering: { ...draft.rendering, backgroundColor: e.target.value } })
                                         }
-                                        placeholder="custom-highlight"
+                                        placeholder="#3b82f620"
                                     />
                                 </div>
+                            </div>
 
-                                {/* Preview */}
-                                <div className="space-y-2">
-                                    <Label>Preview</Label>
-                                    <div className="p-4 border rounded-lg bg-muted/30">
-                                        <span
-                                            style={{
-                                                backgroundColor: draft.rendering.backgroundColor || '#3b82f620',
-                                                color: draft.rendering.color || '#3b82f6',
-                                                padding: '2px 6px',
-                                                borderRadius: '4px',
-                                                fontWeight: 500,
-                                                fontSize: '0.875em',
-                                            }}
-                                            className={draft.rendering.className}
-                                        >
-                                            Example Match
-                                        </span>
-                                    </div>
+                            {/* Template */}
+                            <div className="space-y-2">
+                                <Label htmlFor="template">Display Template</Label>
+                                <Input
+                                    id="template"
+                                    value={draft.rendering.template || ''}
+                                    onChange={(e) =>
+                                        setDraft({ ...draft, rendering: { ...draft.rendering, template: e.target.value } })
+                                    }
+                                    placeholder="{{label}} or {{displayText || target}}"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Use {'{{captureName}}'} to insert captured values
+                                </p>
+                            </div>
+
+                            {/* CSS Class */}
+                            <div className="space-y-2">
+                                <Label htmlFor="className">CSS Class</Label>
+                                <Input
+                                    id="className"
+                                    value={draft.rendering.className || ''}
+                                    onChange={(e) =>
+                                        setDraft({ ...draft, rendering: { ...draft.rendering, className: e.target.value } })
+                                    }
+                                    placeholder="custom-highlight"
+                                />
+                            </div>
+
+                            {/* Preview */}
+                            <div className="space-y-2">
+                                <Label>Preview</Label>
+                                <div className="p-4 border rounded-lg bg-muted/30">
+                                    <span
+                                        style={{
+                                            backgroundColor: draft.rendering.backgroundColor || '#3b82f620',
+                                            color: draft.rendering.color || '#3b82f6',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            fontWeight: 500,
+                                            fontSize: '0.875em',
+                                        }}
+                                        className={draft.rendering.className}
+                                    >
+                                        Example Match
+                                    </span>
                                 </div>
-                            </TabsContent>
-                        </Tabs>
-                    )}
-                </ScrollArea>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
+                )}
+            </ScrollArea>
 
-                <DialogFooter className="gap-2">
-                    <Button variant="outline" onClick={onCancel}>
-                        Cancel
-                    </Button>
-                    <Button onClick={handleSave} disabled={!canSave}>
-                        {isNew ? 'Create Pattern' : 'Save Changes'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+            <div className="p-4 border-t bg-muted/20 flex items-center justify-end gap-2">
+                <Button variant="outline" onClick={onCancel}>
+                    Cancel
+                </Button>
+                <Button onClick={handleSave} disabled={!canSave}>
+                    {isNew ? 'Create Pattern' : 'Save Changes'}
+                </Button>
+            </div>
+        </div>
     );
 }

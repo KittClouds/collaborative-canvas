@@ -8,7 +8,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { initializeStorage, getBlueprintStore } from "@/lib/storage/index";
 import { BlueprintHubProvider } from "@/features/blueprint-hub/context/BlueprintHubContext";
-import { BlueprintHub } from "@/features/blueprint-hub/components/BlueprintHub";
+import { BlueprintHubPanel } from "@/features/blueprint-hub/components/BlueprintHubPanel";
 import { NERProvider } from "@/contexts/NERContext";
 import { initializeGraph } from "@/lib/graph";
 import { initializeSQLiteAndHydrate } from "@/lib/db";
@@ -77,7 +77,7 @@ const App = () => {
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
-            <BlueprintHub />
+            <BlueprintHubPanel />
           </TooltipProvider>
         </NERProvider>
       </BlueprintHubProvider>
