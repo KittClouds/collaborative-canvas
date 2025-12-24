@@ -320,6 +320,46 @@ export class RelationshipRegistry {
         return true;
     }
 
+    remove(id: string): boolean {
+        return this.delete(id);
+    }
+
+    findByEntities(sourceId: string, targetId: string, type?: string): UnifiedRelationship | undefined {
+        const sourceRels = this.getBySource(sourceId);
+        return sourceRels.find(rel => 
+            rel.targetEntityId === targetId &&
+            (type === undefined || rel.type === type)
+        );
+    }
+
+    removeProvenance(relationshipId: string, source: RelationshipSource, originId?: string): boolean {
+        const rel = this.relationships.get(relationshipId);
+        if (!rel) return false;
+
+        const beforeCount = rel.provenance.length;
+        rel.provenance = rel.provenance.filter(p => {
+            if (p.source !== source) return true;
+            if (originId !== undefined && p.originId !== originId) return true;
+            return false;
+        });
+
+        if (rel.provenance.length === beforeCount) return false;
+
+        if (rel.provenance.length === 0) {
+            return this.delete(relationshipId);
+        }
+
+        rel.confidence = this.aggregateConfidence(rel.provenance);
+        rel.confidenceBySource = this.computeConfidenceBySource(rel.provenance);
+        rel.updatedAt = new Date();
+
+        if (this.persistCallback) {
+            this.persistCallback(rel).catch(console.error);
+        }
+
+        return true;
+    }
+
     deleteByEntity(entityId: string): number {
         const rels = this.getByEntity(entityId);
         for (const rel of rels) {

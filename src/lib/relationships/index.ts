@@ -20,3 +20,7 @@ export {
     RelationshipRegistry,
     relationshipRegistry
 } from './relationship-registry';
+
+export * from './extractors';
+
+export * from './adapters';

@@ -15,3 +15,4 @@ export { ARC_FOLDER_SCHEMA } from './arc';
 export { ACT_FOLDER_SCHEMA } from './act';
 export { NPC_FOLDER_SCHEMA } from './npc';
 export { CONCEPT_FOLDER_SCHEMA } from './concept';
+export { TIMELINE_FOLDER_SCHEMA, TIMELINE_SUBTYPES, type TimelineSubtype } from './timeline';

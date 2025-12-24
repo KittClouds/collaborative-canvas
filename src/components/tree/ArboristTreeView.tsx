@@ -154,9 +154,17 @@ export function ArboristTreeView({
     const handleTypedSubfolderCreate = useCallback((kind: EntityKind, subtype?: string, label?: string) => {
         if (!contextNode || contextNode.type !== 'folder') return;
 
-        const name = subtype ? `[${kind}:${subtype}] ${label || 'New Subfolder'}` : `[${kind}] ${label || 'New Subfolder'}`;
+        const name = label 
+            ? (subtype ? `[${kind}:${subtype}|${label}]` : `[${kind}|${label}]`)
+            : (subtype ? `[${kind}:${subtype}]` : `[${kind}]`);
 
-        createFolder(name, contextNode.id);
+        createFolder(name, contextNode.id, {
+            entityKind: kind,
+            entitySubtype: subtype,
+            entityLabel: label,
+            isTypedRoot: !label && !subtype,
+            isSubtypeRoot: !label && !!subtype,
+        });
         setContextNode(null);
     }, [contextNode, createFolder]);
 

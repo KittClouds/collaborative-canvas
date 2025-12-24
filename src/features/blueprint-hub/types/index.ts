@@ -519,6 +519,45 @@ export interface RelationshipPattern {
   created_at: number;
 }
 
+// ==================== Temporal Relationship Types ====================
+
+export interface TemporalRelationshipTypeDef {
+  temporal_type_id: string;
+  profile_id: string;
+  type_name: string;
+  inverse_type?: string;
+  display_label: string;
+  description?: string;
+  bidirectional: boolean;
+  category: 'ordering' | 'containment' | 'causality' | 'custom';
+  enabled: boolean;
+  created_at: number;
+}
+
+export interface CreateTemporalRelationshipTypeInput {
+  profile_id: string;
+  type_name: string;
+  inverse_type?: string;
+  display_label: string;
+  description?: string;
+  bidirectional?: boolean;
+  category?: 'ordering' | 'containment' | 'causality' | 'custom';
+  enabled?: boolean;
+}
+
+export interface TemporalRelationshipTypeRow {
+  temporal_type_id: string;
+  profile_id: string;
+  type_name: string;
+  inverse_type: string | null;
+  display_label: string;
+  description: string | null;
+  bidirectional: boolean;
+  category: string;
+  enabled: boolean;
+  created_at: number;
+}
+
 export interface CreateRelationshipPatternInput {
   profile_id: string;
   verb_pattern: string;
@@ -539,6 +578,45 @@ export interface RelationshipPatternRow {
   confidence: number;
   category: string;
   bidirectional: boolean;
+  enabled: boolean;
+  created_at: number;
+}
+
+// ==================== Temporal Relationship Types ====================
+
+export interface TemporalRelationshipTypeDef {
+  temporal_type_id: string;
+  profile_id: string;
+  type_name: string;
+  inverse_type?: string;
+  display_label: string;
+  description?: string;
+  bidirectional: boolean;
+  category: 'ordering' | 'containment' | 'causality' | 'custom';
+  enabled: boolean;
+  created_at: number;
+}
+
+export interface CreateTemporalRelationshipTypeInput {
+  profile_id: string;
+  type_name: string;
+  inverse_type?: string;
+  display_label: string;
+  description?: string;
+  bidirectional?: boolean;
+  category?: 'ordering' | 'containment' | 'causality' | 'custom';
+  enabled?: boolean;
+}
+
+export interface TemporalRelationshipTypeRow {
+  temporal_type_id: string;
+  profile_id: string;
+  type_name: string;
+  inverse_type: string | null;
+  display_label: string;
+  description: string | null;
+  bidirectional: boolean;
+  category: string;
   enabled: boolean;
   created_at: number;
 }

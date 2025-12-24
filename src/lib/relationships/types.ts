@@ -11,7 +11,9 @@ export enum RelationshipSource {
     NER_EXTRACTION = 'NER_EXTRACTION',
     LLM_EXTRACTION = 'LLM_EXTRACTION',
     CO_OCCURRENCE = 'CO_OCCURRENCE',
-    IMPORT = 'IMPORT'
+    IMPORT = 'IMPORT',
+    TIMELINE = 'TIMELINE',
+    NETWORK = 'NETWORK'
 }
 
 export interface RelationshipProvenance {
@@ -88,5 +90,7 @@ export const SOURCE_WEIGHTS: Record<RelationshipSource, number> = {
     [RelationshipSource.LLM_EXTRACTION]: 0.7,
     [RelationshipSource.NER_EXTRACTION]: 0.6,
     [RelationshipSource.CO_OCCURRENCE]: 0.4,
-    [RelationshipSource.IMPORT]: 0.8
+    [RelationshipSource.IMPORT]: 0.8,
+    [RelationshipSource.TIMELINE]: 0.9,
+    [RelationshipSource.NETWORK]: 1.0
 };

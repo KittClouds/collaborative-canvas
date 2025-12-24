@@ -2,10 +2,13 @@
  * Narrative Folder Schema
  * 
  * Defines the semantic structure for NARRATIVE-type folders:
- * - Story structure (Acts, Chapters, Scenes)
+ * - Story structure (Acts, Chapters, Scenes, Beats)
  * - Character arcs
- * - Timelines
+ * - Timelines with temporal ordering
  * - World-building elements
+ * 
+ * All temporal children (Acts, Chapters, Scenes, Events, Beats) 
+ * auto-create PRECEDES/FOLLOWS relationships based on sibling order.
  */
 
 import type { FolderSchema } from '../schemas';
@@ -13,15 +16,15 @@ import type { FolderSchema } from '../schemas';
 export const NARRATIVE_FOLDER_SCHEMA: FolderSchema = {
     entityKind: 'NARRATIVE',
     name: 'Narrative',
-    description: 'A complete story, series, or narrative project',
+    description: 'A complete story, series, or narrative project with temporal structure',
 
     allowedSubfolders: [
-        // Acts - major story divisions
+        // Acts - major story divisions (temporally ordered)
         {
             entityKind: 'ACT',
             label: 'Acts',
             icon: 'Drama',
-            description: 'Major story divisions',
+            description: 'Major story divisions (temporally ordered)',
             relationship: {
                 relationshipType: 'CONTAINS',
                 sourceType: 'PARENT',
@@ -32,12 +35,12 @@ export const NARRATIVE_FOLDER_SCHEMA: FolderSchema = {
             },
         },
 
-        // Chapters
+        // Chapters (temporally ordered)
         {
             entityKind: 'CHAPTER',
             label: 'Chapters',
             icon: 'BookOpen',
-            description: 'Chapter divisions',
+            description: 'Chapter divisions (temporally ordered)',
             relationship: {
                 relationshipType: 'CONTAINS',
                 sourceType: 'PARENT',
@@ -48,12 +51,60 @@ export const NARRATIVE_FOLDER_SCHEMA: FolderSchema = {
             },
         },
 
-        // Story arcs
+        // Scenes (temporally ordered)
+        {
+            entityKind: 'SCENE',
+            label: 'Scenes',
+            icon: 'Film',
+            description: 'Individual scenes (temporally ordered)',
+            relationship: {
+                relationshipType: 'CONTAINS',
+                sourceType: 'PARENT',
+                targetType: 'CHILD',
+                inverseType: 'PART_OF',
+                category: 'temporal',
+                defaultConfidence: 1.0,
+            },
+        },
+
+        // Events (temporally ordered)
+        {
+            entityKind: 'EVENT',
+            label: 'Events',
+            icon: 'Calendar',
+            description: 'Story events (temporally ordered)',
+            relationship: {
+                relationshipType: 'CONTAINS',
+                sourceType: 'PARENT',
+                targetType: 'CHILD',
+                inverseType: 'PART_OF',
+                category: 'temporal',
+                defaultConfidence: 1.0,
+            },
+        },
+
+        // Beats (temporally ordered)
+        {
+            entityKind: 'BEAT',
+            label: 'Beats',
+            icon: 'Zap',
+            description: 'Story beats (temporally ordered)',
+            relationship: {
+                relationshipType: 'CONTAINS',
+                sourceType: 'PARENT',
+                targetType: 'CHILD',
+                inverseType: 'PART_OF',
+                category: 'temporal',
+                defaultConfidence: 1.0,
+            },
+        },
+
+        // Story arcs (temporally ordered)
         {
             entityKind: 'ARC',
             label: 'Story Arcs',
             icon: 'Waves',
-            description: 'Major storylines and arcs',
+            description: 'Major storylines and arcs (temporally ordered)',
             relationship: {
                 relationshipType: 'CONTAINS',
                 sourceType: 'PARENT',
@@ -96,7 +147,7 @@ export const NARRATIVE_FOLDER_SCHEMA: FolderSchema = {
             },
         },
 
-        // Timelines
+        // Timelines (sub-timelines within the narrative)
         {
             entityKind: 'TIMELINE',
             label: 'Timelines',
@@ -144,8 +195,32 @@ export const NARRATIVE_FOLDER_SCHEMA: FolderSchema = {
         },
         {
             entityKind: 'SCENE',
-            label: 'Scene',
+            label: 'New Scene',
             icon: 'Film',
+            relationship: {
+                relationshipType: 'CONTAINS',
+                sourceType: 'PARENT',
+                targetType: 'CHILD',
+                category: 'temporal',
+                defaultConfidence: 1.0,
+            },
+        },
+        {
+            entityKind: 'EVENT',
+            label: 'New Event',
+            icon: 'Calendar',
+            relationship: {
+                relationshipType: 'CONTAINS',
+                sourceType: 'PARENT',
+                targetType: 'CHILD',
+                category: 'temporal',
+                defaultConfidence: 1.0,
+            },
+        },
+        {
+            entityKind: 'BEAT',
+            label: 'New Beat',
+            icon: 'Zap',
             relationship: {
                 relationshipType: 'CONTAINS',
                 sourceType: 'PARENT',

@@ -6,6 +6,7 @@
  * - NER mode: Entity extraction + verb pattern matching + co-occurrence
  * - LLM mode: Full structured extraction with relationships
  * - Hybrid mode: NER first, then LLM for relationship enrichment
+ * - Temporal extraction: PRECEDES/FOLLOWS/CONCURRENT relationships from timeline data
  */
 
 import { runExtraction } from '@/lib/extraction/ExtractionService';
@@ -26,6 +27,10 @@ import {
     type CoOccurrence,
     type CoOccurrenceOptions,
 } from './cooccurrence-detector';
+import {
+    getTimelineExtractor,
+    type TemporalRelationship,
+} from './timeline-extractor';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 
 export type ExtractionMode = 'ner' | 'llm' | 'hybrid';
@@ -43,6 +48,7 @@ export interface ContentExtractionResult {
     entities: ExtractedEntity[];
     relationships: ExtractedRelationship[];
     coOccurrences: CoOccurrence[];
+    temporalRelationships: TemporalRelationship[];
     metadata: {
         noteId: string;
         mode: ExtractionMode;
@@ -50,6 +56,7 @@ export interface ContentExtractionResult {
         entityCount: number;
         relationshipCount: number;
         coOccurrenceCount: number;
+        temporalRelationshipCount: number;
     };
 }
 
@@ -57,6 +64,7 @@ export interface ExtractionOptions {
     confidenceThreshold?: number;
     coOccurrenceOptions?: CoOccurrenceOptions;
     includeCoOccurrences?: boolean;
+    includeTemporal?: boolean;
     customPatterns?: VerbPattern[];
 }
 
@@ -83,11 +91,16 @@ export class ContentRelationshipExtractor {
         options: ExtractionOptions = {}
     ): Promise<ContentExtractionResult> {
         const startTime = performance.now();
-        const { confidenceThreshold = 0.4, includeCoOccurrences = true } = options;
+        const { 
+            confidenceThreshold = 0.4, 
+            includeCoOccurrences = true,
+            includeTemporal = true 
+        } = options;
 
         let entities: ExtractedEntity[] = [];
         let relationships: ExtractedRelationship[] = [];
         let coOccurrences: CoOccurrence[] = [];
+        let temporalRelationships: TemporalRelationship[] = [];
 
         try {
             switch (mode) {
@@ -117,6 +130,27 @@ export class ContentRelationshipExtractor {
                     ));
                     break;
             }
+
+            if (includeTemporal && entities.length > 0) {
+                const entityMentions = entities
+                    .filter(e => e.start !== undefined && e.end !== undefined)
+                    .map(e => ({
+                        id: entityRegistry.findEntity(e.label)?.id || e.label,
+                        name: e.label,
+                        start: e.start!,
+                        end: e.end!,
+                    }));
+
+                if (entityMentions.length > 0) {
+                    const timelineExtractor = getTimelineExtractor();
+                    const temporalResult = timelineExtractor.extractFromContent(
+                        noteId,
+                        content,
+                        entityMentions
+                    );
+                    temporalRelationships = temporalResult.relationships;
+                }
+            }
         } catch (error) {
             console.error(`[ContentExtractor] Extraction failed (mode: ${mode}):`, error);
         }
@@ -127,6 +161,7 @@ export class ContentRelationshipExtractor {
             entities,
             relationships,
             coOccurrences,
+            temporalRelationships,
             metadata: {
                 noteId,
                 mode,
@@ -134,6 +169,7 @@ export class ContentRelationshipExtractor {
                 entityCount: entities.length,
                 relationshipCount: relationships.length,
                 coOccurrenceCount: coOccurrences.length,
+                temporalRelationshipCount: temporalRelationships.length,
             },
         };
     }
@@ -290,11 +326,12 @@ export class ContentRelationshipExtractor {
 
     async persistToRegistry(
         result: ContentExtractionResult,
-        options: { persistCoOccurrences?: boolean } = {}
-    ): Promise<{ relationshipsPersisted: number; coOccurrencesPersisted: number }> {
-        const { persistCoOccurrences = true } = options;
+        options: { persistCoOccurrences?: boolean; persistTemporal?: boolean } = {}
+    ): Promise<{ relationshipsPersisted: number; coOccurrencesPersisted: number; temporalPersisted: number }> {
+        const { persistCoOccurrences = true, persistTemporal = true } = options;
         let relationshipsPersisted = 0;
         let coOccurrencesPersisted = 0;
+        let temporalPersisted = 0;
 
         for (const rel of result.relationships) {
             try {
@@ -372,14 +409,28 @@ export class ContentRelationshipExtractor {
             }
         }
 
-        if (relationshipsPersisted > 0 || coOccurrencesPersisted > 0) {
+        if (persistTemporal && result.temporalRelationships.length > 0) {
+            const timelineExtractor = getTimelineExtractor();
+            temporalPersisted = await timelineExtractor.persistToRegistry({
+                relationships: result.temporalRelationships,
+                metadata: {
+                    entitiesProcessed: result.metadata.entityCount,
+                    relationshipsCreated: result.temporalRelationships.length,
+                    processingTime: 0,
+                    source: 'content',
+                },
+            });
+        }
+
+        if (relationshipsPersisted > 0 || coOccurrencesPersisted > 0 || temporalPersisted > 0) {
             console.log(
                 `[ContentExtractor] Persisted ${relationshipsPersisted} relationships, ` +
-                `${coOccurrencesPersisted} co-occurrences for note ${result.metadata.noteId}`
+                `${coOccurrencesPersisted} co-occurrences, ${temporalPersisted} temporal ` +
+                `for note ${result.metadata.noteId}`
             );
         }
 
-        return { relationshipsPersisted, coOccurrencesPersisted };
+        return { relationshipsPersisted, coOccurrencesPersisted, temporalPersisted };
     }
 }
 

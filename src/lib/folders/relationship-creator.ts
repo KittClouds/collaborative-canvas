@@ -6,11 +6,19 @@
  * folder schema definitions.
  * 
  * Folder structure = Knowledge graph with zero extra work!
+ * 
+ * Timeline folders: Auto-creates PRECEDES/FOLLOWS temporal relationships
+ * based on sibling ordering within TIMELINE entity kind folders.
+ * 
+ * Network folders: Auto-creates network relationships when entities are
+ * added to network-typed folders (family trees, org charts, etc.).
  */
 
 import { entityRegistry } from '@/lib/entities/entity-registry';
 import { folderSchemaRegistry } from './schema-registry';
 import { generateId } from '@/lib/utils/ids';
+import { getTimelineExtractor } from '@/lib/relationships/extractors/timeline-extractor';
+import { getNetworkAdapter } from '@/lib/relationships/adapters/network-adapter';
 import type { Folder, Note } from '@/contexts/NotesContext';
 import type { FolderRelationshipDefinition, RelationshipProvenanceType } from './schemas';
 import type { EntityKind } from '@/lib/entities/entityTypes';
@@ -419,6 +427,121 @@ export class FolderRelationshipCreator {
      */
     getAll(): FolderRelationship[] {
         return this.store.getAll();
+    }
+
+    /**
+     * Called when a timeline folder's children change (add/remove/reorder).
+     * Re-creates temporal PRECEDES/FOLLOWS relationships based on new ordering.
+     */
+    async onTimelineFolderChildrenChanged(
+        folder: Folder,
+        children: Array<Note | Folder>
+    ): Promise<{ created: number; removed: number }> {
+        if (folder.entityKind !== 'TIMELINE') {
+            return { created: 0, removed: 0 };
+        }
+
+        const timelineExtractor = getTimelineExtractor();
+
+        const removed = await timelineExtractor.clearTemporalRelationships(folder.id);
+
+        const result = timelineExtractor.extractFromTimelineFolder(folder, children);
+        const created = await timelineExtractor.persistToRegistry(result);
+
+        if (created > 0 || removed > 0) {
+            console.log(
+                `[FolderRelationshipCreator] Timeline "${folder.name}": ` +
+                `removed ${removed} old, created ${created} new temporal relationships`
+            );
+        }
+
+        return { created, removed };
+    }
+
+    /**
+     * Called when a child is added to a timeline folder.
+     * Triggers temporal relationship recalculation.
+     */
+    async onTimelineChildAdded(
+        folder: Folder,
+        child: Note | Folder,
+        allChildren: Array<Note | Folder>
+    ): Promise<void> {
+        if (folder.entityKind !== 'TIMELINE') return;
+        await this.onTimelineFolderChildrenChanged(folder, allChildren);
+    }
+
+    /**
+     * Called when a child is removed from a timeline folder.
+     * Triggers temporal relationship recalculation.
+     */
+    async onTimelineChildRemoved(
+        folder: Folder,
+        removedChildId: string,
+        remainingChildren: Array<Note | Folder>
+    ): Promise<void> {
+        if (folder.entityKind !== 'TIMELINE') return;
+        await this.onTimelineFolderChildrenChanged(folder, remainingChildren);
+    }
+
+    /**
+     * Called when children in a timeline folder are reordered.
+     * Triggers temporal relationship recalculation.
+     */
+    async onTimelineChildrenReordered(
+        folder: Folder,
+        children: Array<Note | Folder>
+    ): Promise<void> {
+        if (folder.entityKind !== 'TIMELINE') return;
+        await this.onTimelineFolderChildrenChanged(folder, children);
+    }
+
+    /**
+     * Called when a note/entity is added to a NETWORK folder.
+     * Auto-creates network relationships based on folder structure.
+     */
+    async onNetworkChildAdded(
+        folder: Folder,
+        child: Note,
+        networkId: string
+    ): Promise<void> {
+        if (folder.entityKind !== 'NETWORK') return;
+
+        const networkAdapter = getNetworkAdapter();
+        await networkAdapter.onEntityAddedToNetworkFolder(folder, child, networkId);
+    }
+
+    /**
+     * Called when a note/entity is removed from a NETWORK folder.
+     * Removes associated network relationships.
+     */
+    async onNetworkChildRemoved(
+        entityId: string,
+        networkId: string
+    ): Promise<void> {
+        const networkAdapter = getNetworkAdapter();
+        await networkAdapter.onEntityRemovedFromNetworkFolder(entityId, networkId);
+    }
+
+    /**
+     * Sync all network relationships to the RelationshipRegistry.
+     * Called on startup or when networks are modified.
+     */
+    async syncAllNetworks(): Promise<{ total: number; networks: number }> {
+        const networkAdapter = getNetworkAdapter();
+        const results = await networkAdapter.syncAllNetworks();
+
+        const total = results.reduce((sum, r) => sum + r.imported + r.updated, 0);
+        return { total, networks: results.length };
+    }
+
+    /**
+     * Sync a specific network's relationships to the registry.
+     */
+    async syncNetwork(networkId: string): Promise<{ imported: number; updated: number }> {
+        const networkAdapter = getNetworkAdapter();
+        const result = await networkAdapter.syncNetwork(networkId);
+        return { imported: result.imported, updated: result.updated };
     }
 }
 
