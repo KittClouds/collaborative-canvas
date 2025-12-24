@@ -28,7 +28,6 @@ describe('ContextualDisambiguator', () => {
 
         // Search for "Elon"
         const results = disambiguator.disambiguate('Elon', sentence, 0);
-        console.log('Elon Test POS Context:', results[0]?.entity.label, results[0]?.confidence, results[0]?.score);
 
         expect(results.length).toBeGreaterThan(0);
         expect(results[0].entity.label).toBe('Elon Musk');

@@ -68,8 +68,9 @@ describe('WinkProcessor Integration Tests', () => {
     });
 
     it('should integrate with document scanner and disambiguate', () => {
-        // Register entity for disambiguation
+        // Register entities for disambiguation and relationship extraction
         entityRegistry.registerEntity('NASA', 'FACTION', 'test-note');
+        entityRegistry.registerEntity('SpaceX', 'FACTION', 'test-note');
 
         const doc: JSONContent = {
             type: 'doc',
@@ -92,6 +93,10 @@ describe('WinkProcessor Integration Tests', () => {
         // Check if NASA was disambiguated
         expect(result.disambiguatedEntities.length).toBeGreaterThan(0);
         expect(result.disambiguatedEntities[0].entity.label).toBe('NASA');
+
+        // Check relationships were extracted (Phase 3)
+        expect(result.extractedRelationships).toBeDefined();
+        expect(result.statistics.relationshipCount).toBeGreaterThanOrEqual(0);
     });
 
     it('should detect co-occurrences with linguistic precision', () => {

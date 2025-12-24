@@ -38,6 +38,7 @@ import type { EntityRefPayload, WikilinkRefPayload, TripleRefPayload, TagRefPayl
 
 // Phase 4 Imports - Content Extraction
 import { getContentRelationshipExtractor, type ExtractedRelationship, type CoOccurrence } from '@/lib/relationships/extractors';
+import { getRelationshipExtractor, type ExtractedRelationship as PatternExtractedRelationship } from '@/lib/relationships/RelationshipExtractor';
 
 // ResoRank constants
 const FIELD_CANONICAL = 0;
@@ -1057,10 +1058,12 @@ export function scanDocumentWithLinguistics(
     score: number;
     confidence: string;
   }>;
+  extractedRelationships: PatternExtractedRelationship[];
   statistics: {
     sentenceCount: number;
     tokenCount: number;
     entityMentions: number;
+    relationshipCount: number;
   };
 } {
   const wink = getWinkProcessor();
@@ -1102,16 +1105,22 @@ export function scanDocumentWithLinguistics(
     }
   }
 
+  // Step 6: Pattern-Based Relationship Extraction (NEW - Phase 3)
+  const relationshipExtractor = getRelationshipExtractor();
+  const extractedRelationships = relationshipExtractor.extractFromText(plainText, noteId);
+
   return {
     plainText,
     sentences: analysis.sentences,
     explicitEntities,
     properNounCandidates,
     disambiguatedEntities,
+    extractedRelationships,
     statistics: {
       sentenceCount: analysis.statistics.sentenceCount,
       tokenCount: analysis.statistics.tokenCount,
       entityMentions: explicitEntities.length + disambiguatedEntities.length,
+      relationshipCount: extractedRelationships.length,
     },
   };
 }

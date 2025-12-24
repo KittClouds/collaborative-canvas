@@ -58,6 +58,25 @@ export interface LinguisticAnalysis {
 }
 
 /**
+ * Noun chunk (multi-word noun phrase)
+ */
+export interface NounChunk {
+    text: string;           // "the red car"
+    tokens: Token[];        // [the, red, car]
+    start: number;
+    end: number;
+    isProperNoun: boolean;
+    pattern: string;        // "DET ADJ NOUN" (for debugging)
+}
+
+/**
+ * Enhanced analysis with noun chunks
+ */
+export interface EnhancedLinguisticAnalysis extends LinguisticAnalysis {
+    nounChunks: NounChunk[];
+}
+
+/**
  * Co-occurrence detection result
  */
 export interface CoOccurrence {
@@ -281,6 +300,71 @@ export class WinkProcessor {
     }
 
     /**
+     * Extract noun chunks matching common patterns
+     * Pattern: (DET)? (ADJ|NUM)* (NOUN|PROPN)+
+     */
+    extractNounChunks(text: string): NounChunk[] {
+        const analysis = this.analyze(text);
+        const chunks: NounChunk[] = [];
+        const NOUN_POS = ['NOUN', 'PROPN'];
+        const CHUNK_ALLOWED_POS = ['DET', 'ADJ', 'NUM', 'NOUN', 'PROPN'];
+
+        for (const sentence of analysis.sentences) {
+            let currentTokens: Token[] = [];
+            let currentPattern: string[] = [];
+
+            const flush = () => {
+                if (currentTokens.length > 0) {
+                    const hasNoun = currentTokens.some(t => NOUN_POS.includes(t.pos));
+                    const lastPOS = currentTokens[currentTokens.length - 1].pos;
+                    const isMultiWord = currentTokens.length > 1;
+
+                    // Validate: 
+                    // 1. Must contain at least one noun/propn OR be a multi-word adjective phrase (concept)
+                    // 2. Must end with a noun/propn OR be a multi-word phrase ending in ADJ
+                    if ((hasNoun || isMultiWord) && (NOUN_POS.includes(lastPOS) || (isMultiWord && lastPOS === 'ADJ'))) {
+                        chunks.push({
+                            text: currentTokens.map(t => t.text).join(' '),
+                            tokens: [...currentTokens],
+                            start: currentTokens[0].start,
+                            end: currentTokens[currentTokens.length - 1].end,
+                            isProperNoun: currentTokens.some(t => t.pos === 'PROPN'),
+                            pattern: currentPattern.join(' ')
+                        });
+                    }
+                    currentTokens = [];
+                    currentPattern = [];
+                }
+            };
+
+            for (const token of sentence.tokens) {
+                if (CHUNK_ALLOWED_POS.includes(token.pos)) {
+                    currentTokens.push(token);
+                    currentPattern.push(token.pos);
+                } else {
+                    flush();
+                }
+            }
+            flush();
+        }
+
+        return chunks;
+    }
+
+    /**
+     * Complete analysis including extracted noun chunks
+     */
+    analyzeEnhanced(text: string): EnhancedLinguisticAnalysis {
+        const base = this.analyze(text);
+        const nounChunks = this.extractNounChunks(text);
+
+        return {
+            ...base,
+            nounChunks
+        };
+    }
+
+    /**
      * Extract proper noun sequences as entity candidates
      * 
      * Pattern: Multiple consecutive PROPN (proper noun) tokens
@@ -292,43 +376,15 @@ export class WinkProcessor {
         end: number;
         tokens: Token[];
     }> {
-        const analysis = this.analyze(text);
-        const sequences: Array<{
-            text: string;
-            start: number;
-            end: number;
-            tokens: Token[];
-        }> = [];
-
-        let currentSequence: Token[] = [];
-
-        for (const token of analysis.tokens) {
-            if (token.pos === 'PROPN') {
-                currentSequence.push(token);
-            } else {
-                if (currentSequence.length > 0) {
-                    sequences.push({
-                        text: currentSequence.map(t => t.text).join(' '),
-                        start: currentSequence[0].start,
-                        end: currentSequence[currentSequence.length - 1].end,
-                        tokens: [...currentSequence],
-                    });
-                    currentSequence = [];
-                }
-            }
-        }
-
-        // Flush final sequence
-        if (currentSequence.length > 0) {
-            sequences.push({
-                text: currentSequence.map(t => t.text).join(' '),
-                start: currentSequence[0].start,
-                end: currentSequence[currentSequence.length - 1].end,
-                tokens: [...currentSequence],
-            });
-        }
-
-        return sequences;
+        const nounChunks = this.extractNounChunks(text);
+        return nounChunks
+            .filter(chunk => chunk.isProperNoun && chunk.tokens.every(t => ['PROPN', 'DET', 'ADJ'].includes(t.pos)))
+            .map(chunk => ({
+                text: chunk.text,
+                start: chunk.start,
+                end: chunk.end,
+                tokens: chunk.tokens
+            }));
     }
 }
 
