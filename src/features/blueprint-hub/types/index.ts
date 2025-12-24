@@ -503,3 +503,42 @@ export interface CreateIgnoreEntryInput {
   surface_form?: string;
   ner_label?: string;
 }
+
+// ==================== Relationship Pattern Types ====================
+
+export interface RelationshipPattern {
+  pattern_id: string;
+  profile_id: string;
+  verb_pattern: string;
+  relationship_type: string;
+  inverse_type?: string;
+  confidence: number;
+  category: string;
+  bidirectional: boolean;
+  enabled: boolean;
+  created_at: number;
+}
+
+export interface CreateRelationshipPatternInput {
+  profile_id: string;
+  verb_pattern: string;
+  relationship_type: string;
+  inverse_type?: string;
+  confidence?: number;
+  category?: string;
+  bidirectional?: boolean;
+  enabled?: boolean;
+}
+
+export interface RelationshipPatternRow {
+  pattern_id: string;
+  profile_id: string;
+  verb_pattern: string;
+  relationship_type: string;
+  inverse_type: string | null;
+  confidence: number;
+  category: string;
+  bidirectional: boolean;
+  enabled: boolean;
+  created_at: number;
+}

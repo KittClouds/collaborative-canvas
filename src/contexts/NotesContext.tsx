@@ -425,6 +425,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const createNote = useCallback((folderId?: string, title?: string, sourceNoteId?: string): Note => {
     dispatch({ type: 'PUSH_HISTORY' });
 
+    // Get parent folder for relationship creation
+    const parentFolder = folderId ? state.folders.find(f => f.id === folderId) || null : null;
+
     // Determine title and entity properties
     let noteTitle = title || '';
     let initialContent = JSON.stringify({
@@ -514,14 +517,18 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SELECT_NOTE', payload: newNote.id });
 
     if (initialHydrationDone.current) {
-      UnifiedEntityLifecycle.onNoteCreated(newNote);
+      // Use enhanced lifecycle with folder context for auto-relationships
+      UnifiedEntityLifecycle.onNoteCreatedWithFolder(newNote, parentFolder);
     }
 
     return newNote;
-  }, [getInheritedKindFromFolder, state.notes, getGraphSync]);
+  }, [state.folders, getInheritedKindFromFolder, state.notes, getGraphSync]);
 
 
   const updateNote = useCallback((id: string, updates: Partial<Note>) => {
+    const existingNote = state.notes.find(n => n.id === id);
+    if (!existingNote) return;
+
     if (updates.title !== undefined) {
       const parsed = parseEntityFromTitle(updates.title);
       if (parsed && parsed.label) {
@@ -539,18 +546,22 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'UPDATE_NOTE', payload: { id, updates } });
 
     if (initialHydrationDone.current) {
-      const existingNote = state.notes.find(n => n.id === id);
-      if (existingNote) {
-        const updatedNote = { ...existingNote, ...updates, updatedAt: new Date() };
-        getGraphSync().onNoteUpdated(updatedNote, state.notes);
+      const updatedNote = { ...existingNote, ...updates, updatedAt: new Date() };
+      getGraphSync().onNoteUpdated(updatedNote, state.notes);
 
-        // Unified Entity Lifecycle Hook
-        if (updates.title && updates.title !== existingNote.title) {
-          UnifiedEntityLifecycle.onNoteTitleChanged(updatedNote, existingNote.title);
-        }
+      // Unified Entity Lifecycle Hook
+      if (updates.title && updates.title !== existingNote.title) {
+        UnifiedEntityLifecycle.onNoteTitleChanged(updatedNote, existingNote.title);
+      }
+
+      // Handle move between folders
+      if (updates.folderId !== undefined && updates.folderId !== existingNote.folderId) {
+        const oldFolder = existingNote.folderId ? state.folders.find(f => f.id === existingNote.folderId) || null : null;
+        const newFolder = updates.folderId ? state.folders.find(f => f.id === updates.folderId) || null : null;
+        UnifiedEntityLifecycle.onNoteMoved(updatedNote, oldFolder, newFolder);
       }
     }
-  }, [state.notes, getGraphSync]);
+  }, [state.notes, state.folders, getGraphSync]);
 
   const updateNoteContent = useCallback((id: string, content: string) => {
     dispatch({ type: 'UPDATE_NOTE', payload: { id, updates: { content } } });
@@ -592,8 +603,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     const parsed = parseFolderEntityFromName(name);
     let inheritedKind: EntityKind | undefined;
     let inheritedSubtype: string | undefined;
+    let parentFolder: Folder | null = null;
 
     if (parentId) {
+      parentFolder = state.folders.find(f => f.id === parentId) || null;
       inheritedKind = getInheritedKindFromFolder(parentId);
       inheritedSubtype = getInheritedSubtypeFromFolder(parentId);
     }
@@ -615,13 +628,17 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'ADD_FOLDER', payload: newFolder });
 
     if (initialHydrationDone.current) {
-      UnifiedEntityLifecycle.onFolderCreated(newFolder);
+      // Use the enhanced lifecycle method with parent context for auto-relationships
+      UnifiedEntityLifecycle.onFolderCreatedWithParent(newFolder, parentFolder);
     }
 
     return newFolder;
-  }, [getInheritedKindFromFolder, getInheritedSubtypeFromFolder, getGraphSync]);
+  }, [state.folders, getInheritedKindFromFolder, getInheritedSubtypeFromFolder, getGraphSync]);
 
   const updateFolder = useCallback((id: string, updates: Partial<Folder>) => {
+    const existingFolder = state.folders.find(f => f.id === id);
+    if (!existingFolder) return;
+
     if (updates.name !== undefined) {
       const parsed = parseFolderEntityFromName(updates.name);
       if (parsed) {
@@ -641,10 +658,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'UPDATE_FOLDER', payload: { id, updates } });
 
     if (initialHydrationDone.current) {
-      const existingFolder = state.folders.find(f => f.id === id);
-      if (existingFolder) {
-        const updatedFolder = { ...existingFolder, ...updates };
-        getGraphSync().onFolderUpdated(updatedFolder);
+      const updatedFolder = { ...existingFolder, ...updates };
+      getGraphSync().onFolderUpdated(updatedFolder);
+
+      // Handle folder move
+      if (updates.parentId !== undefined && updates.parentId !== existingFolder.parentId) {
+        const oldParent = existingFolder.parentId ? state.folders.find(f => f.id === existingFolder.parentId) || null : null;
+        const newParent = updates.parentId ? state.folders.find(f => f.id === updates.parentId) || null : null;
+        UnifiedEntityLifecycle.onFolderMoved(updatedFolder, oldParent, newParent);
       }
     }
   }, [state.folders, getGraphSync]);

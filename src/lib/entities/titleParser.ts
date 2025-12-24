@@ -10,6 +10,21 @@ export interface ParsedEntity {
 }
 
 /**
+ * Inline relationship parsed from title
+ */
+export interface InlineRelation {
+  type: string;
+  targetLabel: string;
+}
+
+/**
+ * Parsed entity with optional inline relationship
+ */
+export interface ParsedEntityWithRelation extends ParsedEntity {
+  inlineRelation?: InlineRelation;
+}
+
+/**
  * Parsed folder name result
  */
 export interface ParsedFolderName extends ParsedEntity {
@@ -137,4 +152,66 @@ export function isSubtypeRootFolder(name: string): boolean {
 export function isTypedSubfolder(name: string): boolean {
   const parsed = parseFolderEntityFromName(name);
   return parsed !== null && !parsed.isTypedRoot && !parsed.isSubtypeRoot;
+}
+
+/**
+ * Parse entity with inline relationship syntax
+ * Supports: [KIND|Label->REL_TYPE->Target]
+ * Example: [CHARACTER|Jon Snow->ALLY_OF->Arya Stark]
+ */
+export function parseEntityWithRelation(title: string): ParsedEntityWithRelation | null {
+  if (!title) return null;
+
+  const trimmed = title.trim();
+
+  // First try to match inline relationship pattern: [KIND:SUBTYPE|Label->REL->Target] or [KIND|Label->REL->Target]
+  const relMatch = trimmed.match(/^\[([A-Z_]+)(?::([A-Z_]+))?\|(.+?)->([A-Z_]+)->(.+)\]$/);
+  if (relMatch) {
+    const [, kindStr, subtypeStr, label, relType, targetLabel] = relMatch;
+
+    if (!ENTITY_KINDS.includes(kindStr as EntityKind)) {
+      return null;
+    }
+
+    const kind = kindStr as EntityKind;
+
+    if (subtypeStr && !isValidSubtype(kind, subtypeStr)) {
+      return null;
+    }
+
+    return {
+      kind,
+      subtype: subtypeStr,
+      label: label.trim(),
+      inlineRelation: {
+        type: relType,
+        targetLabel: targetLabel.trim()
+      }
+    };
+  }
+
+  // Fall back to standard entity parsing (no inline relation)
+  const parsed = parseEntityFromTitle(title);
+  if (!parsed) return null;
+
+  return {
+    ...parsed,
+    inlineRelation: undefined
+  };
+}
+
+/**
+ * Format an entity with inline relationship
+ */
+export function formatEntityWithRelation(
+  kind: EntityKind,
+  label: string,
+  relType: string,
+  targetLabel: string,
+  subtype?: string
+): string {
+  if (subtype) {
+    return `[${kind}:${subtype}|${label}->${relType}->${targetLabel}]`;
+  }
+  return `[${kind}|${label}->${relType}->${targetLabel}]`;
 }

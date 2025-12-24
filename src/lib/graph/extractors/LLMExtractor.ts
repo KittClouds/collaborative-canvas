@@ -2,6 +2,8 @@ import { getGraph } from '@/lib/graph/graphInstance';
 import type { UnifiedGraph } from '@/lib/graph/UnifiedGraph';
 import type { UnifiedNode, UnifiedEdge, NodeId, ExtractionMethod } from '@/lib/graph/types';
 import type { EntityKind } from '@/lib/entities/entityTypes';
+import { relationshipRegistry } from '@/lib/relationships';
+import { RelationshipSource } from '@/lib/relationships/types';
 
 export interface LLMEntity {
   label: string;
@@ -130,6 +132,25 @@ export class LLMExtractor {
               }
             );
             createdEdges.push(edge);
+
+            // Also add to RelationshipRegistry for unified tracking
+            relationshipRegistry.add({
+              sourceEntityId: sourceNode.data.id,
+              targetEntityId: targetNode.data.id,
+              type: rel.type,
+              bidirectional: false,
+              namespace: 'llm_extraction',
+              attributes: {
+                description: rel.description,
+              },
+              provenance: [{
+                source: RelationshipSource.LLM_EXTRACTION,
+                originId: noteId,
+                timestamp: new Date(),
+                confidence: rel.confidence,
+                context: rel.description,
+              }],
+            });
           }
         }
       }

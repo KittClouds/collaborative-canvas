@@ -3,6 +3,9 @@ import { getGraph } from '@/lib/graph/graphInstance';
 import type { UnifiedGraph } from '@/lib/graph/UnifiedGraph';
 import type { UnifiedNode, NodeId, ExtractionMethod } from '@/lib/graph/types';
 import type { EntityKind } from '@/lib/entities/entityTypes';
+import { matchVerbPatterns, detectCoOccurrences, type EntitySpan } from '@/lib/relationships/extractors';
+import { relationshipRegistry } from '@/lib/relationships';
+import { RelationshipSource } from '@/lib/relationships/types';
 
 const NER_TO_ENTITY_KIND: Record<string, EntityKind> = {
   'PERSON': 'CHARACTER',
@@ -22,6 +25,7 @@ const NER_TO_ENTITY_KIND: Record<string, EntityKind> = {
 export interface NERExtractionResult {
   entities: UnifiedNode[];
   edgesCreated: number;
+  relationshipsCreated: number;
   processingTime: number;
 }
 
@@ -48,15 +52,18 @@ export class NERExtractor {
     const startTime = performance.now();
     const createdEntities: UnifiedNode[] = [];
     let edgesCreated = 0;
+    let relationshipsCreated = 0;
 
     try {
       const plainText = this.extractPlainText(content);
       if (!plainText || plainText.length < 10) {
-        return { entities: [], edgesCreated: 0, processingTime: 0 };
+        return { entities: [], edgesCreated: 0, relationshipsCreated: 0, processingTime: 0 };
       }
 
       const nerSpans = await runNer(plainText, { threshold });
       const entityGroups = this.groupNERSpans(nerSpans);
+
+      const entitySpans: EntitySpan[] = [];
 
       for (const [key, spans] of entityGroups.entries()) {
         const [label, nerLabel] = key.split('|');
@@ -92,6 +99,13 @@ export class NERExtractor {
         }
 
         for (const span of spans) {
+          entitySpans.push({
+            label,
+            start: span.start,
+            end: span.end,
+            kind: entityKind,
+          });
+
           const existingEdges = this.graph.getEdgesBetween(noteId, entityNode.data.id);
           const hasMention = existingEdges.some(e =>
             e.data.type === 'MENTIONS' &&
@@ -113,11 +127,64 @@ export class NERExtractor {
         }
       }
 
+      // Run verb pattern matching on extracted entities
+      if (entitySpans.length >= 2) {
+        const verbRelationships = matchVerbPatterns(plainText, entitySpans);
+
+        for (const rel of verbRelationships) {
+          const sourceNode = this.graph.findEntityByLabel(rel.sourceLabel);
+          const targetNode = this.graph.findEntityByLabel(rel.targetLabel);
+
+          if (sourceNode && targetNode) {
+            // Add to graph
+            try {
+              this.graph.createRelationship(
+                sourceNode.data.id,
+                targetNode.data.id,
+                rel.type as any,
+                {
+                  weight: rel.confidence,
+                  confidence: rel.confidence,
+                  extractionMethod: 'ner',
+                  noteIds: [noteId],
+                  context: rel.context,
+                }
+              );
+
+              // Also add to RelationshipRegistry
+              relationshipRegistry.add({
+                sourceEntityId: sourceNode.data.id,
+                targetEntityId: targetNode.data.id,
+                type: rel.type,
+                inverseType: rel.inverseType,
+                bidirectional: rel.bidirectional,
+                namespace: 'ner_extraction',
+                attributes: {
+                  verbMatch: rel.verbMatch,
+                  context: rel.context,
+                },
+                provenance: [{
+                  source: RelationshipSource.NER_EXTRACTION,
+                  originId: noteId,
+                  timestamp: new Date(),
+                  confidence: rel.confidence,
+                  context: rel.context,
+                }],
+              });
+
+              relationshipsCreated++;
+            } catch (err) {
+              // Relationship may already exist
+            }
+          }
+        }
+      }
+
       const processingTime = performance.now() - startTime;
-      return { entities: createdEntities, edgesCreated, processingTime };
+      return { entities: createdEntities, edgesCreated, relationshipsCreated, processingTime };
     } catch (error) {
       console.error('NER extraction failed:', error);
-      return { entities: [], edgesCreated: 0, processingTime: 0 };
+      return { entities: [], edgesCreated: 0, relationshipsCreated: 0, processingTime: 0 };
     }
   }
 
@@ -134,6 +201,7 @@ export class NERExtractor {
     return {
       entities: results.flatMap(r => r.entities),
       edgesCreated: results.reduce((sum, r) => sum + r.edgesCreated, 0),
+      relationshipsCreated: results.reduce((sum, r) => sum + r.relationshipsCreated, 0),
       processingTime: results.reduce((sum, r) => sum + r.processingTime, 0),
     };
   }

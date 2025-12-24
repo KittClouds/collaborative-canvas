@@ -6,11 +6,15 @@ import { syncState } from '@/lib/db/sync/SyncState';
 import type { SQLiteNode, SQLiteEdge, SQLiteNodeInput } from '@/lib/db/client/types';
 import { parseJson } from '@/lib/db/client/types';
 import type { UnifiedNode, UnifiedNodeData, UnifiedEdgeData, NodeType, EdgeType } from '@/lib/graph/types';
+import { RelationshipStoreImpl } from '@/lib/storage/impl/RelationshipStoreImpl';
+import { relationshipDBAdapter } from '@/lib/storage/impl/RelationshipDBAdapter';
+import { setRelationshipStore, initializeRelationshipSystem } from '@/lib/relationships/startup';
 
 export interface SQLiteInitResult {
   nodesLoaded: number;
   edgesLoaded: number;
   embeddingsLoaded: number;
+  relationshipsLoaded: number;
 }
 
 export async function initializeSQLiteAndHydrate(): Promise<SQLiteInitResult> {
@@ -26,10 +30,15 @@ export async function initializeSQLiteAndHydrate(): Promise<SQLiteInitResult> {
     hydrateGraphFromSQLite(graph, result.nodes, result.edges);
   }
 
+  const relationshipStore = new RelationshipStoreImpl(relationshipDBAdapter);
+  setRelationshipStore(relationshipStore);
+  const relResult = await initializeRelationshipSystem();
+
   return {
     nodesLoaded: result.nodesLoaded,
     edgesLoaded: result.edgesLoaded,
     embeddingsLoaded: embeddings.length,
+    relationshipsLoaded: relResult.loaded,
   };
 }
 

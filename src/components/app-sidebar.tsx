@@ -82,20 +82,18 @@ import { useBlueprintHub } from "@/features/blueprint-hub/hooks/useBlueprintHub"
 
 
 // Entity types for folder creation menu
+// Note: SCENE and BEAT are not main folder options - they appear as subfolders under CHAPTER, ACT, and ARC
 const ENTITY_TYPES: Array<{ kind: EntityKind; label: string }> = [
   { kind: 'NARRATIVE', label: 'Narrative Timeline Folder' },
   { kind: 'TIMELINE', label: 'General Timeline Folder' },
   { kind: 'ARC', label: 'Arc Folder' },
   { kind: 'ACT', label: 'Act Folder' },
   { kind: 'CHAPTER', label: 'Chapter Folder' },
-  { kind: 'SCENE', label: 'Scene Folder' },
-  { kind: 'BEAT', label: 'Beat Folder' },
   { kind: 'EVENT', label: 'Event Folder' },
   { kind: 'CHARACTER', label: 'Character Folder' },
   { kind: 'LOCATION', label: 'Location Folder' },
   { kind: 'NPC', label: 'NPC Folder' },
   { kind: 'ITEM', label: 'Item Folder' },
-  { kind: 'FACTION', label: 'Faction Folder' },
   { kind: 'CONCEPT', label: 'Concept Folder' },
 ];
 

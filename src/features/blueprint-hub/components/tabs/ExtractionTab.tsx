@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useBlueprintHubContext } from '../../context/BlueprintHubContext';
 import { useExtractionProfile } from '../../hooks/useExtractionProfile';
+import { useRelationshipPatterns } from '../../hooks/useRelationshipPatterns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +16,7 @@ import {
 } from '@/components/ui/select';
 
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, RotateCcw } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface ExtractionTabProps {
@@ -36,7 +37,7 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
     removeIgnore,
   } = useExtractionProfile(versionId);
 
-  const [view, setView] = useState<'list' | 'createMapping' | 'createIgnore'>('list');
+  const [view, setView] = useState<'list' | 'createMapping' | 'createIgnore' | 'createPattern'>('list');
 
   const [mappingForm, setMappingForm] = useState({
     ner_label: '',
@@ -48,6 +49,24 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
     surface_form: '',
     ner_label: '',
   });
+
+  const [patternForm, setPatternForm] = useState({
+    verb_pattern: '',
+    relationship_type: '',
+    inverse_type: '',
+    confidence: 0.7,
+    category: 'custom',
+    bidirectional: false,
+  });
+
+  const {
+    patterns,
+    isLoading: patternsLoading,
+    addPattern,
+    removePattern,
+    togglePattern,
+    resetToDefaults,
+  } = useRelationshipPatterns(profile?.profile_id);
 
   const isLoading = contextLoading || hookLoading;
 
@@ -290,6 +309,141 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
     );
   }
 
+  if (view === 'createPattern') {
+    const handleAddPattern = async () => {
+      if (!patternForm.verb_pattern || !patternForm.relationship_type) return;
+      await addPattern({
+        verb_pattern: patternForm.verb_pattern,
+        relationship_type: patternForm.relationship_type,
+        inverse_type: patternForm.inverse_type || undefined,
+        confidence: patternForm.confidence,
+        category: patternForm.category,
+        bidirectional: patternForm.bidirectional,
+      });
+      setPatternForm({
+        verb_pattern: '',
+        relationship_type: '',
+        inverse_type: '',
+        confidence: 0.7,
+        category: 'custom',
+        bidirectional: false,
+      });
+      setView('list');
+    };
+
+    return (
+      <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-200 p-4">
+        <div className="flex items-center gap-2 mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setView('list')}
+            className="h-8 w-8 p-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h3 className="text-lg font-semibold">Add Relationship Pattern</h3>
+            <p className="text-sm text-muted-foreground">
+              Define a verb pattern for automatic relationship extraction.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-6 max-w-2xl">
+          <div className="space-y-2">
+            <Label htmlFor="verb_pattern">Verb Pattern (regex)</Label>
+            <Input
+              id="verb_pattern"
+              value={patternForm.verb_pattern}
+              onChange={(e) => setPatternForm({ ...patternForm, verb_pattern: e.target.value })}
+              placeholder="e.g., met|knows|befriended"
+            />
+            <p className="text-xs text-muted-foreground">
+              Use pipe (|) to separate alternatives. Matched between entity mentions.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="relationship_type">Relationship Type</Label>
+              <Input
+                id="relationship_type"
+                value={patternForm.relationship_type}
+                onChange={(e) => setPatternForm({ ...patternForm, relationship_type: e.target.value })}
+                placeholder="e.g., KNOWS"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="inverse_type">Inverse Type (optional)</Label>
+              <Input
+                id="inverse_type"
+                value={patternForm.inverse_type}
+                onChange={(e) => setPatternForm({ ...patternForm, inverse_type: e.target.value })}
+                placeholder="e.g., KNOWN_BY"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Confidence: {patternForm.confidence.toFixed(2)}</Label>
+            <Slider
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={[patternForm.confidence]}
+              onValueChange={([v]) => setPatternForm({ ...patternForm, confidence: v })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Select
+                value={patternForm.category}
+                onValueChange={(v) => setPatternForm({ ...patternForm, category: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="social">Social</SelectItem>
+                  <SelectItem value="spatial">Spatial</SelectItem>
+                  <SelectItem value="possession">Possession</SelectItem>
+                  <SelectItem value="organizational">Organizational</SelectItem>
+                  <SelectItem value="familial">Familial</SelectItem>
+                  <SelectItem value="creation">Creation</SelectItem>
+                  <SelectItem value="event">Event</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 pt-6">
+              <Switch
+                id="bidirectional"
+                checked={patternForm.bidirectional}
+                onCheckedChange={(v) => setPatternForm({ ...patternForm, bidirectional: v })}
+              />
+              <Label htmlFor="bidirectional">Bidirectional</Label>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setView('list')}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddPattern}
+              disabled={!patternForm.verb_pattern || !patternForm.relationship_type}
+            >
+              Add Pattern
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-4 animate-in fade-in duration-200">
       {/* NER Configuration */}
@@ -469,6 +623,93 @@ export function ExtractionTab({ isLoading: contextLoading }: ExtractionTabProps)
                         size="sm"
                         variant="ghost"
                         onClick={() => handleDeleteIgnore(entry.ignore_id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Relationship Patterns */}
+      <div className="space-y-4 border rounded-lg p-4 bg-card shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">Relationship Patterns</h3>
+            <p className="text-xs text-muted-foreground">
+              Verb patterns to infer relationships between extracted entities
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={resetToDefaults}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset
+            </Button>
+            <Button size="sm" onClick={() => setView('createPattern')}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Pattern
+            </Button>
+          </div>
+        </div>
+
+        <div className="border rounded-md max-h-[400px] overflow-y-auto">
+          <table className="w-full">
+            <thead className="bg-muted sticky top-0">
+              <tr>
+                <th className="text-left p-2">Pattern</th>
+                <th className="text-left p-2">Relationship</th>
+                <th className="text-left p-2">Category</th>
+                <th className="text-center p-2">Confidence</th>
+                <th className="text-center p-2">Enabled</th>
+                <th className="text-right p-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {patterns.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center p-4 text-muted-foreground">
+                    No relationship patterns defined
+                  </td>
+                </tr>
+              ) : (
+                patterns.map((pattern) => (
+                  <tr key={pattern.pattern_id} className="border-t">
+                    <td className="p-2">
+                      <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                        {pattern.verb_pattern}
+                      </code>
+                    </td>
+                    <td className="p-2">
+                      <div className="flex flex-col gap-1">
+                        <Badge variant="secondary">{pattern.relationship_type}</Badge>
+                        {pattern.inverse_type && (
+                          <span className="text-xs text-muted-foreground">
+                            ↔ {pattern.inverse_type}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-2">
+                      <Badge variant="outline">{pattern.category}</Badge>
+                    </td>
+                    <td className="p-2 text-center">
+                      <span className="text-sm">{(pattern.confidence * 100).toFixed(0)}%</span>
+                    </td>
+                    <td className="p-2 text-center">
+                      <Switch
+                        checked={pattern.enabled}
+                        onCheckedChange={() => togglePattern(pattern.pattern_id)}
+                      />
+                    </td>
+                    <td className="p-2 text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => removePattern(pattern.pattern_id)}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

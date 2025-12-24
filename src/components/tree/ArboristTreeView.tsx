@@ -4,6 +4,8 @@ import { ArboristNode } from '@/lib/arborist/types';
 import { ArboristTreeNode } from './ArboristTreeNode';
 import { useNotes } from '@/contexts/NotesContext';
 import { buildArboristTree } from '@/lib/arborist/adapter';
+import { TypedFolderMenu } from './TypedFolderMenu';
+import type { EntityKind } from '@/lib/entities/entityTypes';
 
 import {
     DropdownMenu,
@@ -11,9 +13,12 @@ import {
     DropdownMenuItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
+    DropdownMenuSub,
+    DropdownMenuSubTrigger,
+    DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { Pencil, Plus, X, FolderPlus, Star, StarOff, LinkIcon } from 'lucide-react';
+import { Pencil, Plus, X, FolderPlus, Star, StarOff, LinkIcon, Sparkles } from 'lucide-react';
 
 interface ArboristTreeViewProps {
     searchTerm?: string;
@@ -134,6 +139,27 @@ export function ArboristTreeView({
         setContextNode(null);
     }, [contextNode]);
 
+    const handleTypedNoteCreate = useCallback((kind?: EntityKind, subtype?: string) => {
+        if (!contextNode || contextNode.type !== 'folder') return;
+
+        let title = "New Note";
+        if (kind) {
+            title = subtype ? `[${kind}:${subtype}] New ${subtype}` : `[${kind}] New ${kind}`;
+        }
+
+        createNote(contextNode.id, title);
+        setContextNode(null);
+    }, [contextNode, createNote]);
+
+    const handleTypedSubfolderCreate = useCallback((kind: EntityKind, subtype?: string, label?: string) => {
+        if (!contextNode || contextNode.type !== 'folder') return;
+
+        const name = subtype ? `[${kind}:${subtype}] ${label || 'New Subfolder'}` : `[${kind}] ${label || 'New Subfolder'}`;
+
+        createFolder(name, contextNode.id);
+        setContextNode(null);
+    }, [contextNode, createFolder]);
+
     const handleCreateNote = useCallback(() => {
         if (!contextNode || contextNode.type !== 'folder') return;
         createNote(contextNode.id);
@@ -208,6 +234,17 @@ export function ArboristTreeView({
                                 <FolderPlus className="mr-2 h-4 w-4" />
                                 New subfolder
                             </DropdownMenuItem>
+
+                            {contextNode.entityKind && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <TypedFolderMenu
+                                        parentFolder={contextNode.folderData!}
+                                        onCreateSubfolder={handleTypedSubfolderCreate}
+                                        onCreateNote={handleTypedNoteCreate}
+                                    />
+                                </>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => treeRef.current?.edit(contextNode.id)}>
                                 <Pencil className="mr-2 h-4 w-4" />

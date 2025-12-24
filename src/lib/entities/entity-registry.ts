@@ -6,6 +6,7 @@
  * - IndexedDB persistence
  * - Alias support
  * - Relationship tracking
+ * - Integration with RelationshipRegistry via callbacks
  */
 
 import { generateId } from '@/lib/utils/ids';
@@ -16,6 +17,9 @@ import type {
     CoOccurrencePattern
 } from './types/registry';
 
+type RelationshipCascadeCallback = (entityId: string) => void;
+type RelationshipMigrateCallback = (oldEntityId: string, newEntityId: string) => void;
+
 export class EntityRegistry {
     private entities: Map<string, RegisteredEntity>;
     private labelIndex: Map<string, string>;
@@ -23,12 +27,31 @@ export class EntityRegistry {
     private relationships: Map<string, EntityRelationship>;
     private coOccurrences: Map<string, CoOccurrencePattern>;
 
+    private onEntityDeleteCallback?: RelationshipCascadeCallback;
+    private onEntityMergeCallback?: RelationshipMigrateCallback;
+
     constructor() {
         this.entities = new Map();
         this.labelIndex = new Map();
         this.aliasIndex = new Map();
         this.relationships = new Map();
         this.coOccurrences = new Map();
+    }
+
+    // ==================== RELATIONSHIP REGISTRY INTEGRATION ====================
+
+    /**
+     * Set callback for cascading deletes to RelationshipRegistry
+     */
+    setOnEntityDeleteCallback(callback: RelationshipCascadeCallback): void {
+        this.onEntityDeleteCallback = callback;
+    }
+
+    /**
+     * Set callback for migrating relationships on entity merge
+     */
+    setOnEntityMergeCallback(callback: RelationshipMigrateCallback): void {
+        this.onEntityMergeCallback = callback;
     }
 
     // ==================== ENTITY REGISTRATION ====================
@@ -170,6 +193,11 @@ export class EntityRegistry {
         const entity = this.entities.get(entityId);
         if (!entity) return false;
 
+        // 0. Cascade delete to RelationshipRegistry via callback
+        if (this.onEntityDeleteCallback) {
+            this.onEntityDeleteCallback(entityId);
+        }
+
         // 1. Remove from label index
         this.labelIndex.delete(entity.normalizedLabel);
 
@@ -180,8 +208,7 @@ export class EntityRegistry {
             }
         }
 
-        // 3. Remove Relationships (Source or Target)
-        // We iterate specifically keys since we don't have a reverse index for rels yet
+        // 3. Remove Relationships (Source or Target) - internal legacy relationships
         for (const [key, rel] of this.relationships.entries()) {
             if (rel.sourceEntityId === entityId || rel.targetEntityId === entityId) {
                 this.relationships.delete(key);
@@ -191,9 +218,6 @@ export class EntityRegistry {
         // 4. Remove Co-Occurrences
         for (const [key, pattern] of this.coOccurrences.entries()) {
             if (pattern.entities.includes(entityId)) {
-                // Option A: Delete the whole pattern (simplest, strictly correct as the pair no longer exists)
-                // Option B: Remove just this entity from the group (complex if >2 entities)
-                // We choose Option A for now as most co-occurrences are pairs.
                 this.coOccurrences.delete(key);
             }
         }
@@ -215,23 +239,21 @@ export class EntityRegistry {
 
         if (!target || !source || targetId === sourceId) return false;
 
+        // 0. Migrate relationships in RelationshipRegistry via callback
+        if (this.onEntityMergeCallback) {
+            this.onEntityMergeCallback(sourceId, targetId);
+        }
+
         // 1. Merge Aliases
-        // First, release source aliases from index so they can be reassigned
         if (source.aliases) {
             for (const alias of source.aliases) {
                 this.aliasIndex.delete(this.normalize(alias));
             }
-            // Now add them to target
             for (const alias of source.aliases) {
                 this.addAlias(targetId, alias);
             }
         }
 
-        // Add source label as alias to target (handling conflict with source label index)
-        // We don't delete source label index yet, we just addAlias. 
-        // addAlias checks aliasIndex. source label is in labelIndex.
-        // But addAlias also checks if alias exists? No, it checks `aliasIndex`.
-        // If source.label is unique, adding it as alias to target works.
         this.addAlias(targetId, source.label);
 
         // 2. Merge Mentions (Statistics)
@@ -242,15 +264,12 @@ export class EntityRegistry {
         });
         this.recalculateTotalMentions(target);
 
-        // 3. Merge Relationships
-        // Move all relationships involving source to target
+        // 3. Merge internal legacy Relationships
         for (const [key, rel] of this.relationships.entries()) {
             if (rel.sourceEntityId === sourceId) {
-                // Create new rel with target as source
                 this.addRelationship(target.label, this.getEntityLabel(rel.targetEntityId), rel.type, rel.discoveredIn[0]);
                 this.relationships.delete(key);
             } else if (rel.targetEntityId === sourceId) {
-                // Create new rel with target as target
                 this.addRelationship(this.getEntityLabel(rel.sourceEntityId), target.label, rel.type, rel.discoveredIn[0]);
                 this.relationships.delete(key);
             }

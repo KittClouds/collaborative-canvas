@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_STATEMENTS: string[] = [
   // ============================================
@@ -191,6 +191,48 @@ export const SCHEMA_STATEMENTS: string[] = [
   
   // Co-occurrence queries
   `CREATE INDEX IF NOT EXISTS idx_edges_type_weight ON edges(type, weight DESC)`,
+
+  // ============================================
+  // UNIFIED RELATIONSHIPS TABLE
+  // ============================================
+  `CREATE TABLE IF NOT EXISTS unified_relationships (
+    -- Primary identity
+    id TEXT PRIMARY KEY,
+    source_entity_id TEXT NOT NULL,
+    target_entity_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    inverse_type TEXT,
+    bidirectional INTEGER DEFAULT 0,
+    
+    -- Confidence scoring
+    confidence REAL DEFAULT 0.5,
+    confidence_by_source TEXT,
+    
+    -- Provenance (JSON array)
+    provenance TEXT NOT NULL,
+    
+    -- Namespace isolation
+    namespace TEXT,
+    
+    -- Metadata
+    attributes TEXT,
+    
+    -- Timestamps
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    
+    -- Prevent duplicates
+    UNIQUE(source_entity_id, target_entity_id, type, namespace)
+  )`,
+
+  // Relationship indexes
+  `CREATE INDEX IF NOT EXISTS idx_rel_source ON unified_relationships(source_entity_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rel_target ON unified_relationships(target_entity_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rel_type ON unified_relationships(type)`,
+  `CREATE INDEX IF NOT EXISTS idx_rel_namespace ON unified_relationships(namespace)`,
+  `CREATE INDEX IF NOT EXISTS idx_rel_confidence ON unified_relationships(confidence DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_rel_source_type ON unified_relationships(source_entity_id, type)`,
+  `CREATE INDEX IF NOT EXISTS idx_rel_target_type ON unified_relationships(target_entity_id, type)`,
 
   // ============================================
   // OTHER INDEXES

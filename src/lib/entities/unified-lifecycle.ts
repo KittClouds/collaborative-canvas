@@ -3,14 +3,18 @@
  * 1. NotesContext (file system layer)
  * 2. EntityRegistry (entity graph layer)
  * 3. SQLite (persistence via GraphSync)
+ * 4. FolderRelationshipCreator (automatic relationships from folder structure)
+ * 5. RelationshipRegistry (unified relationship management)
  */
 
 import { entityRegistry } from './entity-registry';
 import { getGraphSyncManager } from '@/lib/graph/integration';
 import { autoSaveEntityRegistry } from '@/lib/storage/entityStorage';
+import { folderRelationshipCreator } from '@/lib/folders/relationship-creator';
+import { relationshipRegistry, RelationshipSource } from '@/lib/relationships';
 import type { Note, Folder } from '@/contexts/NotesContext';
 import type { EntityKind } from './entityTypes';
-import { parseEntityFromTitle, parseFolderEntityFromName } from './titleParser';
+import { parseEntityFromTitle, parseFolderEntityFromName, parseEntityWithRelation } from './titleParser';
 
 /**
  * Unified entity lifecycle - ensures all layers stay in sync
@@ -20,11 +24,10 @@ export class UnifiedEntityLifecycle {
      * Handle note creation with entity awareness
      */
     static onNoteCreated(note: Note): void {
-        const parsed = parseEntityFromTitle(note.title);
+        const parsed = parseEntityWithRelation(note.title);
 
         if (parsed && parsed.label) {
-            // Register entity immediately
-            entityRegistry.registerEntity(
+            const entity = entityRegistry.registerEntity(
                 parsed.label,
                 parsed.kind,
                 note.id,
@@ -38,11 +41,27 @@ export class UnifiedEntityLifecycle {
                 }
             );
 
-            // Persist registry
+            if (parsed.inlineRelation) {
+                const targetEntity = entityRegistry.findEntity(parsed.inlineRelation.targetLabel);
+                if (targetEntity) {
+                    relationshipRegistry.add({
+                        sourceEntityId: entity.id,
+                        targetEntityId: targetEntity.id,
+                        type: parsed.inlineRelation.type,
+                        provenance: [{
+                            source: RelationshipSource.MANUAL,
+                            originId: note.id,
+                            timestamp: new Date(),
+                            confidence: 1.0,
+                            context: `Inline relationship in note title: ${note.title}`
+                        }]
+                    });
+                }
+            }
+
             autoSaveEntityRegistry(entityRegistry);
         }
 
-        // Sync to SQLite (via GraphSync)
         getGraphSyncManager().onNoteCreated(note);
     }
 
@@ -156,9 +175,60 @@ export class UnifiedEntityLifecycle {
     }
 
     /**
+     * Handle folder creation with parent context for relationship creation.
+     * This is the preferred method when the parent folder is known, as it
+     * enables automatic relationship creation based on folder schemas.
+     */
+    static onFolderCreatedWithParent(folder: Folder, parentFolder: Folder | null): void {
+        // First do standard folder creation logic
+        this.onFolderCreated(folder);
+
+        // Then create automatic relationships if parent is typed
+        if (parentFolder?.entityKind) {
+            folderRelationshipCreator.onSubfolderCreated(parentFolder, folder);
+        }
+    }
+
+    /**
+     * Handle note creation with parent folder context for relationship creation.
+     * Creates automatic relationships based on folder schemas.
+     */
+    static onNoteCreatedWithFolder(note: Note, parentFolder: Folder | null): void {
+        // First do standard note creation logic
+        this.onNoteCreated(note);
+
+        // Then create automatic relationships if folder is typed
+        if (parentFolder?.entityKind) {
+            folderRelationshipCreator.onNoteCreated(parentFolder, note);
+        }
+    }
+
+    /**
+     * Handle note moved between folders
+     */
+    static onNoteMoved(note: Note, oldFolder: Folder | null, newFolder: Folder | null): void {
+        // Update folder relationships
+        if (newFolder) {
+            folderRelationshipCreator.onNoteMoved(note, oldFolder, newFolder);
+        }
+
+        // Note: This doesn't re-register entities, just updates folder-based relationships
+    }
+
+    /**
+     * Handle folder moved to new parent
+     */
+    static onFolderMoved(folder: Folder, oldParent: Folder | null, newParent: Folder | null): void {
+        folderRelationshipCreator.onFolderMoved(folder, oldParent, newParent);
+    }
+
+    /**
      * Handle folder deletion
      */
     static onFolderDeleted(folderId: string, wasTyped: boolean, entityKind?: EntityKind): void {
+        // Clean up folder-based relationships first
+        folderRelationshipCreator.onFolderDeleted(folderId);
+
         if (wasTyped && entityKind) {
             // Find and delete folder entity
             const folderEntities = entityRegistry.getAllEntities().filter(
@@ -174,4 +244,19 @@ export class UnifiedEntityLifecycle {
         autoSaveEntityRegistry(entityRegistry);
         getGraphSyncManager().onFolderDeleted(folderId);
     }
+
+    /**
+     * Get statistics about folder-created relationships
+     */
+    static getFolderRelationshipStats(): { totalRelationships: number; byType: Record<string, number> } {
+        return folderRelationshipCreator.getStats();
+    }
+
+    /**
+     * Get unified relationship statistics
+     */
+    static getRelationshipStats() {
+        return relationshipRegistry.getStats();
+    }
 }
+

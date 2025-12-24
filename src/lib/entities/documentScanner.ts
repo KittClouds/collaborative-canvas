@@ -25,6 +25,9 @@ import type { StructuredExtraction } from '@/lib/extraction/ExtractionService';
 import { refParser, type Ref, type ParseContext, isEntityRef, isWikilinkRef, isBacklinkRef, isTagRef, isMentionRef, isTripleRef } from '@/lib/refs';
 import type { EntityRefPayload, WikilinkRefPayload, TripleRefPayload, TagRefPayload, MentionRefPayload } from '@/lib/refs';
 
+// Phase 4 Imports - Content Extraction
+import { getContentRelationshipExtractor, type ExtractedRelationship, type CoOccurrence } from '@/lib/relationships/extractors';
+
 // ==================== EXISTING FUNCTIONS (UNCHANGED) ====================
 
 /**
@@ -494,12 +497,18 @@ export async function scanDocumentWithExtraction(
     useExtraction?: boolean;
     autoRegisterHighConfidence?: boolean;
     confidenceThreshold?: number;
+    extractRelationships?: boolean;
   } = {}
-): Promise<ScanResult & { suggestions: EntitySuggestion[] }> {
+): Promise<ScanResult & { 
+  suggestions: EntitySuggestion[];
+  extractedRelationships: ExtractedRelationship[];
+  extractedCoOccurrences: CoOccurrence[];
+}> {
   const {
     useExtraction = false,
     autoRegisterHighConfidence = false,
     confidenceThreshold = 0.7,
+    extractRelationships = true,
   } = options;
 
   // STEP 1: Run standard explicit scan first (ALWAYS)
@@ -595,13 +604,40 @@ export async function scanDocumentWithExtraction(
     }
   }
 
-  // STEP 6: Return complete scan result
+  // STEP 6: Run content-based relationship extraction (Phase 4)
+  let extractedRelationships: ExtractedRelationship[] = [];
+  let extractedCoOccurrences: CoOccurrence[] = [];
+
+  if (extractRelationships) {
+    try {
+      const plainText = extractPlainTextFromDocument(content);
+      const contentExtractor = getContentRelationshipExtractor();
+      const mode = useExtraction && extractionService.isLoaded() && extractionService.getCurrentModel() === 'extraction' 
+        ? 'llm' 
+        : 'ner';
+      
+      const relResult = await contentExtractor.extractFromNote(noteId, plainText, mode, {
+        confidenceThreshold: 0.4,
+        includeCoOccurrences: true,
+      });
+
+      extractedRelationships = relResult.relationships;
+      extractedCoOccurrences = relResult.coOccurrences;
+
+      // Persist to registry
+      await contentExtractor.persistToRegistry(relResult);
+
+      console.log(`[DocumentScanner] Extracted ${relResult.relationships.length} relationships, ${relResult.coOccurrences.length} co-occurrences`);
+    } catch (error) {
+      console.error('[DocumentScanner] Relationship extraction failed:', error);
+    }
+  }
+
+  // STEP 7: Return complete scan result
   return {
     ...baseResult,
     suggestions,
-    // Note: relationships/coOccurrences in baseResult are currently empty arrays,
-    // but the Registry has been updated with them.
-    // If we want to return them here, we should pull from registry or the extractions.
-    // For now, we follow the pattern that the Registry is the Source of Truth.
+    extractedRelationships,
+    extractedCoOccurrences,
   };
 }
