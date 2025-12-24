@@ -14,6 +14,7 @@ import {
     calculateIdf,
     popCount,
     detectPhraseMatch,
+    createBMXScorer,
 } from './index';
 
 // =============================================================================
@@ -777,5 +778,57 @@ describe('Incremental Scorer', () => {
         scorer.finalizeTerm(40);
 
         scorer.getScoresWithExplanations();
+    });
+});
+
+describe('BM𝒳 Performance', () => {
+    const corpusStats = createCorpusStats(1000);
+
+    bench('BM𝒳 Scorer - search (1 term)', () => {
+        const scorer = createBMXScorer(corpusStats);
+        // Index some docs
+        for (let i = 0; i < 100; i++) {
+            const tokens = new Map<string, TokenMetadata>();
+            tokens.set('search', createTokenMetadata(1, 2, 8, 150, 1, 50));
+            scorer.indexDocument(`doc_${i}`, createDocumentMetadata(8, 150), tokens);
+        }
+        scorer.search(['search'], 10);
+    });
+
+    bench('BM𝒳 Scorer - search (3 terms)', () => {
+        const scorer = createBMXScorer(corpusStats);
+        for (let i = 0; i < 100; i++) {
+            const tokens = new Map<string, TokenMetadata>();
+            tokens.set('search', createTokenMetadata(1, 2, 8, 150, 1, 50));
+            tokens.set('engine', createTokenMetadata(0, 1, 8, 150, 2, 60));
+            tokens.set('ranking', createTokenMetadata(1, 0, 8, 150, 4, 40));
+            scorer.indexDocument(`doc_${i}`, createDocumentMetadata(8, 150), tokens);
+        }
+        scorer.search(['search', 'engine', 'ranking'], 10);
+    });
+
+    bench('BM𝒳 Scorer - search with WQA (1 original, 1 augmented)', () => {
+        const scorer = createBMXScorer(corpusStats);
+        for (let i = 0; i < 100; i++) {
+            const tokens = new Map<string, TokenMetadata>();
+            tokens.set('search', createTokenMetadata(1, 2, 8, 150, 1, 50));
+            tokens.set('find', createTokenMetadata(0, 1, 8, 150, 2, 70));
+            scorer.indexDocument(`doc_${i}`, createDocumentMetadata(8, 150), tokens);
+        }
+        scorer.search(['search'], {
+            augmentedQueries: [{ query: ['find'], weight: 0.5 }],
+            limit: 10
+        });
+    });
+
+    bench('BM𝒳 entropy precomputation (1000 terms)', () => {
+        const scorer = createBMXScorer(corpusStats);
+        const docMeta = createDocumentMetadata(10, 150);
+        for (let i = 0; i < 1000; i++) {
+            const tokens = new Map<string, TokenMetadata>();
+            tokens.set(`term_${i}`, createTokenMetadata(1, 1, 10, 150, 1, 10));
+            scorer.indexDocument(`doc_${i}`, docMeta, tokens);
+        }
+        scorer.precomputeEntropies();
     });
 });

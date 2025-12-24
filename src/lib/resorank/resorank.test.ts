@@ -15,6 +15,15 @@ import {
     saturate,
     popCount,
     detectPhraseMatch,
+    // NEW BM𝒳 imports
+    sigmoid,
+    calculateAdaptiveAlpha,
+    calculateBeta,
+    normalizeScore,
+    normalizedTermFrequencyBMX,
+    saturateBMX,
+    createBMXScorer,
+    RESORANK_BMX_CONFIG,
 } from './index';
 
 const EPSILON = 1e-6;
@@ -611,5 +620,316 @@ describe('IDF Cache', () => {
         scorer.clearIdfCache();
 
         expect(scorer.getStats().idfCacheSize).toBe(0);
+    });
+});
+
+describe('BM𝒳 Specific Features', () => {
+    it('sigmoid matches mathematical definition', () => {
+        assertApproxEq(sigmoid(0), 0.5);
+        expect(sigmoid(100)).toBeGreaterThan(0.999);
+        expect(sigmoid(-100)).toBeLessThan(0.001);
+    });
+
+    it('calculates adaptive alpha (Equation 3)', () => {
+        // avgDocLen = 100 -> alpha = 1.0
+        assertApproxEq(calculateAdaptiveAlpha(100), 1.0);
+        // avgDocLen = 50 -> alpha = 0.5
+        assertApproxEq(calculateAdaptiveAlpha(50), 0.5);
+        // avgDocLen = 200 -> alpha = 1.5 (capped)
+        assertApproxEq(calculateAdaptiveAlpha(200), 1.5);
+    });
+
+    it('calculates beta (Equation 3)', () => {
+        const beta100 = calculateBeta(100);
+        assertApproxEq(beta100, 1 / Math.log(101));
+    });
+
+    it('normalizedTermFrequencyBMX incorporates entropy (Equation 5)', () => {
+        const tf = 5;
+        const L = 100;
+        const avgL = 100;
+        const b = 0.75;
+        const avgEntropy = 0.8;
+        const gamma = 0.5;
+
+        const val = normalizedTermFrequencyBMX(tf, L, avgL, b, avgEntropy, gamma);
+        // lengthNorm = 1 - 0.75 + 0.75 * (100/100) = 1.0
+        // denominator = 1.0 + 0.5 * 0.8 = 1.4
+        // score = 5 / 1.4
+        assertApproxEq(val, 5 / 1.4);
+    });
+
+    it('saturateBMX handles alpha parameter', () => {
+        const score = 2.0;
+        const alpha = 1.5;
+        const val = saturateBMX(score, alpha);
+        assertApproxEq(val, ((1.5 + 1.0) * 2.0) / (1.5 + 2.0));
+    });
+
+    it('createBMXScorer initializes parameters correctly', () => {
+        const corpusStats: CorpusStatistics = {
+            totalDocuments: 1000,
+            averageFieldLengths: new Map([[0, 100]]),
+            averageDocumentLength: 100,
+        };
+
+        const scorer = createBMXScorer(corpusStats);
+        const stats = scorer.getStats();
+
+        // Should have precompute option enabled by default in factory or explicitly requested
+        // Let's check config after creation
+        const config = (scorer as any).config;
+        expect(config.enableBMXEntropy).toBe(true);
+        expect(config.enableBMXSimilarity).toBe(true);
+        expect(config.useAdaptiveAlpha).toBe(true);
+    });
+
+    it('precomputeEntropies calculates raw entropy correctly', () => {
+        const corpusStats: CorpusStatistics = {
+            totalDocuments: 10,
+            averageFieldLengths: new Map([[0, 10]]),
+            averageDocumentLength: 10,
+        };
+        const scorer = createBMXScorer(corpusStats);
+
+        // Index a term in 2 documents with different TFs
+        scorer.indexDocument('doc1', { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+            ['term1', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: 2 }]
+        ]));
+        scorer.indexDocument('doc2', { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+            ['term1', { fieldOccurrences: new Map([[0, { tf: 2, fieldLength: 10 }]]), segmentMask: 2, corpusDocFrequency: 2 }]
+        ]));
+
+        scorer.precomputeEntropies();
+
+        const entropy = (scorer as any).entropyCache.get('term1');
+        // p1 = sigmoid(1)
+        // p2 = sigmoid(2)
+        // Expected = -(p1*log p1) - (p2*log p2)
+        const p1 = 1 / (1 + Math.exp(-1));
+        const p2 = 1 / (1 + Math.exp(-2));
+        const expected = -(p1 * Math.log(p1)) - (p2 * Math.log(p2));
+
+        assertApproxEq(entropy, expected);
+    });
+
+    it('search() with WQA combines scores correctly (Equation 9)', () => {
+        const corpusStats: CorpusStatistics = {
+            totalDocuments: 100,
+            averageFieldLengths: new Map([[0, 10]]),
+            averageDocumentLength: 10,
+        };
+        const scorer = new ResoRankScorer({}, corpusStats);
+
+        scorer.indexDocument('doc1', { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+            ['term1', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: 10 }],
+            ['term2', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 2, corpusDocFrequency: 10 }]
+        ]));
+
+        const results = scorer.search(['term1'], {
+            augmentedQueries: [
+                { query: ['term2'], weight: 0.5 }
+            ]
+        });
+
+        // score1 = scorer.score(['term1'], 'doc1')
+        // score2 = scorer.score(['term2'], 'doc1')
+        // finalScore = score1 + 0.5 * score2
+        const s1 = scorer.score(['term1'], 'doc1');
+        const s2 = scorer.score(['term2'], 'doc1');
+        assertApproxEq(results[0].score, s1 + 0.5 * s2);
+    });
+});
+
+describe('BM𝒳 Quality Validation', () => {
+    it('monotonicity: more matching terms = higher score', () => {
+        const corpusStats: CorpusStatistics = {
+            totalDocuments: 100,
+            averageFieldLengths: new Map([[0, 10]]),
+            averageDocumentLength: 10,
+        };
+        const scorer = createBMXScorer(corpusStats);
+
+        // Doc with 1 matching term
+        scorer.indexDocument('doc1', { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+            ['machine', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: 20 }],
+        ]));
+
+        // Doc with 2 matching terms
+        scorer.indexDocument('doc2', { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+            ['machine', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: 20 }],
+            ['learning', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 2, corpusDocFrequency: 15 }],
+        ]));
+
+        // Doc with 3 matching terms
+        scorer.indexDocument('doc3', { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+            ['machine', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: 20 }],
+            ['learning', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 2, corpusDocFrequency: 15 }],
+            ['deep', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 4, corpusDocFrequency: 10 }],
+        ]));
+
+        const query = ['machine', 'learning', 'deep', 'neural'];
+        const s1 = scorer.score(query, 'doc1');
+        const s2 = scorer.score(query, 'doc2');
+        const s3 = scorer.score(query, 'doc3');
+
+        expect(s3).toBeGreaterThan(s2);
+        expect(s2).toBeGreaterThan(s1);
+    });
+
+    it('normalization bounds: scores in [0, 1]', () => {
+        const corpusStats: CorpusStatistics = {
+            totalDocuments: 100,
+            averageFieldLengths: new Map([[0, 10]]),
+            averageDocumentLength: 10,
+        };
+        const scorer = new ResoRankScorer({}, corpusStats);
+
+        // Index several docs
+        for (let i = 0; i < 20; i++) {
+            scorer.indexDocument(`doc_${i}`, { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+                ['query', { fieldOccurrences: new Map([[0, { tf: 1 + i, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: 50 }],
+            ]));
+        }
+
+        const results = scorer.search(['query'], {
+            limit: 100,
+            normalize: true
+        });
+
+        for (const result of results) {
+            expect(result.normalizedScore).toBeGreaterThanOrEqual(0);
+            expect(result.normalizedScore).toBeLessThanOrEqual(1);
+        }
+    });
+
+    it('getCacheStats returns valid memory estimates', () => {
+        const corpusStats: CorpusStatistics = {
+            totalDocuments: 100,
+            averageFieldLengths: new Map([[0, 10]]),
+            averageDocumentLength: 10,
+        };
+        const scorer = createBMXScorer(corpusStats);
+
+        // Index docs
+        for (let i = 0; i < 50; i++) {
+            scorer.indexDocument(`doc_${i}`, { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+                [`term_${i}`, { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: i + 1 }],
+            ]));
+        }
+
+        scorer.precomputeEntropies();
+        scorer.warmIdfCache();
+
+        const stats = scorer.getCacheStats();
+
+        expect(stats.idf.size).toBeGreaterThan(0);
+        expect(stats.entropy.size).toBeGreaterThan(0);
+        expect(stats.total.memoryMB).toBeGreaterThanOrEqual(0);
+    });
+
+    it('pruneEntropyCache removes low-frequency terms', () => {
+        const corpusStats: CorpusStatistics = {
+            totalDocuments: 100,
+            averageFieldLengths: new Map([[0, 10]]),
+            averageDocumentLength: 10,
+        };
+        const scorer = createBMXScorer(corpusStats);
+
+        // Index some terms that appear in only 1 doc
+        scorer.indexDocument('doc1', { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+            ['rare', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: 1 }],
+            ['common', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 2, corpusDocFrequency: 10 }],
+        ]));
+        scorer.indexDocument('doc2', { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+            ['common', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: 10 }],
+        ]));
+
+        scorer.precomputeEntropies();
+
+        const beforeSize = scorer.getCacheStats().entropy.size;
+        const pruned = scorer.pruneEntropyCache(2);
+        const afterSize = scorer.getCacheStats().entropy.size;
+
+        expect(pruned).toBe(1); // 'rare' should be pruned
+        expect(afterSize).toBe(beforeSize - 1);
+    });
+
+    it('precomputeEntropiesBatched produces same results as precomputeEntropies', () => {
+        const corpusStats: CorpusStatistics = {
+            totalDocuments: 100,
+            averageFieldLengths: new Map([[0, 10]]),
+            averageDocumentLength: 10,
+        };
+
+        // Scorer 1: standard precomputation
+        const scorer1 = createBMXScorer(corpusStats);
+        // Scorer 2: batched precomputation
+        const scorer2 = createBMXScorer(corpusStats);
+
+        // Index same docs
+        for (let i = 0; i < 50; i++) {
+            const tokens = new Map([
+                [`term_${i % 10}`, { fieldOccurrences: new Map([[0, { tf: 1 + (i % 3), fieldLength: 10 }]]) as TokenMetadata['fieldOccurrences'], segmentMask: 1, corpusDocFrequency: 10 }],
+            ]);
+            scorer1.indexDocument(`doc_${i}`, { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, tokens);
+            scorer2.indexDocument(`doc_${i}`, { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, tokens);
+        }
+
+        scorer1.precomputeEntropies();
+        scorer2.precomputeEntropiesBatched(10);
+
+        const cache1 = (scorer1 as any).entropyCache;
+        const cache2 = (scorer2 as any).entropyCache;
+
+        expect(cache1.size).toBe(cache2.size);
+
+        for (const [term, entropy1] of cache1) {
+            const entropy2 = cache2.get(term);
+            assertApproxEq(entropy1, entropy2);
+        }
+    });
+
+    it('enableMetrics captures query telemetry', () => {
+        const corpusStats: CorpusStatistics = {
+            totalDocuments: 100,
+            averageFieldLengths: new Map([[0, 10]]),
+            averageDocumentLength: 10,
+        };
+        const scorer = new ResoRankScorer({}, corpusStats);
+
+        // Index docs
+        for (let i = 0; i < 20; i++) {
+            scorer.indexDocument(`doc_${i}`, { fieldLengths: new Map([[0, 10]]), totalTokenCount: 10 }, new Map([
+                ['test', { fieldOccurrences: new Map([[0, { tf: 1, fieldLength: 10 }]]), segmentMask: 1, corpusDocFrequency: 20 }],
+            ]));
+        }
+
+        // Metrics disabled by default
+        scorer.search(['test'], 10);
+        expect(scorer.getLastQueryMetrics()).toBeUndefined();
+
+        // Enable metrics
+        scorer.enableMetrics(true);
+        scorer.search(['test'], 10);
+
+        const metrics = scorer.getLastQueryMetrics();
+        expect(metrics).toBeDefined();
+        expect(metrics!.queryLength).toBe(1);
+        expect(metrics!.candidateCount).toBe(20);
+        expect(metrics!.scoredDocuments).toBeGreaterThan(0);
+        expect(metrics!.totalTimeMs).toBeGreaterThan(0);
+        expect(metrics!.bmxEnabled).toBe(false);
+        expect(metrics!.wqaEnabled).toBe(false);
+
+        // WQA metrics
+        scorer.search(['test'], {
+            limit: 10,
+            augmentedQueries: [{ query: ['other'], weight: 0.5 }]
+        });
+
+        const wqaMetrics = scorer.getLastQueryMetrics();
+        expect(wqaMetrics!.wqaEnabled).toBe(true);
+        expect(wqaMetrics!.wqaQueryCount).toBe(1);
     });
 });

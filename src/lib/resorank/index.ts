@@ -97,6 +97,16 @@ export interface ResoRankConfig {
     enablePhraseBoost: boolean;
     /** Multiplier for phrase matches. Default: 1.5 */
     phraseBoostMultiplier: f32;
+
+    // ===== NEW BM𝒳 PARAMETERS =====
+    /** Enable BM𝒳 entropy weighting in denominator. Default: false */
+    enableBMXEntropy: boolean;
+    /** Enable BM𝒳 entropy-weighted similarity boost. Default: false */
+    enableBMXSimilarity: boolean;
+    /** Use adaptive alpha parameter instead of k1. Default: false */
+    useAdaptiveAlpha: boolean;
+    /** Weight for entropy in denominator (γ). If null, auto-calculated as α/2. Default: null */
+    entropyDenomWeight: f32 | null;
 }
 
 export const RESORANK_DEFAULT_CONFIG: ResoRankConfig = {
@@ -105,12 +115,16 @@ export const RESORANK_DEFAULT_CONFIG: ResoRankConfig = {
     maxSegments: 16,
     proximityDecayLambda: 0.5,
     fieldParams: new Map([
-        [0, { weight: 2.0, b: 0.75 }], // e.g., Title
-        [1, { weight: 1.0, b: 0.75 }], // e.g., Body
+        [0, { weight: 2.0, b: 0.75 }],
+        [1, { weight: 1.0, b: 0.75 }],
     ]),
     idfProximityScale: 5.0,
     enablePhraseBoost: true,
     phraseBoostMultiplier: 1.5,
+    enableBMXEntropy: false,
+    enableBMXSimilarity: false,
+    useAdaptiveAlpha: false,
+    entropyDenomWeight: null,
 };
 
 /**
@@ -118,17 +132,33 @@ export const RESORANK_DEFAULT_CONFIG: ResoRankConfig = {
  * Use with ProximityStrategy.Pairwise for best speed/precision ratio.
  */
 export const RESORANK_PRODUCTION_CONFIG: ResoRankConfig = {
-    k1: 1.2,
-    proximityAlpha: 0.5,
-    maxSegments: 16,
-    proximityDecayLambda: 0.5,
+    ...RESORANK_DEFAULT_CONFIG,
     fieldParams: new Map([
         [0, { weight: 2.0, b: 0.75 }], // Title - higher weight
         [1, { weight: 1.0, b: 0.75 }], // Content - standard weight
     ]),
-    idfProximityScale: 5.0,
-    enablePhraseBoost: true,
-    phraseBoostMultiplier: 1.5,
+};
+
+/** Full BM𝒳 integration preset */
+export const RESORANK_BMX_CONFIG: ResoRankConfig = {
+    ...RESORANK_DEFAULT_CONFIG,
+    enableBMXEntropy: true,
+    enableBMXSimilarity: true,
+    useAdaptiveAlpha: true,
+    entropyDenomWeight: null, // Auto-calculate
+};
+
+/** BM𝒳 with Weighted Query Augmentation preset */
+export const RESORANK_BMX_SEMANTIC_CONFIG: ResoRankConfig = {
+    ...RESORANK_BMX_CONFIG,
+};
+
+/** Conservative BM𝒳 adoption: entropy only */
+export const RESORANK_BMX_ENTROPY_ONLY_CONFIG: ResoRankConfig = {
+    ...RESORANK_DEFAULT_CONFIG,
+    enableBMXEntropy: true,
+    useAdaptiveAlpha: true,
+    enableBMXSimilarity: false,
 };
 
 // =============================================================================
@@ -154,26 +184,17 @@ export interface CapacityEstimate {
 
 /**
  * Estimate capacity based on corpus size.
- * Based on benchmark results:
- * - 100 docs: ~155K single-term searches/sec
- * - 1000 docs: ~8.6K single-term searches/sec
- * - 10000 docs: ~437 single-term searches/sec
  */
 export function estimateCapacity(documentCount: usize, avgTermsPerQuery: f32 = 1.5): CapacityEstimate {
-    // Base QPS for single-term on reference hardware (from benchmarks)
     const baseQps = documentCount <= 100 ? 155000 :
         documentCount <= 1000 ? 8600 :
             documentCount <= 10000 ? 437 :
-                437 * (10000 / documentCount); // Linear extrapolation
+                437 * (10000 / documentCount);
 
-    // Multi-term penalty (from benchmarks: 2-term is ~6x slower, 3-term is ~9x slower)
     const multiTermPenalty = Math.pow(avgTermsPerQuery, 1.5);
-
     const maxQps = baseQps / multiTermPenalty;
-    const sustainedQps = maxQps * 0.5; // 50% headroom
-
-    // P99 latency estimate (ms)
-    const p99LatencyMs = (1000 / maxQps) * 2; // ~2x median
+    const sustainedQps = maxQps * 0.5;
+    const p99LatencyMs = (1000 / maxQps) * 2;
 
     return {
         maxQps,
@@ -184,47 +205,56 @@ export function estimateCapacity(documentCount: usize, avgTermsPerQuery: f32 = 1
 }
 
 /**
- * Factory function to create a production-ready scorer with optimal defaults.
- * 
- * @example
- * ```typescript
- * const scorer = createProductionScorer(corpusStats);
- * scorer.indexDocument(...);
- * scorer.warmIdfCache();
- * const results = scorer.search(query, 10);
- * ```
+ * UPDATED: Production scorer with optional BM𝒳 features
  */
 export function createProductionScorer<K extends Key = string>(
     corpusStats: CorpusStatistics,
     options?: {
         config?: Partial<ResoRankConfig>;
         strategy?: ProximityStrategy;
+        enableBMX?: boolean;
     }
 ): ResoRankScorer<K> {
+    if (options?.enableBMX) {
+        return createBMXScorer<K>(corpusStats, {
+            config: options.config,
+            strategy: options.strategy,
+            precomputeEntropy: true,
+        });
+    }
+
     const config = options?.config ?? RESORANK_PRODUCTION_CONFIG;
     const strategy = options?.strategy ?? ProximityStrategy.Pairwise;
-
     return new ResoRankScorer<K>(config, corpusStats, strategy);
 }
 
 /**
- * Create a precision-optimized scorer for when ranking quality is more important than speed.
- * Uses IdfWeighted strategy with ~2% overhead for better rare-term handling.
+ * UPDATED: Precision scorer with optional BM𝒳
  */
 export function createPrecisionScorer<K extends Key = string>(
     corpusStats: CorpusStatistics,
-    config?: Partial<ResoRankConfig>
+    options?: {
+        config?: Partial<ResoRankConfig>;
+        enableBMX?: boolean;
+    }
 ): ResoRankScorer<K> {
+    if (options?.enableBMX) {
+        return createBMXScorer<K>(corpusStats, {
+            config: options.config,
+            strategy: ProximityStrategy.IdfWeighted,
+            precomputeEntropy: true,
+        });
+    }
+
     return new ResoRankScorer<K>(
-        config ?? RESORANK_PRODUCTION_CONFIG,
+        options?.config ?? RESORANK_PRODUCTION_CONFIG,
         corpusStats,
         ProximityStrategy.IdfWeighted
     );
 }
 
 /**
- * Create a latency-optimized scorer for real-time applications.
- * Uses Pairwise strategy with phrase boost disabled for minimum overhead.
+ * UPDATED: Latency scorer
  */
 export function createLatencyScorer<K extends Key = string>(
     corpusStats: CorpusStatistics,
@@ -233,7 +263,10 @@ export function createLatencyScorer<K extends Key = string>(
     const latencyConfig: ResoRankConfig = {
         ...RESORANK_PRODUCTION_CONFIG,
         ...config,
-        enablePhraseBoost: false, // Skip phrase detection overhead
+        enablePhraseBoost: false,
+        enableBMXEntropy: false,
+        enableBMXSimilarity: false,
+        useAdaptiveAlpha: false,
     };
 
     return new ResoRankScorer<K>(
@@ -241,6 +274,107 @@ export function createLatencyScorer<K extends Key = string>(
         corpusStats,
         ProximityStrategy.Pairwise
     );
+}
+
+/**
+ * Create a BM𝒳-enhanced scorer
+ */
+export function createBMXScorer<K extends Key = string>(
+    corpusStats: CorpusStatistics,
+    options?: {
+        config?: Partial<ResoRankConfig>;
+        strategy?: ProximityStrategy;
+        precomputeEntropy?: boolean;
+    }
+): ResoRankScorer<K> {
+    const config: ResoRankConfig = {
+        ...RESORANK_BMX_CONFIG,
+        ...options?.config,
+    };
+
+    const strategy = options?.strategy ?? ProximityStrategy.IdfWeighted;
+    const scorer = new ResoRankScorer<K>(config, corpusStats, strategy);
+
+    if (options?.precomputeEntropy) {
+        scorer.precomputeEntropies();
+        scorer.warmIdfCache();
+    }
+
+    return scorer;
+}
+
+/**
+ * Create a BM𝒳 scorer optimized for semantic search with WQA
+ */
+export function createBMXSemanticScorer<K extends Key = string>(
+    corpusStats: CorpusStatistics,
+    config?: Partial<ResoRankConfig>
+): ResoRankScorer<K> {
+    return createBMXScorer<K>(corpusStats, {
+        config: {
+            ...RESORANK_BMX_SEMANTIC_CONFIG,
+            ...config,
+        },
+        strategy: ProximityStrategy.IdfWeighted,
+        precomputeEntropy: true,
+    });
+}
+
+/**
+ * Create a conservative BM𝒳 scorer
+ */
+export function createBMXEntropyScorer<K extends Key = string>(
+    corpusStats: CorpusStatistics,
+    config?: Partial<ResoRankConfig>
+): ResoRankScorer<K> {
+    return createBMXScorer<K>(corpusStats, {
+        config: {
+            ...RESORANK_BMX_ENTROPY_ONLY_CONFIG,
+            ...config,
+        },
+        strategy: ProximityStrategy.Pairwise,
+        precomputeEntropy: true,
+    });
+}
+
+// =============================================================================
+// BM𝒳 Support Types
+// =============================================================================
+
+export interface QueryEntropyStats {
+    normalizedEntropies: Map<string, f32>;
+    avgEntropy: f32;
+    sumNormalizedEntropies: f32;
+    maxRawEntropy: f32;
+}
+
+export interface AugmentedQuery {
+    query: string[];
+    weight: f32;
+    description?: string;
+}
+
+export interface SearchOptions {
+    limit?: number;
+    augmentedQueries?: AugmentedQuery[];
+    normalize?: boolean;
+    strategy?: ProximityStrategy;
+}
+
+/**
+ * Query performance metrics for monitoring and debugging
+ */
+export interface QueryMetrics {
+    queryLength: number;
+    candidateCount: number;
+    scoredDocuments: number;
+    totalTimeMs: f32;
+    entropyComputeMs?: f32;
+    scoringTimeMs?: f32;
+    sortingTimeMs?: f32;
+    bmxEnabled: boolean;
+    wqaEnabled: boolean;
+    wqaQueryCount?: number;
 }
 
 // =============================================================================
@@ -309,6 +443,9 @@ export interface ResoRankTermBreakdown {
         normalizedTf: f32;
         weightedContribution: f32;
     }>;
+    // NEW BM𝒳 fields
+    entropy?: f32;              // E(qi) - normalized entropy
+    rawEntropy?: f32;           // Ẽ(qi) - raw entropy
 }
 
 export interface ResoRankExplanation {
@@ -321,6 +458,13 @@ export interface ResoRankExplanation {
     overlapCount: u32;
     termBreakdown: ResoRankTermBreakdown[];
     strategy: ProximityStrategy;
+    // NEW BM𝒳 fields
+    bmxEntropySimilarityBoost?: f32;  // β × S(Q,D) × Σ E(qi)
+    bmxSimilarity?: f32;              // S(Q,D)
+    bmxAvgEntropy?: f32;              // ℰ
+    bmxAlpha?: f32;                   // α (if adaptive)
+    bmxBeta?: f32;                    // β
+    normalizedScore?: f32;            // Score normalized to [0,1]
 }
 
 // =============================================================================
@@ -345,9 +489,72 @@ function normalizedTermFrequency(
 }
 
 function saturate(aggregatedScore: f32, k1: f32): f32 {
+    return saturateBMX(aggregatedScore, k1);
+}
+
+// =============================================================================
+// BM𝒳 Entropy Utilities
+// =============================================================================
+
+/** Sigmoid function for entropy calculation */
+function sigmoid(x: f32): f32 {
+    return 1 / (1 + Math.exp(-x));
+}
+
+/** Calculate adaptive alpha parameter (BM𝒳 Equation 3) */
+function calculateAdaptiveAlpha(averageDocumentLength: f32): f32 {
+    return Math.max(Math.min(1.5, averageDocumentLength / 100), 0.5);
+}
+
+/** Calculate beta parameter for similarity boost (BM𝒳 Equation 3) */
+function calculateBeta(totalDocuments: usize): f32 {
+    return 1 / Math.log(1 + totalDocuments);
+}
+
+/** Calculate normalized score (BM𝒳 Equations 10-11) */
+function normalizeScore(rawScore: f32, queryLength: number, totalDocuments: usize): f32 {
+    const maxIdfApprox = Math.log(1 + (totalDocuments - 0.5) / 1.5);
+    const scoreMax = queryLength * (maxIdfApprox + 1.0);
+    return scoreMax > 0 ? rawScore / scoreMax : 0;
+}
+
+/**
+ * Calculate normalized term frequency with optional BM𝒳 entropy adjustment
+ * @param tf - Term frequency in field
+ * @param fieldLength - Length of field
+ * @param averageFieldLength - Average field length in corpus
+ * @param b - Length normalization parameter
+ * @param avgEntropy - Average normalized entropy (ℰ) from query terms
+ * @param gamma - Weight for entropy in denominator (γ)
+ */
+function normalizedTermFrequencyBMX(
+    tf: u32,
+    fieldLength: u32,
+    averageFieldLength: f32,
+    b: f32,
+    avgEntropy: f32 = 0,
+    gamma: f32 = 0
+): f32 {
+    if (averageFieldLength <= 0 || tf <= 0) return 0;
+
+    // Standard BM25F length normalization
+    const lengthNorm = 1.0 - b + b * (fieldLength / averageFieldLength);
+
+    // BM𝒳 enhancement: add γ × ℰ to denominator
+    const denominator = lengthNorm + gamma * avgEntropy;
+
+    return denominator > 0 ? tf / denominator : 0;
+}
+
+/**
+ * Saturation function with adaptive alpha support
+ * @param aggregatedScore - Aggregated field scores
+ * @param k1OrAlpha - Saturation parameter (k1 for classic, α for BM𝒳)
+ */
+function saturateBMX(aggregatedScore: f32, k1OrAlpha: f32): f32 {
     if (!isFinite(aggregatedScore) || aggregatedScore <= 0) return 0;
-    if (k1 <= 0) return aggregatedScore;
-    return ((k1 + 1.0) * aggregatedScore) / (k1 + aggregatedScore);
+    if (k1OrAlpha <= 0) return aggregatedScore;
+    return ((k1OrAlpha + 1.0) * aggregatedScore) / (k1OrAlpha + aggregatedScore);
 }
 
 function popCount(n: u32): u32 {
@@ -520,6 +727,16 @@ export class ResoRankScorer<K extends Key = string> {
     private idfCache: Map<string, f32> = new Map();
     private proximityStrategy: ProximityStrategy;
 
+    // ===== NEW BM𝒳 CACHES =====
+    private entropyCache: Map<string, f32> = new Map(); // Raw entropy Ẽ(term)
+    private cachedAlpha: f32 | null = null;
+    private cachedBeta: f32 | null = null;
+    private cachedGamma: f32 | null = null;
+
+    // ===== TELEMETRY =====
+    private metricsEnabled: boolean = false;
+    private lastQueryMetrics?: QueryMetrics;
+
     constructor(
         config: Partial<ResoRankConfig> = {},
         corpusStats: CorpusStatistics,
@@ -528,6 +745,154 @@ export class ResoRankScorer<K extends Key = string> {
         this.config = { ...RESORANK_DEFAULT_CONFIG, ...config };
         this.corpusStats = corpusStats;
         this.proximityStrategy = proximityStrategy;
+
+        // Pre-calculate BM𝒳 parameters if enabled
+        if (this.config.useAdaptiveAlpha || this.config.enableBMXEntropy || this.config.enableBMXSimilarity) {
+            this.cachedAlpha = calculateAdaptiveAlpha(corpusStats.averageDocumentLength);
+            this.cachedBeta = calculateBeta(corpusStats.totalDocuments);
+            this.cachedGamma = this.config.entropyDenomWeight ?? (this.cachedAlpha / 2);
+        }
+    }
+
+    /**
+     * Enable or disable query performance metrics collection
+     */
+    enableMetrics(enable: boolean = true): void {
+        this.metricsEnabled = enable;
+    }
+
+    /**
+     * Get metrics from the last search query
+     */
+    getLastQueryMetrics(): QueryMetrics | undefined {
+        return this.lastQueryMetrics;
+    }
+
+    /**
+     * Pre-compute entropy values for all indexed terms (BM𝒳 Equation 5).
+     * Call this after bulk indexing is complete, before warmIdfCache().
+     */
+    precomputeEntropies(): void {
+        if (!this.config.enableBMXEntropy && !this.config.enableBMXSimilarity) {
+            return; // Skip if BM𝒳 features disabled
+        }
+
+        for (const [term, termDocs] of this.tokenIndex) {
+            let rawEntropy = 0;
+
+            for (const [_docId, metadata] of termDocs) {
+                // Sum TF across all fields for this document
+                let totalTF = 0;
+                for (const [_fieldId, fieldData] of metadata.fieldOccurrences) {
+                    totalTF += fieldData.tf;
+                }
+
+                // Optimization: cap TF since sigmoid saturates above ~10
+                if (totalTF > 10) totalTF = 10;
+
+                // Sigmoid probability (BM𝒳 Equation 5)
+                const pj = sigmoid(totalTF);
+
+                // Accumulate entropy: -pj × log(pj)
+                if (pj > 1e-6 && pj < 0.999999) {
+                    rawEntropy += -(pj * Math.log(pj));
+                }
+            }
+
+            this.entropyCache.set(term, rawEntropy);
+        }
+    }
+
+    /**
+     * Optimized entropy precomputation with batching for large corpora.
+     * Allows event loop to breathe between batches in async contexts.
+     * @param batchSize Number of terms to process per batch (default: 1000)
+     */
+    precomputeEntropiesBatched(batchSize: number = 1000): void {
+        if (!this.config.enableBMXEntropy && !this.config.enableBMXSimilarity) {
+            return;
+        }
+
+        const terms = Array.from(this.tokenIndex.keys());
+
+        for (let i = 0; i < terms.length; i += batchSize) {
+            const batch = terms.slice(i, i + batchSize);
+
+            for (const term of batch) {
+                const termDocs = this.tokenIndex.get(term)!;
+                let rawEntropy = 0;
+
+                for (const [_docId, metadata] of termDocs) {
+                    let totalTF = 0;
+                    for (const [_fieldId, fieldData] of metadata.fieldOccurrences) {
+                        totalTF += fieldData.tf;
+                    }
+
+                    // Optimization: early exit if sigmoid will saturate
+                    if (totalTF > 10) totalTF = 10;
+
+                    const pj = sigmoid(totalTF);
+                    if (pj > 1e-6 && pj < 0.999999) {
+                        rawEntropy += -(pj * Math.log(pj));
+                    }
+                }
+
+                this.entropyCache.set(term, rawEntropy);
+            }
+        }
+    }
+
+    /**
+     * Clear entropy cache (call if index changes significantly)
+     */
+    clearEntropyCache(): void {
+        this.entropyCache.clear();
+    }
+
+    /**
+     * Get detailed cache statistics for monitoring
+     */
+    getCacheStats(): {
+        idf: { size: number; memoryMB: number };
+        entropy: { size: number; memoryMB: number };
+        total: { memoryMB: number };
+    } {
+        // Estimate: 8 bytes per f32, ~40 bytes overhead per Map entry
+        const idfMemory = this.idfCache.size * 48 / (1024 * 1024);
+        const entropyMemory = this.entropyCache.size * 48 / (1024 * 1024);
+
+        return {
+            idf: {
+                size: this.idfCache.size,
+                memoryMB: idfMemory
+            },
+            entropy: {
+                size: this.entropyCache.size,
+                memoryMB: entropyMemory
+            },
+            total: {
+                memoryMB: idfMemory + entropyMemory
+            }
+        };
+    }
+
+    /**
+     * Prune entropy cache for low-frequency terms to reduce memory
+     * @param minDocFrequency Minimum document frequency to keep (default: 2)
+     * @returns Number of entries pruned
+     */
+    pruneEntropyCache(minDocFrequency: number = 2): number {
+        let pruned = 0;
+
+        for (const [term, _entropy] of this.entropyCache) {
+            const termDocs = this.tokenIndex.get(term);
+            if (termDocs && termDocs.size < minDocFrequency) {
+                this.entropyCache.delete(term);
+                pruned++;
+            }
+        }
+
+        return pruned;
     }
 
     /**
@@ -639,23 +1004,52 @@ export class ResoRankScorer<K extends Key = string> {
 
         const idf = this.getOrCalculateIdf(tokenMeta.corpusDocFrequency);
 
+        // For single-term queries, avgEntropy = normalized entropy of that term
+        let avgEntropy = 0;
+        let gamma = 0;
+
+        if (this.config.enableBMXEntropy && this.entropyCache.has(term)) {
+            const rawEntropy = this.entropyCache.get(term) ?? 0;
+            // For single term, normalized entropy = 1.0 (it's the max)
+            avgEntropy = 1.0;
+            gamma = this.cachedGamma ?? 0;
+        }
+
         let aggregatedS = 0;
         for (const [fieldId, fieldData] of tokenMeta.fieldOccurrences) {
             const params = this.config.fieldParams.get(fieldId);
             if (!params) continue;
 
             const avgLen = this.corpusStats.averageFieldLengths.get(fieldId) || 1;
-            const normalizedTf = normalizedTermFrequency(
+
+            // Use BM𝒳-enhanced normalization
+            const normalizedTf = normalizedTermFrequencyBMX(
                 fieldData.tf,
                 fieldData.fieldLength,
                 avgLen,
-                params.b
+                params.b,
+                avgEntropy,
+                gamma
             );
 
             aggregatedS += params.weight * normalizedTf;
         }
 
-        return idf * saturate(aggregatedS, this.config.k1);
+        // Use adaptive alpha if enabled
+        const saturationParam = this.config.useAdaptiveAlpha
+            ? (this.cachedAlpha ?? this.config.k1)
+            : this.config.k1;
+
+        let score = idf * saturateBMX(aggregatedS, saturationParam);
+
+        // Add similarity boost for single-term (always matches if doc contains term)
+        if (this.config.enableBMXSimilarity && this.cachedBeta) {
+            // S(Q,D) = 1.0 for single matching term
+            const similarityBoost = this.cachedBeta * 1.0 * 1.0; // β × S(Q,D) × E(qi)
+            score += similarityBoost;
+        }
+
+        return score;
     }
 
     /** Score with full explanation for debugging and tuning */
@@ -664,6 +1058,11 @@ export class ResoRankScorer<K extends Key = string> {
         if (!docMeta) {
             return this.emptyExplanation();
         }
+
+        // NEW: Calculate query-level entropy statistics if BM𝒳 enabled
+        const entropyStats = (this.config.enableBMXEntropy || this.config.enableBMXSimilarity)
+            ? this.calculateQueryEntropyStats(query)
+            : undefined;
 
         const accumulator: DocumentAccumulator = {
             bm25Score: 0,
@@ -676,13 +1075,15 @@ export class ResoRankScorer<K extends Key = string> {
         const termBreakdown: ResoRankTermBreakdown[] = [];
         const docTermMasks = new Map<string, u32>();
 
+        // Score each term with BM𝒳 enhancements
         for (let i = 0; i < query.length; i++) {
             const term = query[i];
 
             const { termScore, breakdown } = this.scoreTermBM25FWithExplanation(
                 term,
                 docId,
-                accumulator
+                accumulator,
+                entropyStats  // NEW: pass entropy stats
             );
 
             if (breakdown) {
@@ -690,6 +1091,7 @@ export class ResoRankScorer<K extends Key = string> {
                 docTermMasks.set(term, breakdown.segmentMask ? parseInt(breakdown.segmentMask, 2) : 0);
             }
 
+            // Handle PerTerm strategy
             if (this.proximityStrategy === ProximityStrategy.PerTerm && termScore > 0) {
                 const otherMasks = accumulator.termMasks.slice(0, i);
                 const termMeta = this.getTokenMetadata(term, docId);
@@ -707,9 +1109,11 @@ export class ResoRankScorer<K extends Key = string> {
             }
         }
 
+        // Apply proximity multiplier (unchanged)
         const proximityResult = this.calculateProximityMultiplier(accumulator);
         let finalScore = accumulator.bm25Score * proximityResult.multiplier;
 
+        // Apply phrase boost (unchanged)
         let phraseBoost = 1.0;
         if (this.config.enablePhraseBoost && query.length >= 2) {
             if (detectPhraseMatch(query, docTermMasks)) {
@@ -718,7 +1122,17 @@ export class ResoRankScorer<K extends Key = string> {
             }
         }
 
-        return {
+        // NEW: Add BM𝒳 entropy-weighted similarity boost
+        let bmxSimilarityBoost = 0;
+        let bmxSimilarity = 0;
+        if (this.config.enableBMXSimilarity && entropyStats && this.cachedBeta) {
+            bmxSimilarity = this.calculateQueryDocSimilarity(query, docId);
+            bmxSimilarityBoost = this.cachedBeta * bmxSimilarity * entropyStats.sumNormalizedEntropies;
+            finalScore += bmxSimilarityBoost;
+        }
+
+        // Build explanation with BM𝒳 fields
+        const explanation: ResoRankExplanation = {
             totalScore: finalScore,
             bm25Component: accumulator.bm25Score,
             proximityMultiplier: proximityResult.multiplier,
@@ -729,6 +1143,21 @@ export class ResoRankScorer<K extends Key = string> {
             termBreakdown,
             strategy: this.proximityStrategy,
         };
+
+        // Add BM𝒳-specific fields if enabled
+        if (entropyStats) {
+            explanation.bmxAvgEntropy = entropyStats.avgEntropy;
+        }
+        if (this.config.enableBMXSimilarity) {
+            explanation.bmxEntropySimilarityBoost = bmxSimilarityBoost;
+            explanation.bmxSimilarity = bmxSimilarity;
+            explanation.bmxBeta = this.cachedBeta ?? undefined;
+        }
+        if (this.config.useAdaptiveAlpha) {
+            explanation.bmxAlpha = this.cachedAlpha ?? undefined;
+        }
+
+        return explanation;
     }
 
     private emptyExplanation(): ResoRankExplanation {
@@ -748,7 +1177,8 @@ export class ResoRankScorer<K extends Key = string> {
     private scoreTermBM25FWithExplanation(
         term: string,
         docId: K,
-        accumulator: DocumentAccumulator
+        accumulator: DocumentAccumulator,
+        entropyStats?: QueryEntropyStats  // NEW: optional entropy stats
     ): { termScore: f32; breakdown: ResoRankTermBreakdown | null } {
         const tokenMeta = this.getTokenMetadata(term, docId);
         if (!tokenMeta) {
@@ -759,19 +1189,28 @@ export class ResoRankScorer<K extends Key = string> {
         const idf = this.getOrCalculateIdf(tokenMeta.corpusDocFrequency);
         accumulator.termIdfs.push(idf);
 
+        // Get BM𝒳 parameters
+        const avgEntropy = entropyStats?.avgEntropy ?? 0;
+        const gamma = this.config.enableBMXEntropy ? (this.cachedGamma ?? 0) : 0;
+
         let aggregatedS = 0;
         const fieldContributions: ResoRankTermBreakdown['fieldContributions'] = [];
 
+        // Aggregate across fields with BM𝒳 entropy adjustment
         for (const [fieldId, fieldData] of tokenMeta.fieldOccurrences) {
             const params = this.config.fieldParams.get(fieldId);
             if (!params) continue;
 
             const avgLen = this.corpusStats.averageFieldLengths.get(fieldId) || 1;
-            const normalizedTf = normalizedTermFrequency(
+
+            // MODIFIED: Use normalizedTermFrequencyBMX with entropy
+            const normalizedTf = normalizedTermFrequencyBMX(
                 fieldData.tf,
                 fieldData.fieldLength,
                 avgLen,
-                params.b
+                params.b,
+                avgEntropy,   // NEW
+                gamma         // NEW
             );
 
             const weightedContribution = params.weight * normalizedTf;
@@ -791,8 +1230,14 @@ export class ResoRankScorer<K extends Key = string> {
             accumulator.fieldMasks.get(fieldId)!.push(tokenMeta.segmentMask);
         }
 
-        const saturatedScore = idf * saturate(aggregatedS, this.config.k1);
+        // MODIFIED: Use adaptive alpha if enabled
+        const saturationParam = this.config.useAdaptiveAlpha
+            ? (this.cachedAlpha ?? this.config.k1)
+            : this.config.k1;
 
+        const saturatedScore = idf * saturateBMX(aggregatedS, saturationParam);
+
+        // Build breakdown with optional BM𝒳 entropy info
         const breakdown: ResoRankTermBreakdown = {
             term,
             idf,
@@ -801,6 +1246,12 @@ export class ResoRankScorer<K extends Key = string> {
             segmentMask: formatBinary(tokenMeta.segmentMask, this.config.maxSegments),
             fieldContributions,
         };
+
+        // Add BM𝒳 entropy data if available
+        if (entropyStats) {
+            breakdown.entropy = entropyStats.normalizedEntropies.get(term);
+            breakdown.rawEntropy = this.entropyCache.get(term);
+        }
 
         return { termScore: saturatedScore, breakdown };
     }
@@ -880,68 +1331,304 @@ export class ResoRankScorer<K extends Key = string> {
         return scores;
     }
 
-    /** Find all documents containing any query term and score them */
-    search(query: string[], limit: number = 10): Array<{ docId: K; score: f32 }> {
-        const candidateDocs = new Set<K>();
+    /**
+     * Enhanced search with Weighted Query Augmentation (WQA) support
+     * Implements BM𝒳 Equation 9 with optimized candidate collection
+     */
+    search(
+        query: string[],
+        options: number | SearchOptions = {}
+    ): Array<{ docId: K; score: f32; normalizedScore?: f32 }> {
+        const startTime = this.metricsEnabled ? performance.now() : 0;
+        let scoringTime = 0;
+        let sortingTime = 0;
 
-        for (const term of query) {
-            const termDocs = this.tokenIndex.get(term);
-            if (termDocs) {
-                for (const docId of termDocs.keys()) {
-                    candidateDocs.add(docId);
-                }
-            }
+        // Handle legacy call with limit as number
+        if (typeof options === 'number') {
+            options = { limit: options };
         }
 
-        const scores = this.scoreQuery(query, Array.from(candidateDocs));
+        const {
+            limit = 10,
+            augmentedQueries = [],
+            normalize = false,
+            strategy
+        } = options;
 
-        return Array.from(scores.entries())
-            .map(([docId, score]) => ({ docId, score }))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, limit);
+        // Temporarily override strategy if specified
+        const originalStrategy = this.proximityStrategy;
+        if (strategy) {
+            this.proximityStrategy = strategy;
+        }
+
+        try {
+            // OPTIMIZATION: Collect all unique terms first (deduplication)
+            const allTerms = new Set<string>(query);
+            for (const aug of augmentedQueries) {
+                for (const term of aug.query) {
+                    allTerms.add(term);
+                }
+            }
+
+            // Single-pass candidate collection across all terms
+            const candidateDocs = new Set<K>();
+            for (const term of allTerms) {
+                const termDocs = this.tokenIndex.get(term);
+                if (termDocs) {
+                    for (const docId of termDocs.keys()) {
+                        candidateDocs.add(docId);
+                    }
+                }
+            }
+
+            // Scoring phase (tracked)
+            const scoringStart = this.metricsEnabled ? performance.now() : 0;
+            const scores = new Map<K, f32>();
+
+            // Score original query
+            if (query.length > 0) {
+                for (const docId of candidateDocs) {
+                    const score = this.score(query, docId);
+                    if (score > 0) {
+                        scores.set(docId, score);
+                    }
+                }
+            }
+
+            // Add weighted scores from augmented queries (WQA - Equation 9)
+            if (augmentedQueries.length > 0) {
+                for (const aug of augmentedQueries) {
+                    for (const docId of candidateDocs) {
+                        const augScore = this.score(aug.query, docId);
+                        if (augScore > 0) {
+                            const currentScore = scores.get(docId) ?? 0;
+                            scores.set(docId, currentScore + aug.weight * augScore);
+                        }
+                    }
+                }
+            }
+
+            if (this.metricsEnabled) {
+                scoringTime = performance.now() - scoringStart;
+            }
+
+            // Sorting phase (tracked)
+            const sortingStart = this.metricsEnabled ? performance.now() : 0;
+
+            // OPTIMIZATION: Use more efficient sorting for large result sets
+            let results: Array<{ docId: K; score: f32 }>;
+            if (scores.size > 1000) {
+                // For large result sets, sort entries directly
+                const entries = Array.from(scores.entries());
+                entries.sort((a, b) => b[1] - a[1]);
+                results = entries
+                    .slice(0, limit)
+                    .map(([docId, score]) => ({ docId, score }));
+            } else {
+                // Standard approach for smaller sets
+                results = Array.from(scores.entries())
+                    .map(([docId, score]) => ({ docId, score }))
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, limit);
+            }
+
+            if (this.metricsEnabled) {
+                sortingTime = performance.now() - sortingStart;
+            }
+
+            // Normalization
+            if (normalize) {
+                const totalQueryLength = query.length +
+                    augmentedQueries.reduce((sum, aug) => sum + aug.query.length, 0);
+
+                results = results.map(result => ({
+                    ...result,
+                    normalizedScore: normalizeScore(
+                        result.score,
+                        totalQueryLength,
+                        this.corpusStats.totalDocuments
+                    )
+                }));
+            }
+
+            // Capture metrics
+            if (this.metricsEnabled) {
+                this.lastQueryMetrics = {
+                    queryLength: query.length,
+                    candidateCount: candidateDocs.size,
+                    scoredDocuments: scores.size,
+                    totalTimeMs: performance.now() - startTime,
+                    scoringTimeMs: scoringTime,
+                    sortingTimeMs: sortingTime,
+                    bmxEnabled: this.config.enableBMXEntropy || this.config.enableBMXSimilarity,
+                    wqaEnabled: augmentedQueries.length > 0,
+                    wqaQueryCount: augmentedQueries.length
+                };
+            }
+
+            return results;
+        } finally {
+            // Restore original strategy
+            this.proximityStrategy = originalStrategy;
+        }
     }
 
-    /** Search with full explanations */
+    /**
+     * Search with full explanations and optional WQA
+     */
     searchWithExplanations(
         query: string[],
-        limit: number = 10
+        options: number | SearchOptions = {}
     ): Array<{ docId: K; explanation: ResoRankExplanation }> {
-        const candidateDocs = new Set<K>();
+        // Handle legacy call with limit as number
+        if (typeof options === 'number') {
+            options = { limit: options };
+        }
 
-        for (const term of query) {
-            const termDocs = this.tokenIndex.get(term);
-            if (termDocs) {
-                for (const docId of termDocs.keys()) {
-                    candidateDocs.add(docId);
+        const {
+            limit = 10,
+            augmentedQueries = [],
+            normalize = false,
+            strategy
+        } = options;
+
+        // Temporarily override strategy if specified
+        const originalStrategy = this.proximityStrategy;
+        if (strategy) {
+            this.proximityStrategy = strategy;
+        }
+
+        try {
+            // Find all candidates (original + augmented queries)
+            const candidateDocs = new Set<K>();
+            for (const term of query) {
+                const termDocs = this.tokenIndex.get(term);
+                if (termDocs) {
+                    for (const docId of termDocs.keys()) {
+                        candidateDocs.add(docId);
+                    }
                 }
             }
-        }
 
-        const results: Array<{ docId: K; explanation: ResoRankExplanation }> = [];
-
-        for (const docId of candidateDocs) {
-            const explanation = this.explainScore(query, docId);
-            if (explanation.totalScore > 0) {
-                results.push({ docId, explanation });
+            for (const aug of augmentedQueries) {
+                for (const term of aug.query) {
+                    const termDocs = this.tokenIndex.get(term);
+                    if (termDocs) {
+                        for (const docId of termDocs.keys()) {
+                            candidateDocs.add(docId);
+                        }
+                    }
+                }
             }
-        }
 
-        return results
-            .sort((a, b) => b.explanation.totalScore - a.explanation.totalScore)
-            .slice(0, limit);
+            // Score with explanations
+            const results: Array<{ docId: K; explanation: ResoRankExplanation }> = [];
+
+            for (const docId of candidateDocs) {
+                const explanation = this.explainScore(query, docId);
+
+                // Add WQA scores if provided
+                if (augmentedQueries.length > 0) {
+                    let wqaBoost = 0;
+                    for (const aug of augmentedQueries) {
+                        const augExplanation = this.explainScore(aug.query, docId);
+                        wqaBoost += aug.weight * augExplanation.totalScore;
+                    }
+                    explanation.totalScore += wqaBoost;
+                }
+
+                // Add normalized score if requested
+                if (normalize) {
+                    const totalQueryLength = query.length +
+                        augmentedQueries.reduce((sum, aug) => sum + aug.query.length, 0);
+                    explanation.normalizedScore = normalizeScore(
+                        explanation.totalScore,
+                        totalQueryLength,
+                        this.corpusStats.totalDocuments
+                    );
+                }
+
+                if (explanation.totalScore > 0) {
+                    results.push({ docId, explanation });
+                }
+            }
+
+            return results
+                .sort((a, b) => b.explanation.totalScore - a.explanation.totalScore)
+                .slice(0, limit);
+        } finally {
+            this.proximityStrategy = originalStrategy;
+        }
     }
 
-    /** Get corpus statistics */
+    /**
+     * Get corpus-wide statistics including entropy cache size
+     */
     getStats(): {
         documentCount: usize;
         termCount: usize;
         idfCacheSize: usize;
+        entropyCacheSize: usize; // NEW
     } {
         return {
             documentCount: this.documentIndex.size,
             termCount: this.tokenIndex.size,
             idfCacheSize: this.idfCache.size,
+            entropyCacheSize: this.entropyCache.size,
         };
+    }
+
+    /**
+     * Calculate query-level entropy statistics (BM𝒳 Equations 5-6)
+     * Called at the start of each query if BM𝒳 features enabled
+     */
+    private calculateQueryEntropyStats(query: string[]): QueryEntropyStats {
+        const normalizedEntropies = new Map<string, f32>();
+        let maxRawEntropy = 0;
+
+        // Step 1: Find max raw entropy across query terms
+        for (const term of query) {
+            const rawEntropy = this.entropyCache.get(term) ?? 0;
+            maxRawEntropy = Math.max(maxRawEntropy, rawEntropy);
+        }
+
+        // Avoid division by zero
+        const normalizationFactor = Math.max(maxRawEntropy, 1e-9);
+
+        // Step 2: Normalize entropies
+        let sumNormalizedE = 0;
+        for (const term of query) {
+            const rawEntropy = this.entropyCache.get(term) ?? 0;
+            const normalizedE = rawEntropy / normalizationFactor;
+            normalizedEntropies.set(term, normalizedE);
+            sumNormalizedE += normalizedE;
+        }
+
+        // Step 3: Calculate average entropy (ℰ)
+        const avgEntropy = query.length > 0 ? sumNormalizedE / query.length : 0;
+
+        return {
+            normalizedEntropies,
+            avgEntropy,
+            sumNormalizedEntropies: sumNormalizedE,
+            maxRawEntropy,
+        };
+    }
+
+    /**
+     * Calculate query-document similarity S(Q,D) (BM𝒳 Equation 7)
+     */
+    private calculateQueryDocSimilarity(query: string[], docId: K): f32 {
+        if (query.length === 0) return 0;
+
+        let commonTerms = 0;
+        for (const term of query) {
+            if (this.tokenIndex.get(term)?.has(docId)) {
+                commonTerms++;
+            }
+        }
+
+        return commonTerms / query.length;
     }
 }
 
@@ -1166,4 +1853,12 @@ export {
     idfWeightedProximityMultiplier,
     perTermProximityMultiplier,
     pairwiseProximityBonus,
+
+    // BM𝒳 Utilities
+    sigmoid,
+    calculateAdaptiveAlpha,
+    calculateBeta,
+    normalizeScore,
+    normalizedTermFrequencyBMX,
+    saturateBMX,
 };
