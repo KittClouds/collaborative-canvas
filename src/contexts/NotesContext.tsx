@@ -6,7 +6,10 @@ import { parseEntityFromTitle, parseFolderEntityFromName } from '@/lib/entities/
 import { migrateExistingNotes, migrateExistingFolders, needsMigration } from '@/lib/entities/migration';
 import { NARRATIVE_FOLDER_CONFIGS, getTemplateForKind } from '@/lib/templates/narrativeTemplates';
 import { getGraphSyncManager, type GraphSyncManager } from '@/lib/graph/integration';
+import { entityRegistry } from '@/lib/entities/entity-registry';
+import { relationshipRegistry } from '@/lib/relationships';
 import { UnifiedEntityLifecycle } from '@/lib/entities/unified-lifecycle';
+import { frequencyBooster } from '@/lib/entities/scanner/FrequencyBooster'; // Phase 5
 
 // Types
 export interface Note {
@@ -300,6 +303,16 @@ export function NotesProvider({ children }: { children: ReactNode }) {
           Object.assign(entityRegistry, savedRegistry);
           console.log('Entity registry loaded:', entityRegistry.getGlobalStats());
         }
+
+        // PHASE 5: Wire up cross-document synchronization callbacks
+        entityRegistry.setOnEntityDeleteCallback((id) => {
+          relationshipRegistry.deleteByEntity(id);
+        });
+        entityRegistry.setOnEntityMergeCallback((sourceId, targetId) => {
+          relationshipRegistry.migrateEntity(sourceId, targetId);
+          frequencyBooster.recordInteraction(targetId); // Boost merged target
+        });
+
       } catch (error) {
         console.error('Failed to load entity registry:', error);
       }

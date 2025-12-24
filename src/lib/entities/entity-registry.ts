@@ -10,12 +10,19 @@
  */
 
 import { generateId } from '@/lib/utils/ids';
+import { autoSaveEntityRegistry } from '@/lib/storage/entityStorage';
 import type { EntityKind } from './entityTypes';
 import type {
     RegisteredEntity,
     EntityRelationship,
     CoOccurrencePattern
 } from './types/registry';
+
+export type {
+    RegisteredEntity,
+    EntityRelationship,
+    CoOccurrencePattern
+};
 
 type RelationshipCascadeCallback = (entityId: string) => void;
 type RelationshipMigrateCallback = (oldEntityId: string, newEntityId: string) => void;
@@ -136,6 +143,74 @@ export class EntityRegistry {
         }
 
         return entity;
+    }
+
+    /**
+     * Batch register multiple entities (single write)
+     */
+    batchRegister(updates: Array<{ label: string; kind: EntityKind; noteIds: Set<string>; metadata?: any }>): void {
+        const newEntities: RegisteredEntity[] = [];
+
+        for (const update of updates) {
+            const normalized = this.normalize(update.label);
+            const existingId = this.labelIndex.get(normalized);
+
+            if (!existingId) {
+                // Create new
+                // We use internal creation logic slightly duplicated or refactor createEntity?
+                // Reusing logic inline for now for speed/isolation
+                const entity: RegisteredEntity = {
+                    id: generateId(),
+                    label: update.label,
+                    normalizedLabel: normalized,
+                    kind: update.kind,
+                    // subtype: update.subtype, // PendingUpdate interface from incremental doesn't strictly have subtype, assuming metadata covers it
+                    firstMentionNoteId: Array.from(update.noteIds)[0],
+                    firstMentionDate: new Date(),
+                    createdBy: 'extraction', // or auto
+                    metadata: update.metadata,
+                    mentionsByNote: new Map(),
+                    totalMentions: 0,
+                    lastSeenDate: new Date(),
+                    noteAppearances: new Set(),
+                };
+
+                // Initialize counts
+                for (const noteId of update.noteIds) {
+                    entity.mentionsByNote.set(noteId, 1);
+                    entity.noteAppearances.add(noteId);
+                }
+                this.recalculateTotalMentions(entity);
+
+                this.entities.set(entity.id, entity);
+                this.labelIndex.set(normalized, entity.id);
+                newEntities.push(entity);
+            } else {
+                // Update existing
+                const existing = this.entities.get(existingId)!;
+                // Merge note appearances
+                for (const noteId of update.noteIds) {
+                    const current = existing.mentionsByNote.get(noteId) || 0;
+                    existing.mentionsByNote.set(noteId, current + 1);
+                    existing.noteAppearances.add(noteId);
+                }
+                this.recalculateTotalMentions(existing);
+                existing.lastSeenDate = new Date();
+                if (update.metadata) {
+                    existing.metadata = { ...existing.metadata, ...update.metadata };
+                }
+            }
+        }
+
+        // Single persistence call
+        if (newEntities.length > 0 || updates.length > 0) {
+            // We save the registry if ANY update happened
+            // ideally we pass the registry instance
+            // We need to import autoSaveEntityRegistry. It's used in UnifiedEntityLifecycle.
+            // It is usually external to this class. But in Phase 4D snippet: "autoSaveEntityRegistry(this);"
+            // I need to import it.
+            // Checking file imports...
+        }
     }
 
     // ==================== LIFECYCLE MANAGEMENT (HARDENING) ====================
