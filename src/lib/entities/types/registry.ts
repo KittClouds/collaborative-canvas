@@ -65,6 +65,9 @@ interface ScanResult {
     }>;
     relationships: EntityRelationship[];
     coOccurrences: CoOccurrencePattern[];
+    winkAnalysis?: any;           // Shared analysis state for relationship extraction
+    entityMentions?: any[];       // ResoRank-identified entity mentions
+    stats?: any;                  // Extraction statistics
 }
 
 export type {

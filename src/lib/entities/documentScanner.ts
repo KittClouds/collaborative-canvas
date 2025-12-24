@@ -39,6 +39,8 @@ import type { EntityRefPayload, WikilinkRefPayload, TripleRefPayload, TagRefPayl
 // Phase 4 Imports - Content Extraction
 import { getContentRelationshipExtractor, type ExtractedRelationship, type CoOccurrence } from '@/lib/relationships/extractors';
 import { getRelationshipExtractor, type ExtractedRelationship as PatternExtractedRelationship } from '@/lib/relationships/RelationshipExtractor';
+import { getUnifiedRelationshipEngine, relationshipRegistry } from '@/lib/relationships';
+import { generateId } from '@/lib/utils/ids';
 
 // ResoRank constants
 const FIELD_CANONICAL = 0;
@@ -432,6 +434,11 @@ export function scanDocument(
 
   // STEP 3: ⚡ PHASE 1 - Intelligent matching pipeline
   const plainText = extractPlainTextFromDocument(content);
+
+  // PHASE 3: Build Wink analysis for downstream relationship extraction
+  const winkProcessor = getWinkProcessor();
+  const winkAnalysis = winkProcessor.analyze(plainText);
+
   const matchedEntities = scanForRegisteredEntities(plainText, noteId);
 
   // STEP 4: Update registry statistics
@@ -451,6 +458,62 @@ export function scanDocument(
     matchedEntities,
     relationships: [], // Phase 3
     coOccurrences: [], // Phase 3
+    winkAnalysis
+  };
+}
+
+/**
+ * Perform a full document scan including relationship extraction.
+ * Uses the UnifiedRelationshipEngine for zero-copy linguistic processing.
+ */
+export async function scanDocumentWithRelationships(
+  noteId: string,
+  content: JSONContent
+): Promise<ScanResult> {
+  // 1. First, perform the base entity scan (populates registry and builds Wink analysis)
+  const result = scanDocument(noteId, content);
+  const plainText = extractPlainTextFromDocument(content);
+
+  if (!result.winkAnalysis) return result;
+
+  // 2. Initialize the Relationship Engine
+  const engine = getUnifiedRelationshipEngine(
+    getOrCreateEntityScorer(),
+    entityRegistry,
+    relationshipRegistry
+  );
+
+  // 3. Resolve mentions using the engine (uses ResoRank for higher precision)
+  const mentions = engine.resolveEntitiesInDocument(result.winkAnalysis);
+
+  // 4. Extract relationships and co-occurrences
+  const extraction = await engine.extractFromDocument(
+    noteId,
+    plainText,
+    result.winkAnalysis,
+    mentions
+  );
+
+  // 5. Build final result (mapping new extraction format to legacy ScanResult fields)
+  return {
+    ...result,
+    relationships: extraction.relationships.map(r => ({
+      id: generateId(),
+      sourceEntityId: r.source.entity.id,
+      targetEntityId: r.target.entity.id,
+      type: r.predicate,
+      confidence: r.confidence,
+      discoveredIn: [noteId],
+      contexts: [r.context.sentence]
+    })),
+    coOccurrences: extraction.coOccurrences.map(c => ({
+      entities: [c.entity1.id, c.entity2.id],
+      frequency: 1,
+      contexts: [c.context],
+      strength: c.confidence
+    })),
+    entityMentions: mentions,
+    stats: extraction.stats
   };
 }
 
