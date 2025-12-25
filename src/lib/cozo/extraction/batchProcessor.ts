@@ -4,6 +4,8 @@ import { extractEntitiesFromText } from './regexExtractor';
 import { extractEntitiesWithLLM } from './llmExtractor';
 import { findOrCreateEntity } from './entityMerger';
 import type { JSONContent } from '@tiptap/react';
+import type { ExtractionEpisode } from '../types';
+
 
 export interface BatchProcessOptions {
     scope: 'note' | 'folder' | 'vault';
@@ -113,18 +115,13 @@ export async function processNote(
  */
 export async function processFolder(
     folderId: string,
+    notes: Array<{ id: string; title: string; contentJson: JSONContent }>,
     options: Omit<BatchProcessOptions, 'scopeId'>
 ): Promise<void> {
-    // Query all notes in folder
-    const result = await cozoDb.runQuery(`
-    ?[id, title, content_json] := *note{id, title, content_json, folder_id},
-    folder_id == $folder_id
-  `, { folder_id: folderId });
-
-    const totalNotes = result.rows?.length || 0;
+    const totalNotes = notes.length;
 
     for (let i = 0; i < totalNotes; i++) {
-        const [noteId, title, contentJson] = result.rows![i];
+        const { id: noteId, title, contentJson } = notes[i];
 
         options.onProgress?.(
             (i / totalNotes) * 100,
@@ -139,20 +136,18 @@ export async function processFolder(
     }
 }
 
+
 /**
  * Process entire vault (all notes)
  */
 export async function processVault(
+    notes: Array<{ id: string; title: string; contentJson: JSONContent }>,
     options: Omit<BatchProcessOptions, 'scope' | 'scopeId'>
 ): Promise<void> {
-    const result = await cozoDb.runQuery(`
-    ?[id, title, content_json] := *note{id, title, content_json}
-  `);
-
-    const totalNotes = result.rows?.length || 0;
+    const totalNotes = notes.length;
 
     for (let i = 0; i < totalNotes; i++) {
-        const [noteId, title, contentJson] = result.rows![i];
+        const { id: noteId, title, contentJson } = notes[i];
 
         options.onProgress?.(
             (i / totalNotes) * 100,
@@ -167,31 +162,35 @@ export async function processVault(
     }
 }
 
+
 // Helper functions for database operations
 
-async function insertEpisodes(episodes: any[]): Promise<void> {
+async function insertEpisodes(episodes: ExtractionEpisode[]): Promise<void> {
+
     // Bulk insert using CozoDB batch syntax
+    // Removed content_text and content_json as they are no longer in the schema
     // @ts-ignore
     await cozoDb.run(`
     ?[
-      id, note_id, created_at, valid_at, content_text, content_json,
+      id, note_id, created_at, valid_at,
       block_id, group_id, scope_type, extraction_method, sentence_index,
       paragraph_index
     ] <- $episodes
     
     :put episode {
-      id, note_id, created_at, valid_at, content_text, content_json,
+      id, note_id, created_at, valid_at,
       block_id, group_id, scope_type, extraction_method, sentence_index,
       paragraph_index
     }
   `, {
         episodes: episodes.map(e => [
-            e.id, e.noteId, e.createdAt.getTime(), e.validAt.getTime(), e.contentText, e.contentJson,
+            e.id, e.noteId, e.createdAt.getTime(), e.validAt.getTime(),
             e.blockId, e.groupId, e.scopeType, e.extractionMethod, e.sentenceIndex,
             e.paragraphIndex
         ])
     });
 }
+
 
 async function insertMentions(mentions: any[]): Promise<void> {
     // @ts-ignore

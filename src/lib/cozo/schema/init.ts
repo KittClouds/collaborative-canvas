@@ -1,19 +1,18 @@
 import { cozoDb } from '../db';
-import { NOTE_SCHEMA } from './layer1-notes';
-import { FOLDER_SCHEMA } from './layer1-folders';
-import { WIKILINK_SCHEMA, NOTE_TAG_SCHEMA, NOTE_MENTION_SCHEMA, BACKLINK_SCHEMA } from './layer1-links';
+// Layer 1 schemas are now managed by SQLite
+
 import { EPISODE_SCHEMA } from './layer2-episodes';
 import { ENTITY_SCHEMA } from './layer2-entities';
 import { MENTIONS_SCHEMA } from './layer2-mentions';
 import { ENTITY_EDGE_SCHEMA } from './layer2-edges';
 import { NARRATIVE_HIERARCHY_SCHEMA, CAUSAL_LINK_SCHEMA } from './layer2-narrative';
 import { TEMPORAL_POINT_SCHEMA } from './layer2-temporal';
-import { 
-  COMMUNITY_SCHEMA, 
-  COMMUNITY_MEMBER_SCHEMA, 
-  GRAPH_STATS_SCHEMA, 
+import {
+  COMMUNITY_SCHEMA,
+  COMMUNITY_MEMBER_SCHEMA,
+  GRAPH_STATS_SCHEMA,
   SCOPE_PROCESSING_STATE_SCHEMA,
-  SCHEMA_VERSION_SCHEMA 
+  SCHEMA_VERSION_SCHEMA
 } from './layer2-analytics';
 import {
   BLUEPRINT_META_SCHEMA,
@@ -32,12 +31,6 @@ import {
 export const SCHEMA_VERSION = '1.1.0';
 
 const ALL_SCHEMAS = [
-  { name: 'note', schema: NOTE_SCHEMA },
-  { name: 'folder', schema: FOLDER_SCHEMA },
-  { name: 'wikilink', schema: WIKILINK_SCHEMA },
-  { name: 'note_tag', schema: NOTE_TAG_SCHEMA },
-  { name: 'note_mention', schema: NOTE_MENTION_SCHEMA },
-  { name: 'backlink', schema: BACKLINK_SCHEMA },
   { name: 'episode', schema: EPISODE_SCHEMA },
   { name: 'entity', schema: ENTITY_SCHEMA },
   { name: 'mentions', schema: MENTIONS_SCHEMA },
@@ -171,7 +164,7 @@ export function getSchemaVersion(): string | null {
 
 export async function resetSchema(): Promise<SchemaInitResult> {
   const relations = ALL_SCHEMAS.map(s => s.name);
-  
+
   for (const relation of relations) {
     try {
       cozoDb.runQuery(`:rm ${relation} {}`);

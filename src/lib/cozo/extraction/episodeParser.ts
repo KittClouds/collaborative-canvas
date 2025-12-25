@@ -1,5 +1,5 @@
 import type { JSONContent } from '@tiptap/react';
-import type { CozoEpisode } from '../types';
+import type { CozoEpisode, ExtractionEpisode } from '../types';
 import { generateId } from '@/lib/utils/ids';
 
 export interface EpisodeParseOptions {
@@ -16,8 +16,9 @@ export interface EpisodeParseOptions {
 export function parseDocumentIntoEpisodes(
     content: JSONContent,
     options: EpisodeParseOptions
-): CozoEpisode[] {
-    const episodes: CozoEpisode[] = [];
+): ExtractionEpisode[] {
+    const episodes: ExtractionEpisode[] = [];
+
     const validAt = new Date();
 
     // Walk document tree

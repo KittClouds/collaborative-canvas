@@ -24,6 +24,7 @@ export interface CausalConfig {
 export interface GraphBuildOptions {
   scope: GraphScope;
   scopeId: string;
+  childIds?: string[]; // IDs of notes (for folder scope) or folders (for vault scope)
   cooccurrence: CooccurrenceConfig;
   causal: CausalConfig;
   mergeFromParentScope: boolean;
@@ -75,26 +76,22 @@ export async function buildGraph(
       options.onProgress?.(70, `Extracted ${totalCausalLinks} causal links`);
     }
 
-    if (options.mergeFromParentScope) {
+    if (options.mergeFromParentScope && options.childIds) {
       options.onProgress?.(80, 'Merging edges from child scopes');
 
       if (options.scope === 'folder') {
-        const result = await mergeNotesIntoFolder(options.scopeId);
+        const result = await mergeNotesIntoFolder(options.scopeId, options.childIds);
         mergedEdges = result.newCount;
       } else if (options.scope === 'vault') {
-        const foldersResult = cozoDb.runQuery(`?[id] := *folder{id}`);
-        
-        if (foldersResult.rows) {
-          for (const [folderId] of foldersResult.rows) {
-            const result = await mergeEdgesAcrossScopes({
-              sourceScope: 'folder',
-              targetScope: 'vault',
-              sourceScopeId: folderId as string,
-              targetScopeId: 'global',
-              mergeStrategy: 'sum',
-            });
-            mergedEdges += result.newCount;
-          }
+        for (const folderId of options.childIds) {
+          const result = await mergeEdgesAcrossScopes({
+            sourceScope: 'folder',
+            targetScope: 'vault',
+            sourceScopeId: folderId,
+            targetScopeId: 'global',
+            mergeStrategy: 'sum',
+          });
+          mergedEdges += result.newCount;
         }
       }
 
@@ -138,6 +135,7 @@ export async function buildNoteGraph(
     onProgress: options?.onProgress,
   });
 }
+
 
 export async function buildFolderGraph(
   folderId: string,
@@ -226,7 +224,7 @@ export async function getGraphStats(
     const edgeCount = countResult.rows?.[0]?.[1] as number ?? 0;
 
     const avgDegree = entityCount > 0 ? (2 * edgeCount) / entityCount : 0;
-    const density = entityCount > 1 
+    const density = entityCount > 1
       ? (2 * edgeCount) / (entityCount * (entityCount - 1))
       : 0;
 

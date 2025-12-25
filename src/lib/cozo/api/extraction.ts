@@ -1,9 +1,12 @@
 import { processNote, processFolder, processVault } from '../extraction/batchProcessor';
 import { cozoDb } from '../db';
+import type { JSONContent } from '@tiptap/react';
 
 export interface ExtractionRequest {
     scope: 'note' | 'folder' | 'vault';
     scopeId: string;
+    content?: JSONContent; // For 'note' scope
+    notes?: Array<{ id: string; title: string; contentJson: JSONContent }>; // For 'folder' or 'vault' scope
     enableLLM?: boolean;
     llmProvider?: 'gemini' | 'openai' | 'openrouter' | 'anthropic';
     llmApiKey?: string;
@@ -48,14 +51,22 @@ export async function startExtraction(
         };
 
         if (request.scope === 'note') {
-            // Fetch note content
-            const note = await fetchNote(request.scopeId);
-            await processNote(request.scopeId, note.contentJson, options);
+            if (!request.content) {
+                throw new Error('Content is required for note extraction');
+            }
+            await processNote(request.scopeId, request.content, options);
         } else if (request.scope === 'folder') {
-            await processFolder(request.scopeId, options);
+            if (!request.notes) {
+                throw new Error('Notes are required for folder extraction');
+            }
+            await processFolder(request.scopeId, request.notes, options);
         } else {
-            await processVault(options);
+            if (!request.notes) {
+                throw new Error('Notes are required for vault extraction');
+            }
+            await processVault(request.notes, options);
         }
+
     });
 
     return {
@@ -89,10 +100,10 @@ export async function getExtractionStatus(jobId: string): Promise<ExtractionResp
 const jobs = new Map<string, any>();
 
 function generateJobId(): string {
-    return `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `job-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }
 
-function queueJob(jobId: string, fn: (onProgress: any) => Promise<void>): void {
+function queueJob(jobId: string, fn: (onProgress: (progress: number, step: string) => void) => Promise<void>): void {
     const job = {
         id: jobId,
         status: 'queued',
@@ -125,19 +136,4 @@ function queueJob(jobId: string, fn: (onProgress: any) => Promise<void>): void {
 
 function getJob(jobId: string): any {
     return jobs.get(jobId);
-}
-
-async function fetchNote(noteId: string): Promise<any> {
-    const result = await cozoDb.runQuery(`
-        ?[id, title, content_json] := *note{id, title, content_json},
-        id == $id
-    `, { id: noteId });
-    if (result.rows && result.rows.length > 0) {
-        return {
-            id: result.rows[0][0],
-            title: result.rows[0][1],
-            contentJson: result.rows[0][2]
-        };
-    }
-    throw new Error(`Note not found: ${noteId}`);
 }

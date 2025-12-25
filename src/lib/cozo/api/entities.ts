@@ -228,6 +228,31 @@ export async function getEntitiesByGroupId(groupId: string): Promise<Entity[]> {
 }
 
 /**
+ * Get mention contexts for an entity (graph metadata)
+ */
+export async function getEntityMentionContexts(
+  entityId: string
+): Promise<Array<{ noteId: string; context: string; position: number }>> {
+  const result = await cozoDb.runQuery(`
+        ?[note_id, context, char_position] := 
+          *mentions{episode_id, entity_id, context, char_position},
+          entity_id == $entity_id,
+          *episode{id: episode_id, note_id}
+        :order char_position
+        :limit 100
+    `, { entity_id: entityId });
+
+  if (!result.ok || !result.rows) return [];
+
+  return result.rows.map(([noteId, context, pos]) => ({
+    noteId,          // FK to SQLite (for UI navigation)
+    context,         // Sentence/paragraph snippet
+    position: pos,
+  }));
+}
+
+
+/**
  * Delete entity
  */
 export async function deleteEntity(entityId: string): Promise<void> {

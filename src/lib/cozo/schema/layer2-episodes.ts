@@ -5,8 +5,6 @@ export const EPISODE_SCHEMA = `
     created_at: Float default now(),
     valid_at: Float default now(),
     
-    content_text: String,
-    content_json: Json? default null,
     block_id: String? default null,
     
     group_id: String,
@@ -22,43 +20,43 @@ export const EPISODE_SCHEMA = `
 
 export const EPISODE_QUERIES = {
   upsert: `
-    ?[id, note_id, created_at, valid_at, content_text, content_json, block_id,
+    ?[id, note_id, created_at, valid_at, block_id,
       group_id, scope_type, extraction_method, processed_at, sentence_index, paragraph_index] <- 
-      [[$id, $note_id, $created_at, $valid_at, $content_text, $content_json, $block_id,
+      [[$id, $note_id, $created_at, $valid_at, $block_id,
         $group_id, $scope_type, $extraction_method, $processed_at, $sentence_index, $paragraph_index]]
     :put episode {
-      id, note_id, created_at, valid_at, content_text, content_json, block_id,
+      id, note_id, created_at, valid_at, block_id,
       group_id, scope_type, extraction_method, processed_at, sentence_index, paragraph_index
     }
   `,
 
   getByNoteId: `
-    ?[id, created_at, valid_at, content_text, content_json, block_id,
+    ?[id, created_at, valid_at, block_id,
       group_id, scope_type, extraction_method, processed_at, sentence_index, paragraph_index] := 
-      *episode{id, note_id, created_at, valid_at, content_text, content_json, block_id,
+      *episode{id, note_id, created_at, valid_at, block_id,
         group_id, scope_type, extraction_method, processed_at, sentence_index, paragraph_index},
       note_id == $note_id
   `,
 
   getByGroupId: `
-    ?[id, note_id, created_at, valid_at, content_text, block_id,
+    ?[id, note_id, created_at, valid_at, block_id,
       extraction_method, processed_at, sentence_index, paragraph_index] := 
-      *episode{id, note_id, created_at, valid_at, content_text, block_id,
+      *episode{id, note_id, created_at, valid_at, block_id,
         group_id, extraction_method, processed_at, sentence_index, paragraph_index},
       group_id == $group_id
   `,
 
   getByScope: `
-    ?[id, note_id, created_at, valid_at, content_text, block_id, group_id,
+    ?[id, note_id, created_at, valid_at, block_id, group_id,
       extraction_method, processed_at] := 
-      *episode{id, note_id, created_at, valid_at, content_text, block_id, group_id,
+      *episode{id, note_id, created_at, valid_at, block_id, group_id,
         scope_type, extraction_method, processed_at},
       scope_type == $scope_type
   `,
 
   getUnprocessed: `
-    ?[id, note_id, content_text, group_id, scope_type] := 
-      *episode{id, note_id, content_text, group_id, scope_type, processed_at},
+    ?[id, note_id, group_id, scope_type] := 
+      *episode{id, note_id, group_id, scope_type, processed_at},
       is_null(processed_at)
   `,
 
@@ -80,16 +78,16 @@ export const EPISODE_QUERIES = {
   `,
 
   getById: `
-    ?[id, note_id, created_at, valid_at, content_text, content_json, block_id,
+    ?[id, note_id, created_at, valid_at, block_id,
       group_id, scope_type, extraction_method, processed_at, sentence_index, paragraph_index] := 
-      *episode{id, note_id, created_at, valid_at, content_text, content_json, block_id,
+      *episode{id, note_id, created_at, valid_at, block_id,
         group_id, scope_type, extraction_method, processed_at, sentence_index, paragraph_index},
       id == $id
   `,
 
   getTimeTravel: `
-    ?[id, note_id, content_text, block_id, valid_at] := 
-      *episode{id, note_id, content_text, block_id, group_id, valid_at},
+    ?[id, note_id, block_id, valid_at] := 
+      *episode{id, note_id, block_id, group_id, valid_at},
       group_id == $group_id,
       valid_at <= $as_of_time
     :order -valid_at

@@ -1,14 +1,5 @@
 export const LAYER1_INDICES = `
-:create note:folder { folder_id: Uuid? => note_id: Uuid }
-:create note:entity_kind { entity_kind: String?, is_canonical_entity: Bool => note_id: Uuid }
-:create note:title { title: String => note_id: Uuid }
-
-:create folder:parent { parent_id: Uuid? => folder_id: Uuid }
-:create folder:kind { entity_kind: String?, is_typed_root: Bool => folder_id: Uuid }
-
-:create wikilink:source { source_note_id: Uuid => wikilink_id: Uuid }
-:create wikilink:target_title { target_title: String => wikilink_id: Uuid }
-:create wikilink:target_id { target_note_id: Uuid? => wikilink_id: Uuid }
+// Layer 1 indices (notes, folders, etc.) are now managed exclusively by SQLite.
 `;
 
 export const LAYER2_INDICES = `
@@ -37,32 +28,10 @@ export const LAYER2_INDICES = `
 `;
 
 export const ALL_INDICES = `
-${LAYER1_INDICES}
 ${LAYER2_INDICES}
 `;
 
 export const INDEX_QUERIES = {
-  rebuildNoteIndices: `
-    ?[folder_id, note_id] := *note{id: note_id, folder_id}
-    :replace note:folder { folder_id => note_id }
-    
-    ?[entity_kind, is_canonical_entity, note_id] := 
-      *note{id: note_id, entity_kind, is_canonical_entity}
-    :replace note:entity_kind { entity_kind, is_canonical_entity => note_id }
-    
-    ?[title, note_id] := *note{id: note_id, title}
-    :replace note:title { title => note_id }
-  `,
-
-  rebuildFolderIndices: `
-    ?[parent_id, folder_id] := *folder{id: folder_id, parent_id}
-    :replace folder:parent { parent_id => folder_id }
-    
-    ?[entity_kind, is_typed_root, folder_id] := 
-      *folder{id: folder_id, entity_kind, is_typed_root}
-    :replace folder:kind { entity_kind, is_typed_root => folder_id }
-  `,
-
   rebuildEntityIndices: `
     ?[name, group_id, entity_kind, entity_id] := 
       *entity{id: entity_id, name, group_id, entity_kind}
@@ -96,19 +65,6 @@ export const INDEX_QUERIES = {
   `,
 
   rebuildAllIndices: `
-    ?[folder_id, note_id] := *note{id: note_id, folder_id}
-    :replace note:folder { folder_id => note_id }
-    
-    ?[entity_kind, is_canonical_entity, note_id] := 
-      *note{id: note_id, entity_kind, is_canonical_entity}
-    :replace note:entity_kind { entity_kind, is_canonical_entity => note_id }
-    
-    ?[title, note_id] := *note{id: note_id, title}
-    :replace note:title { title => note_id }
-    
-    ?[parent_id, folder_id] := *folder{id: folder_id, parent_id}
-    :replace folder:parent { parent_id => folder_id }
-    
     ?[name, group_id, entity_kind, entity_id] := 
       *entity{id: entity_id, name, group_id, entity_kind}
     :replace entity:name_group { name, group_id, entity_kind => entity_id }

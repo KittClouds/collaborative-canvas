@@ -327,24 +327,21 @@ async function upsertTargetEdges(
 }
 
 export async function mergeNotesIntoFolder(
-  folderId: string
+  folderId: string,
+  noteIds: string[]
 ): Promise<MergeResult> {
-  const notesResult = cozoDb.runQuery(`
-    ?[id] := *note{id, folder_id}, folder_id == $folder_id
-  `, { folder_id: folderId });
-
-  if (!notesResult.rows || notesResult.rows.length === 0) {
+  if (noteIds.length === 0) {
     return { mergedCount: 0, newCount: 0 };
   }
 
   let totalMerged = 0;
   let totalNew = 0;
 
-  for (const [noteId] of notesResult.rows) {
+  for (const noteId of noteIds) {
     const result = await mergeEdgesAcrossScopes({
       sourceScope: 'note',
       targetScope: 'folder',
-      sourceScopeId: noteId as string,
+      sourceScopeId: noteId,
       targetScopeId: folderId,
       mergeStrategy: 'sum',
     });
@@ -356,23 +353,22 @@ export async function mergeNotesIntoFolder(
   return { mergedCount: totalMerged, newCount: totalNew };
 }
 
-export async function mergeFoldersIntoVault(): Promise<MergeResult> {
-  const foldersResult = cozoDb.runQuery(`
-    ?[id] := *folder{id}
-  `);
 
-  if (!foldersResult.rows || foldersResult.rows.length === 0) {
+export async function mergeFoldersIntoVault(
+  folderIds: string[]
+): Promise<MergeResult> {
+  if (folderIds.length === 0) {
     return { mergedCount: 0, newCount: 0 };
   }
 
   let totalMerged = 0;
   let totalNew = 0;
 
-  for (const [folderId] of foldersResult.rows) {
+  for (const folderId of folderIds) {
     const result = await mergeEdgesAcrossScopes({
       sourceScope: 'folder',
       targetScope: 'vault',
-      sourceScopeId: folderId as string,
+      sourceScopeId: folderId,
       targetScopeId: 'global',
       mergeStrategy: 'sum',
     });
@@ -383,3 +379,4 @@ export async function mergeFoldersIntoVault(): Promise<MergeResult> {
 
   return { mergedCount: totalMerged, newCount: totalNew };
 }
+

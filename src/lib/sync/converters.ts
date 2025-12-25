@@ -107,75 +107,8 @@ export function fromSyncFolder(syncFolder: SyncFolder): Folder {
   };
 }
 
-export function parseNoteRow(row: unknown[]): SyncNote {
-  const [
-    id,
-    title,
-    contentJson,
-    contentText,
-    folderId,
-    createdAt,
-    updatedAt,
-    entityKind,
-    entitySubtype,
-    entityLabel,
-    isCanonicalEntity,
-    isPinned,
-    isFavorite,
-    tags,
-  ] = row;
+// Layer 1 row parsers removed (Notes/Folders now in SQLite backbone)
 
-  return {
-    id: id as string,
-    title: title as string,
-    content: typeof contentJson === 'string' ? contentJson : JSON.stringify(contentJson || {}),
-    contentText: (contentText as string) || '',
-    folderId: (folderId as string) || null,
-    createdAt: createdAt as number,
-    updatedAt: updatedAt as number,
-    entityKind: (entityKind as SyncNote['entityKind']) || null,
-    entitySubtype: (entitySubtype as string) || null,
-    entityLabel: (entityLabel as string) || null,
-    isCanonicalEntity: Boolean(isCanonicalEntity),
-    isPinned: Boolean(isPinned),
-    isFavorite: Boolean(isFavorite),
-    tags: Array.isArray(tags) ? tags : [],
-  };
-}
-
-export function parseFolderRow(row: unknown[]): SyncFolder {
-  const [
-    id,
-    name,
-    path,
-    parentId,
-    createdAt,
-    color,
-    entityKind,
-    entitySubtype,
-    entityLabel,
-    isTypedRoot,
-    isSubtypeRoot,
-    inheritedKind,
-    inheritedSubtype,
-  ] = row;
-
-  return {
-    id: id as string,
-    name: name as string,
-    path: (path as string) || '/',
-    parentId: (parentId as string) || null,
-    createdAt: createdAt as number,
-    color: (color as string) || null,
-    entityKind: (entityKind as SyncFolder['entityKind']) || null,
-    entitySubtype: (entitySubtype as string) || null,
-    entityLabel: (entityLabel as string) || null,
-    isTypedRoot: Boolean(isTypedRoot),
-    isSubtypeRoot: Boolean(isSubtypeRoot),
-    inheritedKind: (inheritedKind as SyncFolder['inheritedKind']) || null,
-    inheritedSubtype: (inheritedSubtype as string) || null,
-  };
-}
 
 export function parseEntityRow(row: unknown[]): SyncEntity {
   const [

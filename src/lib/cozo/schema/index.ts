@@ -1,13 +1,6 @@
-export { NOTE_SCHEMA, NOTE_QUERIES } from './layer1-notes';
-export { FOLDER_SCHEMA, FOLDER_QUERIES, FOLDER_PATH_RULE } from './layer1-folders';
-export {
-  WIKILINK_SCHEMA,
-  NOTE_TAG_SCHEMA,
-  NOTE_MENTION_SCHEMA,
-  BACKLINK_SCHEMA,
-  LINKS_SCHEMA,
-  LINK_QUERIES
-} from './layer1-links';
+// Layer 1 schemas (notes, folders, etc.) are now managed exclusively by SQLite.
+// CozoDB only tracks graph metadata.
+
 
 export { EPISODE_SCHEMA, EPISODE_QUERIES, buildGroupId, parseGroupId } from './layer2-episodes';
 export {

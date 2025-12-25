@@ -1,17 +1,15 @@
 import { cozoDb } from '@/lib/cozo/db';
-import { NOTE_QUERIES } from '@/lib/cozo/schema/layer1-notes';
-import { FOLDER_QUERIES } from '@/lib/cozo/schema/layer1-folders';
 import { ENTITY_QUERIES } from '@/lib/cozo/schema/layer2-entities';
 import { ENTITY_EDGE_QUERIES } from '@/lib/cozo/schema/layer2-edges';
 import { generateId } from '@/lib/utils/ids';
 import { WriteBuffer } from './WriteBuffer';
 import { GraphProjectionStore } from './GraphProjection';
-import { syncEvents } from './events/SyncEventEmitter';
+// NOTE: Layer 1 (Notes/Folders) is now owned by SQLite.
+// CozoDB is used exclusively for Graph Metadata.
+
 import {
   extractPlainText,
   computeFolderPath,
-  parseNoteRow,
-  parseFolderRow,
   parseEntityRow,
   parseEdgeRow,
 } from './converters';
@@ -26,8 +24,8 @@ import type {
   UpdateNotePayload,
   CreateFolderPayload,
   UpdateFolderPayload,
-  CreateEdgePayload,
   UpsertEntityPayload,
+  CreateEdgePayload,
   SyncMetrics,
   GraphProjection,
 } from './types';
@@ -66,22 +64,20 @@ export class SyncEngine {
     if (!cozoDb.isReady()) {
       await cozoDb.init();
     }
+    // Hydrate ONLY graph metadata from Cozo. 
+    // Notes/Folders must be hydrated from SQLite (placeholder for now).
     await this.hydrateFromCozo();
     this.isHydrated = true;
     this.lastSyncAt = Date.now();
-    console.log(`[SyncEngine] Initialized: ${this.notes.size} notes, ${this.folders.size} folders, ${this.entities.size} entities`);
+    console.log(`[SyncEngine] Initialized: ${this.entities.size} entities, ${this.edges.size} edges`);
   }
 
   private async hydrateFromCozo(): Promise<void> {
-    const [notesResult, foldersResult, entitiesResult, edgesResult] = await Promise.all([
-      this.queryAllNotes(),
-      this.queryAllFolders(),
+    const [entitiesResult, edgesResult] = await Promise.all([
       this.queryAllEntities(),
       this.queryAllEdges(),
     ]);
 
-    notesResult.forEach(n => this.notes.set(n.id, n));
-    foldersResult.forEach(f => this.folders.set(f.id, f));
     entitiesResult.forEach(e => this.entities.set(e.id, e));
     edgesResult.forEach(e => this.edges.set(e.id, e));
 
@@ -91,38 +87,11 @@ export class SyncEngine {
     );
   }
 
-  private queryAllNotes(): SyncNote[] {
-    try {
-      const result = cozoDb.runQuery(NOTE_QUERIES.getAll);
-      if (result.rows) {
-        return result.rows.map((row: unknown[]) => parseNoteRow(row));
-      }
-    } catch (err) {
-      console.error('[SyncEngine] Failed to query notes:', err);
-    }
-    return [];
-  }
-
-  private queryAllFolders(): SyncFolder[] {
-    try {
-      const result = cozoDb.runQuery(FOLDER_QUERIES.getAll);
-      if (result.rows) {
-        return result.rows.map((row: unknown[]) => parseFolderRow(row));
-      }
-    } catch (err) {
-      console.error('[SyncEngine] Failed to query folders:', err);
-    }
-    return [];
-  }
+  // queryAllNotes and queryAllFolders REMOVED as they are no longer in CozoDB
 
   private queryAllEntities(): SyncEntity[] {
     try {
-      const result = cozoDb.runQuery(`
-        ?[id, name, entity_kind, entity_subtype, group_id, scope_type, created_at,
-          extraction_method, summary, aliases, canonical_note_id, frequency] :=
-        *entity{id, name, entity_kind, entity_subtype, group_id, scope_type, created_at,
-          extraction_method, summary, aliases, canonical_note_id, frequency}
-      `);
+      const result = cozoDb.runQuery(ENTITY_QUERIES.getAll);
       if (result.rows) {
         return result.rows.map((row: unknown[]) => parseEntityRow(row));
       }
@@ -131,6 +100,7 @@ export class SyncEngine {
     }
     return [];
   }
+
 
   private queryAllEdges(): SyncEdge[] {
     try {
@@ -166,6 +136,7 @@ export class SyncEngine {
       lastSyncAt: this.lastSyncAt,
     };
   }
+
 
   getNote(id: string): SyncNote | undefined {
     const note = this.notes.get(id);
@@ -236,20 +207,15 @@ export class SyncEngine {
 
     this.notes.set(id, note);
 
-    const mutation: Mutation<SyncNote> = {
-      id: generateId(),
-      type: 'CREATE_NOTE',
-      payload: note,
-      timestamp: now,
-      status: 'pending',
-    };
-    this.writeBuffer.enqueue(mutation);
-    this.metrics.totalMutations++;
+    // DECOUPLED: Notes are no longer stored in CozoDB.
+    // TODO: Integrate with SQLite backbone here.
+
     this.notifySubscribers();
-    syncEvents.emit('noteCreated', { id: note.id, title: note.title }, 'SyncEngine');
+    // syncEvents.emit('noteCreated', { id: note.id, title: note.title }, 'SyncEngine');
 
     return note;
   }
+
 
   updateNote(id: string, patch: Partial<Omit<SyncNote, 'id' | 'createdAt'>>): void {
     const existing = this.notes.get(id);
@@ -270,18 +236,12 @@ export class SyncEngine {
 
     this.notes.set(id, updated);
 
-    const mutation: Mutation<UpdateNotePayload> = {
-      id: generateId(),
-      type: 'UPDATE_NOTE',
-      payload: { id, patch: updated },
-      timestamp: Date.now(),
-      status: 'pending',
-    };
-    this.writeBuffer.enqueue(mutation);
-    this.metrics.totalMutations++;
+    // DECOUPLED: Notes are no longer stored in CozoDB.
+
     this.notifySubscribers();
-    syncEvents.emit('noteUpdated', { id, title: updated.title }, 'SyncEngine');
+    // syncEvents.emit('noteUpdated', { id, title: updated.title }, 'SyncEngine');
   }
+
 
   deleteNote(id: string): void {
     if (!this.notes.has(id)) {
@@ -291,18 +251,12 @@ export class SyncEngine {
 
     this.notes.delete(id);
 
-    const mutation: Mutation<string> = {
-      id: generateId(),
-      type: 'DELETE_NOTE',
-      payload: id,
-      timestamp: Date.now(),
-      status: 'pending',
-    };
-    this.writeBuffer.enqueue(mutation);
-    this.metrics.totalMutations++;
+    // DECOUPLED: Notes are no longer stored in CozoDB.
+
     this.notifySubscribers();
-    syncEvents.emit('noteDeleted', { id }, 'SyncEngine');
+    // syncEvents.emit('noteDeleted', { id }, 'SyncEngine');
   }
+
 
   createFolder(payload: CreateFolderPayload): SyncFolder {
     const now = Date.now();
@@ -332,20 +286,14 @@ export class SyncEngine {
 
     this.folders.set(id, folder);
 
-    const mutation: Mutation<SyncFolder> = {
-      id: generateId(),
-      type: 'CREATE_FOLDER',
-      payload: folder,
-      timestamp: now,
-      status: 'pending',
-    };
-    this.writeBuffer.enqueue(mutation);
-    this.metrics.totalMutations++;
+    // DECOUPLED: Folders are no longer stored in CozoDB.
+
     this.notifySubscribers();
-    syncEvents.emit('folderCreated', { id: folder.id, name: folder.name }, 'SyncEngine');
+    // syncEvents.emit('folderCreated', { id: folder.id, name: folder.name }, 'SyncEngine');
 
     return folder;
   }
+
 
   updateFolder(id: string, patch: Partial<Omit<SyncFolder, 'id' | 'createdAt'>>): void {
     const existing = this.folders.get(id);
@@ -365,18 +313,12 @@ export class SyncEngine {
 
     this.folders.set(id, updated);
 
-    const mutation: Mutation<UpdateFolderPayload> = {
-      id: generateId(),
-      type: 'UPDATE_FOLDER',
-      payload: { id, patch: updated },
-      timestamp: Date.now(),
-      status: 'pending',
-    };
-    this.writeBuffer.enqueue(mutation);
-    this.metrics.totalMutations++;
+    // DECOUPLED: Folders are no longer stored in CozoDB.
+
     this.notifySubscribers();
-    syncEvents.emit('folderUpdated', { id, name: updated.name }, 'SyncEngine');
+    // syncEvents.emit('folderUpdated', { id, name: updated.name }, 'SyncEngine');
   }
+
 
   deleteFolder(id: string): void {
     if (!this.folders.has(id)) {
@@ -385,24 +327,17 @@ export class SyncEngine {
     }
 
     this.folders.delete(id);
-
     this.notes.forEach((note, noteId) => {
       if (note.folderId === id) {
         this.notes.set(noteId, { ...note, folderId: null });
       }
     });
+    this.folders.delete(id);
 
-    const mutation: Mutation<string> = {
-      id: generateId(),
-      type: 'DELETE_FOLDER',
-      payload: id,
-      timestamp: Date.now(),
-      status: 'pending',
-    };
-    this.writeBuffer.enqueue(mutation);
-    this.metrics.totalMutations++;
+    // DECOUPLED: Folders are no longer stored in CozoDB.
+
     this.notifySubscribers();
-    syncEvents.emit('folderDeleted', { id }, 'SyncEngine');
+    // syncEvents.emit('folderDeleted', { id }, 'SyncEngine');
   }
 
   upsertEntity(payload: UpsertEntityPayload): SyncEntity {
@@ -574,46 +509,12 @@ export class SyncEngine {
   private async executeBatch(mutations: Mutation[]): Promise<void> {
     const startTime = Date.now();
 
-    const noteCreates = mutations.filter(m => m.type === 'CREATE_NOTE');
-    const noteUpdates = mutations.filter(m => m.type === 'UPDATE_NOTE');
-    const noteDeletes = mutations.filter(m => m.type === 'DELETE_NOTE');
-    const folderCreates = mutations.filter(m => m.type === 'CREATE_FOLDER');
-    const folderUpdates = mutations.filter(m => m.type === 'UPDATE_FOLDER');
-    const folderDeletes = mutations.filter(m => m.type === 'DELETE_FOLDER');
+    // executeBatch now only processes graph metadata (entities, edges).
+    // Note/Folder mutations are handled by SQLite backbone (external).
     const entityUpserts = mutations.filter(m => m.type === 'UPSERT_ENTITY');
     const entityDeletes = mutations.filter(m => m.type === 'DELETE_ENTITY');
     const edgeCreates = mutations.filter(m => m.type === 'CREATE_EDGE');
     const edgeDeletes = mutations.filter(m => m.type === 'DELETE_EDGE');
-
-    for (const m of noteCreates) {
-      const note = m.payload as SyncNote;
-      this.executeNoteUpsert(note);
-    }
-
-    for (const m of noteUpdates) {
-      const { patch } = m.payload as UpdateNotePayload;
-      this.executeNoteUpsert(patch as SyncNote);
-    }
-
-    for (const m of noteDeletes) {
-      const id = m.payload as string;
-      this.executeNoteDelete(id);
-    }
-
-    for (const m of folderCreates) {
-      const folder = m.payload as SyncFolder;
-      this.executeFolderUpsert(folder);
-    }
-
-    for (const m of folderUpdates) {
-      const { patch } = m.payload as UpdateFolderPayload;
-      this.executeFolderUpsert(patch as SyncFolder);
-    }
-
-    for (const m of folderDeletes) {
-      const id = m.payload as string;
-      this.executeFolderDelete(id);
-    }
 
     for (const m of entityUpserts) {
       const entity = m.payload as SyncEntity;
@@ -643,84 +544,14 @@ export class SyncEngine {
     this.lastSyncAt = Date.now();
   }
 
-  private executeNoteUpsert(note: SyncNote): void {
-    try {
-      let contentJson: unknown;
-      try {
-        contentJson = JSON.parse(note.content);
-      } catch {
-        contentJson = {};
-      }
 
-      cozoDb.runQuery(NOTE_QUERIES.upsert, {
-        id: note.id,
-        title: note.title,
-        content_json: contentJson,
-        content_text: note.contentText,
-        folder_id: note.folderId,
-        created_at: note.createdAt,
-        updated_at: note.updatedAt,
-        entity_kind: note.entityKind,
-        entity_subtype: note.entitySubtype,
-        entity_label: note.entityLabel,
-        is_canonical_entity: note.isCanonicalEntity,
-        is_pinned: note.isPinned,
-        is_favorite: note.isFavorite,
-        tags: note.tags,
-        attributes: null,
-      });
-    } catch (err) {
-      console.error('[SyncEngine] Failed to upsert note:', err);
-      throw err;
-    }
-  }
-
-  private executeNoteDelete(id: string): void {
-    try {
-      cozoDb.runQuery(NOTE_QUERIES.delete, { id });
-    } catch (err) {
-      console.error('[SyncEngine] Failed to delete note:', err);
-      throw err;
-    }
-  }
-
-  private executeFolderUpsert(folder: SyncFolder): void {
-    try {
-      cozoDb.runQuery(FOLDER_QUERIES.upsert, {
-        id: folder.id,
-        name: folder.name,
-        path: folder.path,
-        parent_id: folder.parentId,
-        created_at: folder.createdAt,
-        color: folder.color,
-        entity_kind: folder.entityKind,
-        entity_subtype: folder.entitySubtype,
-        entity_label: folder.entityLabel,
-        is_typed_root: folder.isTypedRoot,
-        is_subtype_root: folder.isSubtypeRoot,
-        inherited_kind: folder.inheritedKind,
-        inherited_subtype: folder.inheritedSubtype,
-      });
-    } catch (err) {
-      console.error('[SyncEngine] Failed to upsert folder:', err);
-      throw err;
-    }
-  }
-
-  private executeFolderDelete(id: string): void {
-    try {
-      cozoDb.runQuery(FOLDER_QUERIES.delete, { id });
-    } catch (err) {
-      console.error('[SyncEngine] Failed to delete folder:', err);
-      throw err;
-    }
-  }
 
   private executeEntityUpsert(entity: SyncEntity): void {
     try {
       cozoDb.runQuery(ENTITY_QUERIES.upsert, {
         id: entity.id,
         name: entity.name,
+        normalized_name: entity.normalizedName || entity.name.toLowerCase().trim(),
         entity_kind: entity.entityKind,
         entity_subtype: entity.entitySubtype,
         group_id: entity.groupId,
@@ -738,12 +569,20 @@ export class SyncEngine {
         attributes: null,
         temporal_span: null,
         participants: [],
+        source: entity.source || 'manual',
+        confidence: entity.confidence ?? 1.0,
+        blueprint_type_id: entity.blueprintTypeId,
+        blueprint_version_id: entity.blueprintVersionId,
+        blueprint_fields: entity.blueprintFields,
+        provenance_data: entity.provenanceData || [],
+        alternate_types: entity.alternateTypes || [],
       });
     } catch (err) {
       console.error('[SyncEngine] Failed to upsert entity:', err);
       throw err;
     }
   }
+
 
   private executeEntityDelete(id: string): void {
     try {

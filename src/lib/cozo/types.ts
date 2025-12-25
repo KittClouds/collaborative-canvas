@@ -20,84 +20,26 @@ export function parseScopeIdentifier(groupId: string): ScopeIdentifier {
   };
 }
 
-export interface CozoNote {
+/**
+ * Graph Extraction Input (received from SQLite backbone)
+ */
+export interface GraphExtractionInput {
   id: string;
   title: string;
   contentJson: object;
-  contentText: string;
   folderId?: string;
-  createdAt: Date;
-  updatedAt: Date;
-  entityKind?: string;
-  entitySubtype?: string;
-  entityLabel?: string;
-  isCanonicalEntity: boolean;
-  isPinned: boolean;
-  isFavorite: boolean;
-  tags: string[];
-  attributes?: Record<string, unknown>;
+  groupId: string;
 }
 
-export interface CozoFolder {
-  id: string;
-  name: string;
-  path: string;
-  parentId?: string;
-  createdAt: Date;
-  color?: string;
-  entityKind?: string;
-  entitySubtype?: string;
-  entityLabel?: string;
-  isTypedRoot: boolean;
-  isSubtypeRoot: boolean;
-  inheritedKind?: string;
-  inheritedSubtype?: string;
-}
-
-export interface CozoWikilink {
-  id: string;
-  sourceNoteId: string;
-  targetTitle: string;
-  targetNoteId?: string;
-  displayText?: string;
-  linkType: 'wikilink' | 'entity' | 'mention';
-  context?: string;
-  charPosition?: number;
-  createdAt: Date;
-}
-
-export interface CozoNoteTag {
-  noteId: string;
-  tag: string;
-  createdAt: Date;
-}
-
-export interface CozoNoteMention {
-  id: string;
-  noteId: string;
-  mentionTarget: string;
-  context?: string;
-  charPosition?: number;
-  createdAt: Date;
-}
-
-export interface CozoBacklink {
-  id: string;
-  sourceNoteId: string;
-  targetTitle: string;
-  targetNoteId?: string;
-  context?: string;
-  createdAt: Date;
-}
 
 export interface CozoEpisode {
   id: string;
   noteId: string;
   createdAt: Date;
   validAt: Date;
-  contentText: string;
-  contentJson?: object;
+  // Content removed: Cozo only stores graph metadata
   blockId?: string;
+
   groupId: string;
   scopeType: GraphScope;
   extractionMethod: 'regex' | 'llm' | 'manual';
@@ -105,6 +47,15 @@ export interface CozoEpisode {
   sentenceIndex?: number;
   paragraphIndex?: number;
 }
+
+/**
+ * In-memory episode with content for extraction processing
+ */
+export interface ExtractionEpisode extends CozoEpisode {
+  contentText: string;
+  contentJson?: object;
+}
+
 
 export const COZO_ENTITY_KINDS = [
   'CHARACTER',
@@ -197,7 +148,7 @@ export interface CozoCausalLink {
   createdAt: Date;
 }
 
-export type TemporalGranularity = 
+export type TemporalGranularity =
   | 'precise'
   | 'datetime'
   | 'date'
@@ -205,7 +156,7 @@ export type TemporalGranularity =
   | 'sequential'
   | 'abstract';
 
-export type TimeOfDay = 
+export type TimeOfDay =
   | 'dawn'
   | 'morning'
   | 'afternoon'
@@ -213,7 +164,7 @@ export type TimeOfDay =
   | 'night'
   | 'midnight';
 
-export type DurationUnit = 
+export type DurationUnit =
   | 'seconds'
   | 'minutes'
   | 'hours'
@@ -222,7 +173,7 @@ export type DurationUnit =
   | 'months'
   | 'years';
 
-export type TimeSource = 
+export type TimeSource =
   | 'explicit'
   | 'inferred'
   | 'contextual'
@@ -313,43 +264,8 @@ export interface CozoQueryResult<T = unknown> {
   message?: string;
 }
 
-export function mapRowToNote(row: unknown[]): CozoNote {
-  return {
-    id: row[0] as string,
-    title: row[1] as string,
-    contentJson: row[2] as object,
-    contentText: row[3] as string,
-    folderId: row[4] as string | undefined,
-    createdAt: new Date(row[5] as number),
-    updatedAt: new Date(row[6] as number),
-    entityKind: row[7] as string | undefined,
-    entitySubtype: row[8] as string | undefined,
-    entityLabel: row[9] as string | undefined,
-    isCanonicalEntity: row[10] as boolean,
-    isPinned: row[11] as boolean,
-    isFavorite: row[12] as boolean,
-    tags: row[13] as string[],
-    attributes: row[14] as Record<string, unknown> | undefined,
-  };
-}
+// Layer 1 mapping functions removed
 
-export function mapRowToFolder(row: unknown[]): CozoFolder {
-  return {
-    id: row[0] as string,
-    name: row[1] as string,
-    path: row[2] as string,
-    parentId: row[3] as string | undefined,
-    createdAt: new Date(row[4] as number),
-    color: row[5] as string | undefined,
-    entityKind: row[6] as string | undefined,
-    entitySubtype: row[7] as string | undefined,
-    entityLabel: row[8] as string | undefined,
-    isTypedRoot: row[9] as boolean,
-    isSubtypeRoot: row[10] as boolean,
-    inheritedKind: row[11] as string | undefined,
-    inheritedSubtype: row[12] as string | undefined,
-  };
-}
 
 export function mapRowToEntity(row: unknown[]): CozoEntity {
   return {
