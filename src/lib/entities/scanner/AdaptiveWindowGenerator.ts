@@ -9,6 +9,7 @@
 
 import { entityRegistry } from '../entity-registry';
 import { PrefixTrie } from './PrefixTrie';
+import { getContextExtractor } from './ContextExtractor';
 
 export interface EntityCandidate {
     text: string;           // Original text span
@@ -126,10 +127,10 @@ export class AdaptiveWindowGenerator {
         const lastToken = tokens[tokens.length - 1];
         const endPos = lastToken.position + lastToken.token.length;
 
-        // Extract context (±50 chars)
-        const contextStart = Math.max(0, startPos - 50);
-        const contextEnd = Math.min(this.text.length, endPos + 50);
-        const context = this.text.slice(contextStart, contextEnd);
+        // Extract context (using sentence boundaries)
+        const extractor = getContextExtractor();
+        const extraction = extractor.extractContext(this.text, startPos, endPos, 0); // Window = 0 (just the sentence)
+        const context = extraction.snippet;
 
         // Merge entity IDs from all tokens
         const entityIds = new Set<string>();

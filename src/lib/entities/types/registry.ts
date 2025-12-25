@@ -62,6 +62,7 @@ interface ScanResult {
     matchedEntities: Array<{
         entity: RegisteredEntity;
         positions: number[];
+        representativeContext?: string;
     }>;
     relationships: EntityRelationship[];
     coOccurrences: CoOccurrencePattern[];

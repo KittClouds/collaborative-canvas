@@ -12,6 +12,8 @@ import {
 import type { UnifiedGraph } from '@/lib/graph/UnifiedGraph';
 import type { UnifiedNode, NodeId, NodeType } from '@/lib/graph/types';
 import type { EntityKind } from '@/lib/entities/entityTypes';
+import { getWinkTokenizer } from '@/lib/resorank/WinkTokenizer';
+import { getSnippetGenerator, type Snippet } from '@/lib/resorank/SnippetGenerator';
 
 const FIELD_LABEL = 0;
 const FIELD_CONTENT = 1;
@@ -32,6 +34,7 @@ export interface SearchResult {
   score: number;
   graphBoost: number;
   finalScore: number;
+  snippets?: Snippet[];
   explanation?: ResoRankExplanation;
 }
 
@@ -46,6 +49,8 @@ export class ResoRankSearchQueries {
   private graph: UnifiedGraph;
   private scorer: ResoRankScorer<NodeId> | null = null;
   private indexed = false;
+  private winkTokenizer = getWinkTokenizer();
+  private snippetGen = getSnippetGenerator();
   private corpusStats: CorpusStatistics;
 
   constructor() {
@@ -64,18 +69,20 @@ export class ResoRankSearchQueries {
   private getScorer(): ResoRankScorer<NodeId> {
     if (!this.scorer) {
       this.scorer = createPrecisionScorer<NodeId>(this.corpusStats, {
-        k1: 1.2,
-        proximityAlpha: 0.5,
-        maxSegments: 16,
-        proximityDecayLambda: 0.5,
-        fieldParams: new Map<number, FieldParams>([
-          [FIELD_LABEL, { weight: 2.0, b: 0.75 }],
-          [FIELD_CONTENT, { weight: 1.0, b: 0.75 }],
-          [FIELD_TAGS, { weight: 1.5, b: 0.50 }],
-        ]),
-        idfProximityScale: 5.0,
-        enablePhraseBoost: true,
-        phraseBoostMultiplier: 1.5,
+        config: {
+          k1: 1.2,
+          proximityAlpha: 0.5,
+          maxSegments: 16,
+          proximityDecayLambda: 0.5,
+          fieldParams: new Map<number, FieldParams>([
+            [FIELD_LABEL, { weight: 2.0, b: 0.75 }],
+            [FIELD_CONTENT, { weight: 1.0, b: 0.75 }],
+            [FIELD_TAGS, { weight: 1.5, b: 0.50 }],
+          ]),
+          idfProximityScale: 5.0,
+          enablePhraseBoost: true,
+          phraseBoostMultiplier: 1.5,
+        }
       });
     }
     return this.scorer;
@@ -83,7 +90,7 @@ export class ResoRankSearchQueries {
 
   buildIndex(): void {
     const startTime = performance.now();
-    
+
     this.scorer = null;
     const scorer = this.getScorer();
 
@@ -209,7 +216,7 @@ export class ResoRankSearchQueries {
 
     const startTime = performance.now();
     const queryTokens = this.tokenize(query);
-    
+
     if (queryTokens.length === 0) {
       return [];
     }
@@ -240,6 +247,18 @@ export class ResoRankSearchQueries {
 
     results.sort((a, b) => b.finalScore - a.finalScore);
     results = results.slice(0, limit);
+
+    // Generate snippets
+    for (const result of results) {
+      const content = result.node.data.content
+        ? this.extractPlainText(result.node.data.content)
+        : result.node.data.label || '';
+
+      result.snippets = this.snippetGen.generate(content, queryTokens, {
+        maxSnippets: 2,
+        windowSentences: 1
+      });
+    }
 
     const elapsed = performance.now() - startTime;
     console.log(`Search "${query}": ${results.length} results in ${elapsed.toFixed(2)}ms`);
@@ -281,7 +300,21 @@ export class ResoRankSearchQueries {
     }
 
     results.sort((a, b) => b.finalScore - a.finalScore);
-    return results.slice(0, limit);
+    results = results.slice(0, limit);
+
+    // Generate snippets
+    for (const result of results) {
+      const content = result.node.data.content
+        ? this.extractPlainText(result.node.data.content)
+        : result.node.data.label || '';
+
+      result.snippets = this.snippetGen.generate(content, queryTokens, {
+        maxSnippets: 2,
+        windowSentences: 1
+      });
+    }
+
+    return results;
   }
 
   searchNotes(query: string, folderId?: NodeId, recursive?: boolean): SearchResult[] {
@@ -304,7 +337,7 @@ export class ResoRankSearchQueries {
 
     const cy = this.graph.getInstance();
     const centerNode = cy.getElementById(nodeId);
-    
+
     if (!centerNode.length) return results;
 
     const nearbyIds = new Set<NodeId>();
@@ -312,7 +345,7 @@ export class ResoRankSearchQueries {
 
     for (let i = 0; i < hops; i++) {
       const neighbors = current.neighborhood('node');
-      neighbors.forEach((n: any) => nearbyIds.add(n.id()));
+      neighbors.forEach((n: any) => { nearbyIds.add(n.id()); });
       current = neighbors;
     }
 
@@ -405,7 +438,7 @@ export class ResoRankSearchQueries {
 
     const processTokens = (tokens: string[], fieldId: number, offset: number) => {
       const fieldTf = new Map<string, number>();
-      
+
       tokens.forEach((token, idx) => {
         fieldTf.set(token, (fieldTf.get(token) || 0) + 1);
 
@@ -450,18 +483,16 @@ export class ResoRankSearchQueries {
   }
 
   private tokenize(text: string): string[] {
-    if (!text) return [];
-    
-    return text
-      .toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(t => t.length > 1);
+    return this.winkTokenizer.tokenize(text, {
+      lemmatize: true,
+      filterStopWords: true,
+      extractPhrases: true  // ✅ "machine learning" as single token
+    });
   }
 
   private extractPlainText(content: string): string {
     if (!content) return '';
-    
+
     try {
       const doc = JSON.parse(content);
       return this.extractTextFromNode(doc);
@@ -472,7 +503,7 @@ export class ResoRankSearchQueries {
 
   private extractTextFromNode(node: unknown): string {
     if (typeof node !== 'object' || node === null) return '';
-    
+
     const obj = node as Record<string, unknown>;
     if (obj.type === 'text') {
       return (obj.text as string) || '';

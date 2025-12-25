@@ -56,7 +56,8 @@ export class ConfidenceScorer {
             } else {
                 matches.push({
                     entity: candidate.entity,
-                    positions: [...candidate.positions]
+                    positions: [...candidate.positions],
+                    representativeContext: candidate.candidate.context
                 });
             }
         }

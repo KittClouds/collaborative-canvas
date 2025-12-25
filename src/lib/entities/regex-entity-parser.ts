@@ -12,6 +12,7 @@
 import type { JSONContent } from '@tiptap/react';
 import type { EntityKind } from './entityTypes';
 import type { ParsedEntity } from './types/registry';
+import { getContextExtractor } from './scanner/ContextExtractor';
 
 export class RegexEntityParser {
     /**
@@ -40,7 +41,9 @@ export class RegexEntityParser {
             };
 
             // Extract surrounding context
-            const context = this.extractContext(text, position.start, 150);
+            const contextExtractor = getContextExtractor();
+            const extraction = contextExtractor.extractContext(text, position.start, position.end, 1);
+            const context = extraction.snippet;
 
             // Parse metadata/attributes JSON if present
             let metadata: Record<string, any> | undefined;
@@ -85,24 +88,6 @@ export class RegexEntityParser {
         return '';
     }
 
-    /**
-     * Extract surrounding context for entity
-     * @param text - Full text
-     * @param position - Position of entity in text
-     * @param radius - Characters before/after to include
-     */
-    private extractContext(text: string, position: number, radius: number): string {
-        const start = Math.max(0, position - radius);
-        const end = Math.min(text.length, position + radius);
-
-        let context = text.slice(start, end).trim();
-
-        // Add ellipsis if truncated
-        if (start > 0) context = '...' + context;
-        if (end < text.length) context = context + '...';
-
-        return context;
-    }
 }
 
 // Singleton instance
