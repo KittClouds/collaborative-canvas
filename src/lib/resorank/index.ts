@@ -838,10 +838,12 @@ export class ResoRankScorer<K extends Key = string> {
      * @returns Number of entries pruned
      */
     pruneEntropyCache(minDocFrequency: number = 2): number {
-        // EntropyCache does NOT support key iteration publicly yet.
-        // Assuming LRU cleanup is sufficient or we create a new prune method in LazyCache.
-        // For now, no-op or clear if drastic.
-        return 0; // Pruning handled by LRU eviction in MemoryManager
+        return this.lazyEntropyCache.prune((term: string) => {
+            const termDocs = this.tokenIndex.get(term);
+            if (!termDocs) return false;
+            const firstMeta = termDocs.values().next().value;
+            return firstMeta && firstMeta.corpusDocFrequency >= minDocFrequency;
+        });
     }
 
     /**

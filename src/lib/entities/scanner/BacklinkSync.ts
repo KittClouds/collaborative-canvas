@@ -8,9 +8,9 @@
  * - Cross-document relationships (RelationshipRegistry)
  */
 
-import { entityRegistry } from '../entity-registry';
-import { relationshipRegistry } from '../../relationships/relationship-registry';
-import type { Note } from '@/contexts/NotesContext';
+import { entityRegistry } from '@/lib/entities';
+import { relationshipRegistry } from '@/lib/relationships';
+import type { Note } from '../../../contexts/NotesContext';
 
 export interface ComputedLink {
     noteId: string;

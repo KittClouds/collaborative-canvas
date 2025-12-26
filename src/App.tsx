@@ -15,63 +15,71 @@ import { initializeSQLiteAndHydrate } from "@/lib/db";
 const queryClient = new QueryClient();
 
 const App = () => {
-  const [storageReady, setStorageReady] = useState(false);
-  const [initStatus, setInitStatus] = useState("Initializing...");
+    const [storageReady, setStorageReady] = useState(false);
+    const [initStatus, setInitStatus] = useState("Initializing...");
 
-  useEffect(() => {
-    const initStorage = async () => {
-      try {
-        setInitStatus("Initializing SQLite persistence...");
-        const { nodesLoaded, embeddingsLoaded } = await initializeSQLiteAndHydrate();
-        console.log(`SQLite initialized: ${nodesLoaded} nodes, ${embeddingsLoaded} embeddings`);
+    useEffect(() => {
+        const initStorage = async () => {
+            try {
+                // Initialize Unified Registry (CozoDB)
+                setInitStatus("Initializing knowledge graph...");
+                const { entityRegistry, relationshipRegistry } = await import("@/lib/cozo/graph/adapters");
+                await entityRegistry.init();
+                await relationshipRegistry.init();
+                console.log("Unified Registry initialized");
 
-        setInitStatus("Initializing storage service...");
-        await initializeStorage();
-        console.log("Storage service initialized");
+                // Initialize Legacy SQLite (if needed for other components)
+                setInitStatus("Initializing legacy storage...");
+                const { nodesLoaded, embeddingsLoaded } = await initializeSQLiteAndHydrate();
+                console.log(`SQLite initialized: ${nodesLoaded} nodes, ${embeddingsLoaded} embeddings`);
 
-        const blueprintStore = getBlueprintStore();
-        await blueprintStore.initialize();
-        console.log("Blueprint store initialized");
+                setInitStatus("Initializing storage service...");
+                await initializeStorage();
+                console.log("Storage service initialized");
 
-        setStorageReady(true);
-      } catch (e) {
-        console.error("Storage initialization failed:", e);
-        setStorageReady(true);
-      }
-    };
-    initStorage();
-  }, []);
+                const blueprintStore = getBlueprintStore();
+                await blueprintStore.initialize();
+                console.log("Blueprint store initialized");
 
-  if (!storageReady) {
+                setStorageReady(true);
+            } catch (e) {
+                console.error("Storage initialization failed:", e);
+                setStorageReady(true);
+            }
+        };
+        initStorage();
+    }, []);
+
+    if (!storageReady) {
+        return (
+            <div className="flex items-center justify-center h-screen">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">{initStatus}</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">{initStatus}</p>
-        </div>
-      </div>
+        <QueryClientProvider client={queryClient}>
+            <TooltipProvider>
+                <NERProvider>
+                    <BlueprintHubProvider>
+                        <Toaster />
+                        <Sonner />
+                        <BlueprintHubPanel />
+                        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                            <Routes>
+                                <Route path="/" element={<Index />} />
+                                <Route path="*" element={<NotFound />} />
+                            </Routes>
+                        </BrowserRouter>
+                    </BlueprintHubProvider>
+                </NERProvider>
+            </TooltipProvider>
+        </QueryClientProvider>
     );
-  }
-
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <NERProvider>
-          <BlueprintHubProvider>
-            <Toaster />
-            <Sonner />
-            <BlueprintHubPanel />
-            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </BlueprintHubProvider>
-        </NERProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
 };
 
 export default App;

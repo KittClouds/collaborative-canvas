@@ -101,4 +101,38 @@ export class EntropyCache {
         this.cache.clear();
         this.accessOrder = [];
     }
+
+    has(term: string): boolean {
+        return this.cache.has(term);
+    }
+
+    getCachedValue(term: string): number | undefined {
+        return this.cache.get(term);
+    }
+
+    prune(shouldKeep: (term: string) => boolean): number {
+        let pruned = 0;
+        const toRemove: string[] = [];
+        
+        for (const term of this.cache.keys()) {
+            if (!shouldKeep(term)) {
+                toRemove.push(term);
+            }
+        }
+        
+        for (const term of toRemove) {
+            this.cache.delete(term);
+            const idx = this.accessOrder.indexOf(term);
+            if (idx !== -1) {
+                this.accessOrder.splice(idx, 1);
+            }
+            pruned++;
+        }
+        
+        return pruned;
+    }
+
+    entries(): IterableIterator<[string, number]> {
+        return this.cache.entries();
+    }
 }

@@ -11,12 +11,11 @@
  */
 
 import { TimeParser } from '@/lib/timeline/timeParser';
-import { relationshipRegistry } from '../relationship-registry';
-import { RelationshipSource, type RelationshipInput, type RelationshipProvenance } from '../types';
+import { relationshipRegistry, RelationshipSource, type RelationshipInput, type RelationshipProvenance } from '@/lib/relationships';
 import type { TemporalPoint, TimeGranularity, TemporalSpan } from '@/types/temporal';
-import type { Folder, Note } from '@/contexts/NotesContext';
+import type { Folder, Note } from '../../../contexts/NotesContext';
 
-export type TemporalRelationshipType = 
+export type TemporalRelationshipType =
     | 'PRECEDES'
     | 'FOLLOWS'
     | 'CONCURRENT'
@@ -195,7 +194,7 @@ export class TimelineRelationshipExtractor {
         const startTime = performance.now();
         const relationships: TemporalRelationship[] = [];
 
-        const temporalEntities = entities.filter(e => 
+        const temporalEntities = entities.filter(e =>
             e.temporal?.start || e.sequence !== undefined
         );
 
@@ -214,8 +213,8 @@ export class TimelineRelationshipExtractor {
 
             if (comparison === null) continue;
 
-            const granularity = current.temporal?.start?.granularity || 
-                               (current.sequence !== undefined ? 'sequential' : 'abstract');
+            const granularity = current.temporal?.start?.granularity ||
+                (current.sequence !== undefined ? 'sequential' : 'abstract');
             const confidence = this.calculateConfidence(granularity);
 
             if (comparison < 0) {
@@ -267,7 +266,7 @@ export class TimelineRelationshipExtractor {
         const temporalExpressions = this.findTemporalExpressions(content);
 
         for (const expr of temporalExpressions) {
-            const nearbyEntities = entityMentions.filter(e => 
+            const nearbyEntities = entityMentions.filter(e =>
                 Math.abs(e.start - expr.position) < 200 ||
                 Math.abs(e.end - expr.position) < 200
             );
@@ -275,7 +274,7 @@ export class TimelineRelationshipExtractor {
             if (nearbyEntities.length < 2) continue;
 
             const sorted = nearbyEntities.sort((a, b) => a.start - b.start);
-            
+
             for (let i = 0; i < sorted.length - 1; i++) {
                 const type = this.inferRelationshipFromExpression(expr.text);
                 if (!type) continue;
@@ -557,12 +556,12 @@ export class TimelineRelationshipExtractor {
             granularity: TimeGranularity;
             confidence: number;
         }> = [
-            { pattern: /\b(before|after|following|prior to|preceding)\s+/gi, granularity: 'relative', confidence: 0.75 },
-            { pattern: /\b(during|while|throughout)\s+/gi, granularity: 'relative', confidence: 0.70 },
-            { pattern: /\b(at the same time|simultaneously|meanwhile|concurrently)\b/gi, granularity: 'abstract', confidence: 0.65 },
-            { pattern: /\b(\d+)\s+(days?|weeks?|months?|years?)\s+(before|after|later|earlier)\b/gi, granularity: 'relative', confidence: 0.80 },
-            { pattern: /\b(chapter|act|scene)\s+(\d+)/gi, granularity: 'sequential', confidence: 0.90 },
-        ];
+                { pattern: /\b(before|after|following|prior to|preceding)\s+/gi, granularity: 'relative', confidence: 0.75 },
+                { pattern: /\b(during|while|throughout)\s+/gi, granularity: 'relative', confidence: 0.70 },
+                { pattern: /\b(at the same time|simultaneously|meanwhile|concurrently)\b/gi, granularity: 'abstract', confidence: 0.65 },
+                { pattern: /\b(\d+)\s+(days?|weeks?|months?|years?)\s+(before|after|later|earlier)\b/gi, granularity: 'relative', confidence: 0.80 },
+                { pattern: /\b(chapter|act|scene)\s+(\d+)/gi, granularity: 'sequential', confidence: 0.90 },
+            ];
 
         for (const { pattern, granularity, confidence } of patterns) {
             let match;

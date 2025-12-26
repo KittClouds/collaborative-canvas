@@ -28,4 +28,14 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: "esnext",
   },
+  test: {
+    setupFiles: ['./src/test/vitest.setup.ts'],
+    environment: 'node',
+    alias: {
+      'cozo-lib-wasm': path.resolve(__dirname, './src/test/__mocks__/cozo-lib-wasm.ts'),
+    },
+    deps: {
+      inline: ['cozo-lib-wasm'],
+    },
+  },
 }));

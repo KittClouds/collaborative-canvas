@@ -1,83 +1,15 @@
 /**
- * Relationship Engine - Main Exports
+ * Relationship System Exports
  * 
- * Unified relationship management system for the knowledge graph.
+ * Central entry point for relationship management.
+ * Redirects to the new Cozo-native adapter for the unified registry.
  */
 
-export {
-    RelationshipSource,
-    SOURCE_WEIGHTS,
-    type UnifiedRelationship,
-    type RelationshipProvenance,
-    type RelationshipQuery,
-    type RelationshipInput,
-    type IntegrityIssue,
-    type RepairResult,
-    type RelationshipStats
-} from './types';
+// Export types
+export * from './types';
 
-export {
-    RelationshipRegistry,
-    relationshipRegistry
-} from './relationship-registry';
+// Export registry instance (from new adapter)
+export { relationshipRegistry } from '@/lib/cozo/graph/adapters';
 
-export * from './extractors';
-
-export * from './adapters';
-
-// ==================== UNIFIED EXTRACTION ENGINE ====================
-
-export {
-    UnifiedRelationshipEngine,
-    getUnifiedRelationshipEngine,
-    resetUnifiedRelationshipEngine,
-    SVOExtractor,
-    PrepExtractor,
-    PossessionExtractor,
-    CoOccurrenceExtractor
-} from './unified';
-
-// ==================== CORE UTILITIES ====================
-
-export {
-    DocumentContext,
-    EntityMentionResolver,
-    type WinkAnalysis,
-    type EntityMention,
-    type VerbOccurrence,
-    type PrepOccurrence,
-    type PossessiveOccurrence
-} from './core';
-
-// ==================== RELATIONSHIP RULES ====================
-
-export {
-    inferRelationshipType,
-    VERB_PATTERN_RULES,
-    PREP_PATTERN_RULES,
-    POSSESSIVE_RULES,
-    RELATIONSHIP_TYPE_RULES,
-    type RelationshipTypeRule,
-    type VerbPatternRule,
-    type PrepPatternRule,
-    type PossessiveTypeRule
-} from './rules';
-
-// ==================== UNIFIED TYPES ====================
-
-export type {
-    ExtractionPattern,
-    EntityRef,
-    ExtractionContext,
-    ExtractionMetadata,
-    ExtractedRelationship,
-    CoOccurrenceEntityRef,
-    UnifiedCoOccurrence,
-    ContextStats,
-    ExtractionStats,
-    ExtractionResult,
-    CoOccurrence,
-    RelationshipPattern
-} from './unified-types';
-
-export { tolegacyCoOccurrence } from './unified-types';
+// Export extractors (optional, based on usage)
+export * from './RelationshipExtractor';

@@ -318,11 +318,17 @@ const RichEditor = ({
   // Parse content to JSON if needed
   const parseContent = useCallback((contentStr: string) => {
     try {
+      if (!contentStr) {
+        return {
+          type: 'doc',
+          content: [{ type: 'paragraph' }],
+        };
+      }
       return typeof contentStr === 'string' ? JSON.parse(contentStr) : contentStr;
     } catch {
       return {
         type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: contentStr || '' }] }],
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: contentStr }] }],
       };
     }
   }, []);

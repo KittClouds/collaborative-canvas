@@ -6,7 +6,6 @@ export { parseNoteConnectionsFromDocument, hasRawEntitySyntax } from './document
 
 // Phase 0: New type exports
 export type {
-    RegisteredEntity,
     ParsedEntity,
     EntityRelationship,
     CoOccurrencePattern,
@@ -14,5 +13,7 @@ export type {
 } from './types/registry';
 
 // Phase 1: New class exports (stub for now)
-export * from './entity-registry';
+// Re-export from Cozo adapters
+export { entityRegistry } from '@/lib/cozo/graph/adapters';
+export type { RegisteredEntity } from '@/lib/cozo/graph/adapters';
 export * from './regex-entity-parser';

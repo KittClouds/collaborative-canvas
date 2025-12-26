@@ -347,6 +347,89 @@ export class LinkIndex {
 
     return stats;
   }
+
+  /**
+   * Get global entity statistics across the entire vault
+   */
+  getAllEntityStats(): Array<{
+    entityKind: EntityKind;
+    entityLabel: string;
+    mentionsInThisNote: number; // Always 0 for global context
+    mentionsAcrossVault: number;
+    appearanceCount: number;
+  }> {
+    const globalStats = new Map<string, { kind: EntityKind; label: string; count: number; appearances: number }>();
+
+    this.backlinkMap.forEach((backlinks, key) => {
+      // Check if this key represents an entity
+      if (key.startsWith('entity:')) {
+        const parts = key.split(':');
+        if (parts.length >= 3) {
+          const kind = parts[1] as EntityKind;
+          // The label might contain colons, so join the rest
+          const label = parts.slice(2).join(':');
+          // actually normalizeTitle was used for key, so label is lowercased. 
+          // We need original casing? 
+          // backlinkMap keys are normalized. We might lose original casing if we just parse the key.
+          // However, backlinks[0].targetTitle has the preserved casing usually?
+          // backlinkInfo has sourceNoteTitle, but not targetTitle.
+          // BUT outgoing links have targetTitle.
+
+          // A better approach: 
+          // Iterate backlinkMap. For each key that is an entity...
+          // Calculate total links (mentionsAcrossVault)
+          // Calculate unique source notes (appearanceCount)
+
+          // To get the proper display label, we can try to find it from the first backlink's context or sources? 
+          // Actually, LinkIndex doesn't store the "Display Label" nicely in the map key. 
+          // But wait, `getBacklinkKey` uses `normalizeTitle`. 
+
+          // Let's use the first backlink to find a source, then look at that source's outgoing links to find the non-normalized target title?
+          // That's expensive. 
+
+          // Simplified: Use the key, maybe capitalize it if we can't find better.
+          // Or, perhaps we can rely on `this.outgoingLinks` to find the "Canonical" label?
+        }
+      }
+    });
+
+    // Actually, `getEntitiesInNote` groups by `${link.entityKind}:${link.entityLabel}` which PRESERVES case from the link source.
+    // So if we iterate over ALL outgoing links, we can build a map of "Canonical" casing.
+
+    this.outgoingLinks.forEach((links) => {
+      links.forEach(link => {
+        if (link.linkType === 'entity' && link.entityKind && link.entityLabel) {
+          const key = `${link.entityKind}:${link.entityLabel}`; // Preserves case
+          if (!globalStats.has(key)) {
+            globalStats.set(key, {
+              kind: link.entityKind,
+              label: link.entityLabel,
+              count: 0,
+              appearances: 0
+            });
+          }
+        }
+      });
+    });
+
+    // Now populate stats using the backlink map (which is the source of truth for counts)
+    const results: any[] = [];
+
+    globalStats.forEach((val, key) => {
+      const backlinks = this.getEntityMentions(val.label, val.kind);
+      if (backlinks.length > 0) {
+        results.push({
+          entityKind: val.kind,
+          entityLabel: val.label,
+          mentionsInThisNote: 0,
+          mentionsAcrossVault: backlinks.reduce((sum, bl) => sum + bl.linkCount, 0),
+          appearanceCount: backlinks.length
+        });
+      }
+    });
+
+    return results.sort((a, b) => b.mentionsAcrossVault - a.mentionsAcrossVault);
+  }
 }
 
 

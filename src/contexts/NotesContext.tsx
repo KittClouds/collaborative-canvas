@@ -1,749 +1,351 @@
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { dbClient } from '@/lib/db/client/db-client';
 import { generateId } from '@/lib/utils/ids';
-import { loadFromStorage, saveToStorage, exportNotes, importNotes } from '@/lib/storage';
-import type { DocumentConnections, EntityKind } from '@/lib/entities/entityTypes';
-import { parseEntityFromTitle, parseFolderEntityFromName } from '@/lib/entities/titleParser';
-import { migrateExistingNotes, migrateExistingFolders, needsMigration } from '@/lib/entities/migration';
-import { NARRATIVE_FOLDER_CONFIGS } from '@/lib/templates/narrativeTemplates';
-// import { getGraphSyncManager, type GraphSyncManager } from '@/lib/graph/integration';
-import { entityRegistry } from '@/lib/entities/entity-registry';
-import { relationshipRegistry } from '@/lib/relationships';
-import { UnifiedEntityLifecycle } from '@/lib/entities/unified-lifecycle';
-import { frequencyBooster } from '@/lib/entities/scanner/FrequencyBooster'; // Phase 5
+import type { SQLiteNode, SQLiteNodeInput, NodeType } from '@/lib/db/client/types';
 
-// Types
-export interface Note {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: Date;
-  updatedAt: Date;
-  folderId?: string;
-  tags: string[];
-  isPinned: boolean;
-  favorite?: boolean;
-  connections?: DocumentConnections;
-  // Entity properties
-  entityKind?: EntityKind;
-  entitySubtype?: string;
-  entityLabel?: string;
-  isEntity?: boolean;
+import type { DocumentConnections } from '@/lib/entities/entityTypes';
+
+export interface Note extends Omit<SQLiteNode, 'type'> {
+    type: 'NOTE';
+    parentId?: string | null;
+    folderId?: string | null;
+    title: string;
+    isEntity?: boolean;
+    entityKind?: string | null;
+    entitySubtype?: string | null;
+    entityLabel?: string | null;
+    connections?: DocumentConnections;
+    createdAt?: number;
+    updatedAt?: number;
 }
 
-export interface Folder {
-  id: string;
-  name: string;
-  parentId?: string;
-  color?: string;
-  createdAt: Date;
-  // Entity properties
-  entityKind?: EntityKind;
-  entitySubtype?: string;
-  entityLabel?: string;
-  isTypedRoot?: boolean;
-  isSubtypeRoot?: boolean;
-  inheritedKind?: EntityKind;
-  inheritedSubtype?: string;
-  // Network properties
-  networkId?: string;           // If this folder IS a network root
-  networkSchemaId?: string;     // Schema this network uses
+export interface Folder extends Omit<SQLiteNode, 'type'> {
+    type: 'FOLDER';
+    parentId?: string | null;
+    name: string;
+    entityKind?: string | null;
+    entitySubtype?: string | null;
+    entityLabel?: string | null;
+    isTypedRoot?: boolean;
+    isSubtypeRoot?: boolean;
+    isEntity?: boolean;
+    createdAt?: number;
+    updatedAt?: number;
 }
 
-// Helper type for building folder tree
 export interface FolderWithChildren extends Folder {
-  subfolders: FolderWithChildren[];
-  notes: Note[];
-}
-
-// Snapshot for history (minimal data for undo/redo)
-interface HistorySnapshot {
-  notes: Note[];
-  folders: Folder[];
-  selectedNoteId: string | null;
+    children: FolderWithChildren[];
+    notes: Note[];
 }
 
 interface NotesState {
-  notes: Note[];
-  folders: Folder[];
-  selectedNoteId: string | null;
-  searchQuery: string;
-  isSaving: boolean;
-  lastSaved: Date | null;
-  // History for undo/redo
-  history: HistorySnapshot[];
-  historyIndex: number;
+    notes: Note[];
+    folders: Folder[];
+    isSaving: boolean;
+    lastSaved: Date | null;
+    searchQuery: string;
+    selectedNoteId: string | null;
 }
 
-type NotesAction =
-  | { type: 'SET_NOTES'; payload: Note[] }
-  | { type: 'SET_FOLDERS'; payload: Folder[] }
-  | { type: 'ADD_NOTE'; payload: Note }
-  | { type: 'UPDATE_NOTE'; payload: { id: string; updates: Partial<Note> } }
-  | { type: 'DELETE_NOTE'; payload: string }
-  | { type: 'SELECT_NOTE'; payload: string | null }
-  | { type: 'SET_SEARCH'; payload: string }
-  | { type: 'SET_SAVING'; payload: boolean }
-  | { type: 'SET_LAST_SAVED'; payload: Date }
-  | { type: 'ADD_FOLDER'; payload: Folder }
-  | { type: 'UPDATE_FOLDER'; payload: { id: string; updates: Partial<Folder> } }
-  | { type: 'DELETE_FOLDER'; payload: string }
-  | { type: 'PUSH_HISTORY' }
-  | { type: 'UNDO' }
-  | { type: 'REDO' }
-  | { type: 'IMPORT_DATA'; payload: { notes: Note[]; folders: Folder[] } };
-
-const MAX_HISTORY = 50;
-
-const initialState: NotesState = {
-  notes: [],
-  folders: [],
-  selectedNoteId: null,
-  searchQuery: '',
-  isSaving: false,
-  lastSaved: null,
-  history: [],
-  historyIndex: -1,
-};
-
-// Create a snapshot of current state for history
-function createSnapshot(state: NotesState): HistorySnapshot {
-  return {
-    notes: state.notes.map(n => ({ ...n })),
-    folders: state.folders.map(f => ({ ...f })),
-    selectedNoteId: state.selectedNoteId,
-  };
+export interface FolderCreationOptions {
+    entityKind?: string;
+    entitySubtype?: string;
+    entityLabel?: string;
+    isTypedRoot?: boolean;
+    isSubtypeRoot?: boolean;
+    color?: string;
 }
 
-function notesReducer(state: NotesState, action: NotesAction): NotesState {
-  switch (action.type) {
-    case 'SET_NOTES':
-      return { ...state, notes: action.payload };
-    case 'SET_FOLDERS':
-      return { ...state, folders: action.payload };
-    case 'ADD_NOTE':
-      return { ...state, notes: [action.payload, ...state.notes] };
-    case 'UPDATE_NOTE':
-      return {
-        ...state,
-        notes: state.notes.map((note) =>
-          note.id === action.payload.id
-            ? { ...note, ...action.payload.updates, updatedAt: new Date() }
-            : note
-        ),
-      };
-    case 'DELETE_NOTE':
-      return {
-        ...state,
-        notes: state.notes.filter((note) => note.id !== action.payload),
-        selectedNoteId:
-          state.selectedNoteId === action.payload ? null : state.selectedNoteId,
-      };
-    case 'SELECT_NOTE':
-      return { ...state, selectedNoteId: action.payload };
-    case 'SET_SEARCH':
-      return { ...state, searchQuery: action.payload };
-    case 'SET_SAVING':
-      return { ...state, isSaving: action.payload };
-    case 'SET_LAST_SAVED':
-      return { ...state, lastSaved: action.payload };
-    case 'ADD_FOLDER':
-      return { ...state, folders: [...state.folders, action.payload] };
-    case 'UPDATE_FOLDER':
-      return {
-        ...state,
-        folders: state.folders.map((folder) =>
-          folder.id === action.payload.id
-            ? { ...folder, ...action.payload.updates }
-            : folder
-        ),
-      };
-    case 'DELETE_FOLDER':
-      return {
-        ...state,
-        folders: state.folders.filter((f) => f.id !== action.payload),
-        notes: state.notes.filter((n) => n.folderId !== action.payload),
-      };
-    case 'PUSH_HISTORY': {
-      const newHistory = [
-        ...state.history.slice(0, state.historyIndex + 1),
-        createSnapshot(state),
-      ].slice(-MAX_HISTORY);
-      return {
-        ...state,
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
-      };
-    }
-    case 'UNDO': {
-      if (state.historyIndex < 0) return state;
-      const snapshot = state.history[state.historyIndex];
-      if (!snapshot) return state;
-      return {
-        ...state,
-        notes: snapshot.notes,
-        folders: snapshot.folders,
-        selectedNoteId: snapshot.selectedNoteId,
-        historyIndex: state.historyIndex - 1,
-      };
-    }
-    case 'REDO': {
-      if (state.historyIndex >= state.history.length - 1) return state;
-      const snapshot = state.history[state.historyIndex + 2];
-      if (!snapshot) return state;
-      return {
-        ...state,
-        notes: snapshot.notes,
-        folders: snapshot.folders,
-        selectedNoteId: snapshot.selectedNoteId,
-        historyIndex: state.historyIndex + 1,
-      };
-    }
-    case 'IMPORT_DATA':
-      return {
-        ...state,
-        notes: action.payload.notes,
-        folders: action.payload.folders,
-      };
-    default:
-      return state;
-  }
+interface NotesContextType {
+    state: NotesState;
+
+    // Derived Data
+    selectedNote: Note | null;
+    favoriteNotes: Note[];
+    globalNotes: Note[]; // Notes without a folder
+    folderTree: FolderWithChildren[];
+
+    // Actions
+    selectNote: (id: string) => void;
+    setSearchQuery: (query: string) => void;
+
+    // CRUD Note
+    createNote: (folderId?: string, title?: string, sourceNoteId?: string) => Promise<Note>;
+    updateNote: (id: string, updates: Partial<Note> & { content?: string }) => Promise<void>;
+    updateNoteContent: (id: string, content: string) => Promise<void>; // Specific optimization
+    deleteNote: (id: string) => Promise<void>;
+    getEntityNote: (id: string) => Note | undefined;
+
+    // CRUD Folder
+    createFolder: (name: string, parentId?: string, options?: FolderCreationOptions) => Promise<Folder>;
+    updateFolder: (id: string, updates: Partial<Folder>) => Promise<void>;
+    deleteFolder: (id: string) => Promise<void>;
 }
 
-// Build folder tree from flat list
-function buildFolderTree(folders: Folder[], notes: Note[]): FolderWithChildren[] {
-  const folderMap = new Map<string, FolderWithChildren>();
+const NotesContext = createContext<NotesContextType | undefined>(undefined);
 
-  folders.forEach((folder) => {
-    folderMap.set(folder.id, { ...folder, subfolders: [], notes: [] });
-  });
+export function NotesProvider({ children }: { children: React.ReactNode }) {
+    const [notes, setNotes] = useState<Note[]>([]);
+    const [folders, setFolders] = useState<Folder[]>([]);
+    const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  notes.forEach((note) => {
-    if (note.folderId && folderMap.has(note.folderId)) {
-      folderMap.get(note.folderId)!.notes.push(note);
-    }
-  });
+    // Load initial data
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                await dbClient.init();
+                const allNodes = await dbClient.getAllNodes();
 
-  const rootFolders: FolderWithChildren[] = [];
-  folderMap.forEach((folder) => {
-    if (folder.parentId && folderMap.has(folder.parentId)) {
-      folderMap.get(folder.parentId)!.subfolders.push(folder);
-    } else {
-      rootFolders.push(folder);
-    }
-  });
+                const loadedNotes = allNodes
+                    .filter(n => n.type === 'NOTE')
+                    .map(n => ({
+                        ...n,
+                        type: 'NOTE',
+                        parentId: n.parent_id,
+                        folderId: n.parent_id,
+                        title: n.label,
+                        createdAt: n.created_at,
+                        updatedAt: n.updated_at,
+                        connections: n.extraction ? JSON.parse(n.extraction) : undefined,
+                    })) as unknown as Note[];
 
-  return rootFolders;
-}
+                const loadedFolders = allNodes
+                    .filter(n => n.type === 'FOLDER')
+                    .map(n => ({
+                        ...n,
+                        type: 'FOLDER',
+                        parentId: n.parent_id,
+                        name: n.label,
+                        isEntity: Boolean(n.is_entity),
+                        createdAt: n.created_at,
+                        updatedAt: n.updated_at,
+                    })) as unknown as Folder[];
 
-interface NotesContextValue {
-  state: NotesState;
-  selectedNote: Note | null;
-  filteredNotes: Note[];
-  folderTree: FolderWithChildren[];
-  globalNotes: Note[];
-  favoriteNotes: Note[];
-  canUndo: boolean;
-  canRedo: boolean;
-  createNote: (folderId?: string, title?: string, sourceNoteId?: string) => Note;
-  getEntityNote: (kind: EntityKind, label: string) => Note | undefined;
-  updateNote: (id: string, updates: Partial<Note>) => void;
-  updateNoteContent: (id: string, content: string) => void;
-  deleteNote: (id: string) => void;
-  selectNote: (id: string | null) => void;
-  setSearchQuery: (query: string) => void;
-  createFolder: (name: string, parentId?: string, options?: Partial<Folder>) => Folder;
-  updateFolder: (id: string, updates: Partial<Folder>) => void;
-  deleteFolder: (id: string) => void;
-  undo: () => void;
-  redo: () => void;
-  exportData: () => void;
-  importData: (file: File) => Promise<void>;
-}
+                setNotes(loadedNotes);
+                setFolders(loadedFolders);
+            } catch (error) {
+                console.error("Failed to load notes data:", error);
+            }
+        };
+        loadData();
+    }, []);
 
-const NotesContext = createContext<NotesContextValue | null>(null);
+    // Derived State
+    const selectedNote = useMemo(() =>
+        notes.find(n => n.id === selectedNoteId) || null
+        , [notes, selectedNoteId]);
 
-export function NotesProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(notesReducer, initialState);
-  const initialHydrationDone = useRef(false);
+    const favoriteNotes = useMemo(() =>
+        notes.filter(n => Number(n.favorite) === 1) // SQLite uses 1 for true
+        , [notes]);
 
-  // Load initial data with migration
-  useEffect(() => {
-    async function initializeApp() {
-      let { notes, folders } = loadFromStorage();
+    const globalNotes = useMemo(() =>
+        notes.filter(n => !n.parent_id)
+        , [notes]);
 
-      // Run migration if needed
-      if (needsMigration(notes, folders)) {
-        console.log('Migrating notes and folders to entity model...');
-        notes = migrateExistingNotes(notes);
-        folders = migrateExistingFolders(folders);
-      }
+    const folderTree = useMemo(() => {
+        const buildTree = (parentId: string | null): FolderWithChildren[] => {
+            return folders
+                .filter(f => f.parent_id === parentId)
+                .map(f => ({
+                    ...f,
+                    children: buildTree(f.id),
+                    notes: notes.filter(n => n.parent_id === f.id)
+                }));
+        };
+        return buildTree(null);
+    }, [folders, notes]);
 
-      dispatch({ type: 'SET_NOTES', payload: notes });
-      dispatch({ type: 'SET_FOLDERS', payload: folders });
-
-      initialHydrationDone.current = true;
-
-      // Phase 1: Load Entity Registry
-      try {
-        const { loadEntityRegistry } = await import('@/lib/storage/entityStorage');
-        const { entityRegistry } = await import('@/lib/entities/entity-registry');
-
-        const savedRegistry = await loadEntityRegistry();
-        if (savedRegistry) {
-          // Replace global instance data
-          Object.assign(entityRegistry, savedRegistry);
-          console.log('Entity registry loaded:', entityRegistry.getGlobalStats());
-        }
-
-        // PHASE 5: Wire up cross-document synchronization callbacks
-        entityRegistry.setOnEntityDeleteCallback((id) => {
-          relationshipRegistry.deleteByEntity(id);
-        });
-        entityRegistry.setOnEntityMergeCallback((sourceId, targetId) => {
-          relationshipRegistry.migrateEntity(sourceId, targetId);
-          frequencyBooster.recordInteraction(targetId); // Boost merged target
-        });
-
-      } catch (error) {
-        console.error('Failed to load entity registry:', error);
-      }
-    }
-
-    initializeApp();
-  }, []);
-
-  // Auto-save with backup
-  useEffect(() => {
-    if (state.notes.length > 0 || state.folders.length > 0) {
-      const timeoutId = setTimeout(() => {
-        dispatch({ type: 'SET_SAVING', payload: true });
-        saveToStorage(state.notes, state.folders);
-        dispatch({ type: 'SET_SAVING', payload: false });
-        dispatch({ type: 'SET_LAST_SAVED', payload: new Date() });
-      }, 500);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [state.notes, state.folders]);
-
-  // Multi-tab sync
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'networked-notes-data' && e.newValue) {
+    // Actions
+    const updateNoteContent = useCallback(async (id: string, content: string) => {
+        setIsSaving(true);
         try {
-          const { notes, folders } = JSON.parse(e.newValue);
-          // Merge: keep whichever was updated more recently
-          const mergedNotes = notes.map((externalNote: Note) => {
-            const localNote = state.notes.find(n => n.id === externalNote.id);
-            if (!localNote) return externalNote;
-            return new Date(externalNote.updatedAt) > new Date(localNote.updatedAt)
-              ? externalNote
-              : localNote;
-          });
-          dispatch({ type: 'SET_NOTES', payload: mergedNotes });
-          dispatch({ type: 'SET_FOLDERS', payload: folders });
-        } catch (e) {
-          console.error('Failed to sync from other tab:', e);
+            setNotes(prev => prev.map(n => n.id === id ? { ...n, content, updated_at: Date.now(), updatedAt: Date.now() } : n));
+            await dbClient.updateNode(id, { content });
+            setLastSaved(new Date());
+        } catch (error) {
+            console.error("Failed to update note content:", error);
+        } finally {
+            setIsSaving(false);
         }
-      }
-    };
+    }, []);
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [state.notes]);
+    const updateNote = useCallback(async (id: string, updates: Partial<Note> & { content?: string }) => {
+        setIsSaving(true);
+        try {
+            // Map aliases back to DB schema
+            const dbUpdates: any = { ...updates };
+            if (updates.title !== undefined) dbUpdates.label = updates.title;
+            if (updates.folderId !== undefined) dbUpdates.parent_id = updates.folderId;
+            if ('favorite' in updates) dbUpdates.favorite = updates.favorite ? 1 : 0;
+            if (updates.connections !== undefined) dbUpdates.extraction = JSON.stringify(updates.connections);
 
-  // Keyboard shortcuts for undo/redo
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
-        // Only handle global undo if not in editor
-        const activeElement = document.activeElement;
-        const isInEditor = activeElement?.closest('.ProseMirror');
-        if (isInEditor) return; // Let editor handle its own undo
-
-        e.preventDefault();
-        if (e.shiftKey) {
-          dispatch({ type: 'REDO' });
-        } else {
-          dispatch({ type: 'UNDO' });
+            setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates, updatedAt: Date.now() } : n));
+            await dbClient.updateNode(id, dbUpdates);
+            setLastSaved(new Date());
+        } catch (error) {
+            console.error("Failed to update note:", error);
+        } finally {
+            setIsSaving(false);
         }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    }, []);
 
-  // Memoized computed values
-  const selectedNote = useMemo(
-    () => state.notes.find((n) => n.id === state.selectedNoteId) || null,
-    [state.notes, state.selectedNoteId]
-  );
-
-  const filteredNotes = useMemo(() => {
-    if (!state.searchQuery) return state.notes;
-    const query = state.searchQuery.toLowerCase();
-    return state.notes.filter((note) =>
-      note.title.toLowerCase().includes(query) ||
-      note.content.toLowerCase().includes(query) ||
-      note.tags.some((tag) => tag.toLowerCase().includes(query))
-    );
-  }, [state.notes, state.searchQuery]);
-
-  const folderTree = useMemo(
-    () => buildFolderTree(state.folders, state.notes),
-    [state.folders, state.notes]
-  );
-
-  const globalNotes = useMemo(
-    () => state.notes.filter((note) => !note.folderId),
-    [state.notes]
-  );
-
-  const favoriteNotes = useMemo(
-    () => state.notes.filter((note) => note.favorite),
-    [state.notes]
-  );
-
-  const canUndo = state.historyIndex >= 0;
-  const canRedo = state.historyIndex < state.history.length - 1;
-
-  // Helper to get inherited entity kind from folder hierarchy
-  const getInheritedKindFromFolder = useCallback((folderId: string): EntityKind | undefined => {
-    const folder = state.folders.find(f => f.id === folderId);
-    if (!folder) return undefined;
-    if (folder.entityKind) return folder.entityKind;
-    if (folder.inheritedKind) return folder.inheritedKind;
-    if (folder.parentId) return getInheritedKindFromFolder(folder.parentId);
-    return undefined;
-  }, [state.folders]);
-
-  // Helper to get inherited subtype from folder hierarchy
-  const getInheritedSubtypeFromFolder = useCallback((folderId: string): string | undefined => {
-    const folder = state.folders.find(f => f.id === folderId);
-    if (!folder) return undefined;
-    if (folder.entitySubtype) return folder.entitySubtype;
-    if (folder.inheritedSubtype) return folder.inheritedSubtype;
-    if (folder.parentId) return getInheritedSubtypeFromFolder(folder.parentId);
-    return undefined;
-  }, [state.folders]);
-
-  const createNote = useCallback((folderId?: string, title?: string, sourceNoteId?: string): Note => {
-    dispatch({ type: 'PUSH_HISTORY' });
-
-    // Get parent folder for relationship creation
-    const parentFolder = folderId ? state.folders.find(f => f.id === folderId) || null : null;
-
-    // Determine title and entity properties
-    let noteTitle = title || '';
-    let initialContent = JSON.stringify({
-      type: 'doc',
-      content: [{ type: 'paragraph', content: [] }],
-    });
-
-    let entityKind: EntityKind | undefined;
-    let entitySubtype: string | undefined;
-    let entityLabel: string | undefined;
-    let isEntity = false;
-
-    // If folder is provided but no title, check for auto-prefix from folder type
-    if (folderId && !title) {
-      const inheritedKind = getInheritedKindFromFolder(folderId);
-      if (inheritedKind && NARRATIVE_FOLDER_CONFIGS[inheritedKind]) {
-        noteTitle = NARRATIVE_FOLDER_CONFIGS[inheritedKind].autoPrefix;
-
-        // Use template if available
-        const template = NARRATIVE_FOLDER_CONFIGS[inheritedKind].template;
-        if (template) {
-          initialContent = JSON.stringify({
-            type: 'doc',
-            content: [
-              { type: 'paragraph', content: [{ type: 'text', text: template }] }
-            ],
-          });
+    const deleteNote = useCallback(async (id: string) => {
+        try {
+            await dbClient.deleteNode(id);
+            setNotes(prev => prev.filter(n => n.id !== id));
+            if (selectedNoteId === id) setSelectedNoteId(null);
+        } catch (error) {
+            console.error("Failed to delete note:", error);
         }
-      } else {
-        noteTitle = 'Untitled Note';
-      }
-    } else if (!noteTitle) {
-      noteTitle = 'Untitled Note';
-    }
+    }, [selectedNoteId]);
 
-    // Parse title for entity syntax
-    const parsed = parseEntityFromTitle(noteTitle);
-    if (parsed && parsed.label) {
-      entityKind = parsed.kind;
-      entitySubtype = parsed.subtype;
-      entityLabel = parsed.label;
-      isEntity = true;
-    } else if (folderId) {
-      // If in a typed folder, inherit the kind context (but note is not an entity itself)
-      const inheritedKind = getInheritedKindFromFolder(folderId);
-      if (inheritedKind && !parsed) {
-        entityKind = undefined; // Note is not typed, just in a typed folder
-      }
-    }
+    const createNote = useCallback(async (folderId?: string, title?: string, sourceNoteId?: string) => {
+        const newNoteId = generateId();
+        const timestamp = Date.now();
+        const newNoteInput: SQLiteNodeInput = {
+            id: newNoteId,
+            type: 'NOTE',
+            label: title || 'Untitled Note',
+            content: '',
+            parent_id: folderId || null,
+            source_note_id: sourceNoteId,
+            is_entity: false, // Default false
+        };
 
-    // If sourceNoteId provided, create content with backlink to source note
-    if (sourceNoteId) {
-      const sourceNote = state.notes.find(n => n.id === sourceNoteId);
-      if (sourceNote) {
-        // Create backlink using source note's full title (preserves entity syntax)
-        const backlinkTitle = sourceNote.title;
-        initialContent = JSON.stringify({
-          type: 'doc',
-          content: [
-            {
-              type: 'paragraph',
-              content: [
-                { type: 'text', text: `<<${backlinkTitle}>>` }
-              ]
-            },
-            { type: 'paragraph', content: [] }
-          ],
-        });
-      }
-    }
+        try {
+            const createdNode = await dbClient.insertNode(newNoteInput);
+            const createdNoteTyped = {
+                ...createdNode,
+                type: 'NOTE',
+                parentId: createdNode.parent_id,
+                folderId: createdNode.parent_id,
+                title: createdNode.label,
+                createdAt: createdNode.created_at,
+                updatedAt: createdNode.updated_at,
+            } as unknown as Note;
 
-    const newNote: Note = {
-      id: generateId(),
-      title: noteTitle,
-      content: initialContent,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      folderId,
-      tags: [],
-      isPinned: false,
-      entityKind,
-      entitySubtype,
-      entityLabel,
-      isEntity,
-    };
-    dispatch({ type: 'ADD_NOTE', payload: newNote });
-    dispatch({ type: 'SELECT_NOTE', payload: newNote.id });
+            setNotes(prev => [...prev, createdNoteTyped]);
+            return createdNoteTyped;
+        } catch (error) {
+            console.error("Failed to create note:", error);
+            throw error;
+        }
+    }, []);
 
-    if (initialHydrationDone.current) {
-      // Use enhanced lifecycle with folder context for auto-relationships
-      UnifiedEntityLifecycle.onNoteCreatedWithFolder(newNote, parentFolder);
-    }
+    const createFolder = useCallback(async (name: string, parentId?: string, options?: FolderCreationOptions) => {
+        const newId = generateId();
+        const input: SQLiteNodeInput = {
+            id: newId,
+            type: 'FOLDER',
+            label: name,
+            parent_id: parentId || null,
+            content: null,
+            entity_kind: options?.entityKind,
+            entity_subtype: options?.entitySubtype,
+            is_typed_root: options?.isTypedRoot,
+            is_subtype_root: options?.isSubtypeRoot,
+            color: options?.color,
+        };
 
-    return newNote;
-  }, [state.folders, getInheritedKindFromFolder, state.notes]);
+        try {
+            const created = await dbClient.insertNode(input);
+            const createdFolder = {
+                ...created,
+                type: 'FOLDER',
+                parentId: created.parent_id,
+                name: created.label,
+                // Map options
+                entityKind: options?.entityKind,
+                entitySubtype: options?.entitySubtype,
+                isTypedRoot: options?.isTypedRoot,
+                isSubtypeRoot: options?.isSubtypeRoot,
+                isEntity: Boolean(created.is_entity),
+                createdAt: created.created_at,
+                updatedAt: created.updated_at,
+            } as unknown as Folder;
 
+            setFolders(prev => [...prev, createdFolder]);
+            return createdFolder;
+        } catch (error) {
+            console.error("Failed to create folder:", error);
+            throw error;
+        }
+    }, []);
 
-  const updateNote = useCallback((id: string, updates: Partial<Note>) => {
-    const existingNote = state.notes.find(n => n.id === id);
-    if (!existingNote) return;
+    const updateFolder = useCallback(async (id: string, updates: Partial<Folder>) => {
+        try {
+            const dbUpdates: any = { ...updates };
+            if (updates.name !== undefined) dbUpdates.label = updates.name;
+            if (updates.parentId !== undefined) dbUpdates.parent_id = updates.parentId;
 
-    if (updates.title !== undefined) {
-      const parsed = parseEntityFromTitle(updates.title);
-      if (parsed && parsed.label) {
-        updates.entityKind = parsed.kind;
-        updates.entitySubtype = parsed.subtype;
-        updates.entityLabel = parsed.label;
-        updates.isEntity = true;
-      } else {
-        updates.entityKind = undefined;
-        updates.entitySubtype = undefined;
-        updates.entityLabel = undefined;
-        updates.isEntity = false;
-      }
-    }
-    dispatch({ type: 'UPDATE_NOTE', payload: { id, updates } });
+            setFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+            await dbClient.updateNode(id, dbUpdates);
+        } catch (error) {
+            console.error("Failed to update folder:", error);
+        }
+    }, []);
 
-    if (initialHydrationDone.current) {
-      const updatedNote = { ...existingNote, ...updates, updatedAt: new Date() };
+    const deleteFolder = useCallback(async (id: string) => {
+        try {
+            await dbClient.deleteNode(id);
+            // Optimistic delete: assume cascade or handle children logic if needed
+            // For now just remove the folder
+            setFolders(prev => prev.filter(f => f.id !== id));
+            // Should also potentially move children to root or delete them? 
+            // SQLite might handle cascade if configured, otherwise children become orphaned.
+            // Client side cleanup:
+            setNotes(prev => prev.map(n => n.parent_id === id ? { ...n, parent_id: null, folderId: null } : n));
+            // Recursively update folders? Left as TODO or DB handled.
+        } catch (error) {
+            console.error("Failed to delete folder:", error);
+        }
+    }, []);
 
-      // Unified Entity Lifecycle Hook
-      if (updates.title && updates.title !== existingNote.title) {
-        UnifiedEntityLifecycle.onNoteTitleChanged(updatedNote, existingNote.title);
-      }
+    const getEntityNote = useCallback((id: string) => {
+        return notes.find(n => n.id === id);
+    }, [notes]);
 
-      // Handle move between folders
-      if (updates.folderId !== undefined && updates.folderId !== existingNote.folderId) {
-        const oldFolder = existingNote.folderId ? state.folders.find(f => f.id === existingNote.folderId) || null : null;
-        const newFolder = updates.folderId ? state.folders.find(f => f.id === updates.folderId) || null : null;
-        UnifiedEntityLifecycle.onNoteMoved(updatedNote, oldFolder, newFolder);
-      }
-    }
-  }, [state.notes, state.folders]);
-
-  const updateNoteContent = useCallback((id: string, content: string) => {
-    dispatch({ type: 'UPDATE_NOTE', payload: { id, updates: { content } } });
-
-    if (initialHydrationDone.current) {
-      // Note content updates no longer trigger graph sync as UnifiedGraph is removed
-    }
-  }, [state.notes]);
-
-  const deleteNote = useCallback((id: string) => {
-    dispatch({ type: 'PUSH_HISTORY' });
-    dispatch({ type: 'DELETE_NOTE', payload: id });
-
-    if (initialHydrationDone.current) {
-      const note = state.notes.find(n => n.id === id);
-      UnifiedEntityLifecycle.onNoteDeleted(
-        id,
-        note?.isEntity || false,
-        note?.entityLabel
-      );
-    }
-  }, [state.notes]);
-
-  const selectNote = useCallback((id: string | null) => {
-    dispatch({ type: 'SELECT_NOTE', payload: id });
-  }, []);
-
-  const setSearchQuery = useCallback((query: string) => {
-    dispatch({ type: 'SET_SEARCH', payload: query });
-  }, []);
-
-  const createFolder = useCallback((name: string, parentId?: string, options?: Partial<Folder>): Folder => {
-    dispatch({ type: 'PUSH_HISTORY' });
-
-    const parsed = parseFolderEntityFromName(name);
-    let inheritedKind: EntityKind | undefined;
-    let inheritedSubtype: string | undefined;
-    let parentFolder: Folder | null = null;
-
-    if (parentId) {
-      parentFolder = state.folders.find(f => f.id === parentId) || null;
-      inheritedKind = getInheritedKindFromFolder(parentId);
-      inheritedSubtype = getInheritedSubtypeFromFolder(parentId);
-    }
-
-    const newFolder: Folder = {
-      id: generateId(),
-      name: name || 'New Folder',
-      parentId,
-      createdAt: new Date(),
-      entityKind: options?.entityKind ?? parsed?.kind,
-      entitySubtype: options?.entitySubtype ?? parsed?.subtype,
-      entityLabel: options?.entityLabel ?? parsed?.label,
-      isTypedRoot: options?.isTypedRoot ?? parsed?.isTypedRoot ?? false,
-      isSubtypeRoot: options?.isSubtypeRoot ?? parsed?.isSubtypeRoot ?? false,
-      inheritedKind,
-      inheritedSubtype,
-      color: options?.color,
-    };
-    dispatch({ type: 'ADD_FOLDER', payload: newFolder });
-
-    if (initialHydrationDone.current) {
-      // Use the enhanced lifecycle method with parent context for auto-relationships
-      UnifiedEntityLifecycle.onFolderCreatedWithParent(newFolder, parentFolder);
-    }
-
-    return newFolder;
-  }, [state.folders, getInheritedKindFromFolder, getInheritedSubtypeFromFolder]);
-
-  const updateFolder = useCallback((id: string, updates: Partial<Folder>) => {
-    const existingFolder = state.folders.find(f => f.id === id);
-    if (!existingFolder) return;
-
-    if (updates.name !== undefined) {
-      const parsed = parseFolderEntityFromName(updates.name);
-      if (parsed) {
-        updates.entityKind = parsed.kind;
-        updates.entitySubtype = parsed.subtype;
-        updates.entityLabel = parsed.label;
-        updates.isTypedRoot = parsed.isTypedRoot;
-        updates.isSubtypeRoot = parsed.isSubtypeRoot;
-      } else {
-        updates.entityKind = undefined;
-        updates.entitySubtype = undefined;
-        updates.entityLabel = undefined;
-        updates.isTypedRoot = false;
-        updates.isSubtypeRoot = false;
-      }
-    }
-    dispatch({ type: 'UPDATE_FOLDER', payload: { id, updates } });
-
-    if (initialHydrationDone.current) {
-      const updatedFolder = { ...existingFolder, ...updates };
-
-      // Handle folder move
-      if (updates.parentId !== undefined && updates.parentId !== existingFolder.parentId) {
-        const oldParent = existingFolder.parentId ? state.folders.find(f => f.id === existingFolder.parentId) || null : null;
-        const newParent = updates.parentId ? state.folders.find(f => f.id === updates.parentId) || null : null;
-        UnifiedEntityLifecycle.onFolderMoved(updatedFolder, oldParent, newParent);
-      }
-    }
-  }, [state.folders]);
-
-
-  const deleteFolder = useCallback((id: string) => {
-    dispatch({ type: 'PUSH_HISTORY' });
-    dispatch({ type: 'DELETE_FOLDER', payload: id });
-
-    if (initialHydrationDone.current) {
-      const folder = state.folders.find(f => f.id === id);
-      UnifiedEntityLifecycle.onFolderDeleted(
-        id,
-        !!(folder?.entityKind),
-        folder?.entityKind
-      );
-    }
-  }, [state.folders]);
-
-  const undo = useCallback(() => {
-    dispatch({ type: 'UNDO' });
-  }, []);
-
-  const redo = useCallback(() => {
-    dispatch({ type: 'REDO' });
-  }, []);
-
-  const exportData = useCallback(() => {
-    exportNotes(state.notes, state.folders);
-  }, [state.notes, state.folders]);
-
-  const importDataFn = useCallback(async (file: File) => {
-    dispatch({ type: 'PUSH_HISTORY' });
-    const data = await importNotes(file);
-    dispatch({ type: 'IMPORT_DATA', payload: data });
-  }, []);
-
-  // Find canonical entity note by kind and label
-  const getEntityNote = useCallback((kind: EntityKind, label: string): Note | undefined => {
-    return state.notes.find(
-      note => note.isEntity && note.entityKind === kind && note.entityLabel === label
-    );
-  }, [state.notes]);
-
-  return (
-    <NotesContext.Provider
-      value={{
-        state,
+    const value = {
+        state: {
+            notes,
+            folders,
+            isSaving,
+            lastSaved,
+            searchQuery,
+            selectedNoteId
+        },
         selectedNote,
-        filteredNotes,
-        folderTree,
-        globalNotes,
         favoriteNotes,
-        canUndo,
-        canRedo,
+        globalNotes,
+        folderTree,
+        selectNote: setSelectedNoteId,
+        setSearchQuery,
         createNote,
         updateNote,
         updateNoteContent,
         deleteNote,
-        selectNote,
-        setSearchQuery,
+        getEntityNote,
         createFolder,
         updateFolder,
-        deleteFolder,
-        undo,
-        redo,
-        exportData,
-        importData: importDataFn,
-        getEntityNote,
-      }}
-    >
-      {children}
-    </NotesContext.Provider>
-  );
+        deleteFolder
+    };
+
+    return (
+        <NotesContext.Provider value={value}>
+            {children}
+        </NotesContext.Provider>
+    );
 }
 
 export function useNotes() {
-  const context = useContext(NotesContext);
-  if (!context) {
-    throw new Error('useNotes must be used within a NotesProvider');
-  }
-  return context;
+    const context = useContext(NotesContext);
+    if (context === undefined) {
+        throw new Error('useNotes must be used within a NotesProvider');
+    }
+    return context;
 }
+

@@ -30,3 +30,13 @@ export {
   type CausalLinkResult,
   type CausalType,
 } from './causalLinks';
+
+export {
+  CozoUnifiedRegistry,
+  unifiedRegistry,
+  type CozoEntity,
+  type CozoRelationship,
+  type RelationshipProvenance,
+  type EntityStats,
+  type GlobalStats,
+} from './UnifiedRegistry';

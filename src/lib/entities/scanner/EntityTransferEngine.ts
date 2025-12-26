@@ -7,9 +7,9 @@
  * - Graph relationships (semantic connectivity via RelationshipRegistry)
  */
 
-import { entityRegistry, RegisteredEntity } from '../entity-registry';
-import { relationshipRegistry } from '../../relationships/relationship-registry';
-import type { Note } from '@/contexts/NotesContext';
+import { entityRegistry, RegisteredEntity } from '@/lib/entities';
+import { relationshipRegistry } from '@/lib/relationships';
+import type { Note } from '../../../contexts/NotesContext';
 
 export interface EntitySuggestion {
     entity: RegisteredEntity;

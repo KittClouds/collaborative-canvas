@@ -10,8 +10,7 @@
  * - Auto-create relationships when entities join network folders
  */
 
-import { relationshipRegistry } from '../relationship-registry';
-import { RelationshipSource, type RelationshipInput, type RelationshipProvenance, type UnifiedRelationship } from '../types';
+import { relationshipRegistry, RelationshipSource, type RelationshipInput, type RelationshipProvenance, type UnifiedRelationship } from '@/lib/relationships';
 import { generateId } from '@/lib/utils/ids';
 import {
     loadNetworkRelationships,
@@ -26,7 +25,7 @@ import {
     type NetworkSchema,
     type NetworkRelationshipDef,
 } from '@/lib/networks';
-import type { Folder, Note } from '@/contexts/NotesContext';
+import type { Folder, Note } from '../../../contexts/NotesContext';
 
 export interface NetworkSyncResult {
     imported: number;
@@ -48,7 +47,7 @@ export class NetworkAdapter {
 
     constructor(options: NetworkAdapterOptions = {}) {
         this.autoSync = options.autoSync ?? true;
-        
+
         if (options.syncOnStartup) {
             this.syncAllNetworks().catch(console.error);
         }
@@ -93,7 +92,7 @@ export class NetworkAdapter {
                 try {
                     const relDef = schema.relationships.find(r => r.code === netRel.relationshipCode);
                     const unified = this.convertToUnifiedRelationship(netRel, network, relDef);
-                    
+
                     const existing = relationshipRegistry.findByEntities(
                         netRel.sourceEntityId,
                         netRel.targetEntityId,
@@ -235,7 +234,7 @@ export class NetworkAdapter {
             if (existing) {
                 const hasOtherProvenance = existing.provenance.some(
                     p => p.source !== RelationshipSource.NETWORK ||
-                         p.metadata?.networkRelationshipId !== relationshipId
+                        p.metadata?.networkRelationshipId !== relationshipId
                 );
 
                 if (hasOtherProvenance) {
@@ -344,15 +343,15 @@ export class NetworkAdapter {
         parentKind: string,
         childKind: string
     ): NetworkRelationshipDef | undefined {
-        const hierarchical = schema.relationships.filter(r => 
-            r.sourceKind === parentKind && 
+        const hierarchical = schema.relationships.filter(r =>
+            r.sourceKind === parentKind &&
             r.targetKind === childKind &&
             r.direction !== 'BIDIRECTIONAL'
         );
 
         if (hierarchical.length > 0) {
-            const preferred = hierarchical.find(r => 
-                r.code.includes('PARENT') || 
+            const preferred = hierarchical.find(r =>
+                r.code.includes('PARENT') ||
                 r.code.includes('MANAGES') ||
                 r.code.includes('LEADS')
             );

@@ -702,7 +702,11 @@ describe('BM𝒳 Specific Features', () => {
 
         scorer.precomputeEntropies();
 
-        const entropy = (scorer as any).entropyCache.get('term1');
+        // Trigger lazy computation by scoring
+        scorer.score(['term1'], 'doc1');
+
+        const cache = (scorer as any).lazyEntropyCache;
+        const entropy = cache.getCachedValue('term1');
         // p1 = sigmoid(1)
         // p2 = sigmoid(2)
         // Expected = -(p1*log p1) - (p2*log p2)
@@ -821,6 +825,11 @@ describe('BM𝒳 Quality Validation', () => {
         scorer.precomputeEntropies();
         scorer.warmIdfCache();
 
+        // Trigger lazy entropy computation by scoring each document
+        for (let i = 0; i < 50; i++) {
+            scorer.score([`term_${i}`], `doc_${i}`);
+        }
+
         const stats = scorer.getCacheStats();
 
         expect(stats.idf.size).toBeGreaterThan(0);
@@ -846,6 +855,9 @@ describe('BM𝒳 Quality Validation', () => {
         ]));
 
         scorer.precomputeEntropies();
+
+        // Trigger lazy computation by scoring
+        scorer.score(['rare', 'common'], 'doc1');
 
         const beforeSize = scorer.getCacheStats().entropy.size;
         const pruned = scorer.pruneEntropyCache(2);
@@ -879,13 +891,19 @@ describe('BM𝒳 Quality Validation', () => {
         scorer1.precomputeEntropies();
         scorer2.precomputeEntropiesBatched(10);
 
-        const cache1 = (scorer1 as any).entropyCache;
-        const cache2 = (scorer2 as any).entropyCache;
+        // Trigger lazy computation by scoring all unique terms
+        for (let i = 0; i < 10; i++) {
+            scorer1.score([`term_${i}`], 'doc_0');
+            scorer2.score([`term_${i}`], 'doc_0');
+        }
 
-        expect(cache1.size).toBe(cache2.size);
+        const cache1 = (scorer1 as any).lazyEntropyCache;
+        const cache2 = (scorer2 as any).lazyEntropyCache;
 
-        for (const [term, entropy1] of cache1) {
-            const entropy2 = cache2.get(term);
+        expect(cache1.getStats().size).toBe(cache2.getStats().size);
+
+        for (const [term, entropy1] of cache1.entries()) {
+            const entropy2 = cache2.getCachedValue(term);
             assertApproxEq(entropy1, entropy2);
         }
     });

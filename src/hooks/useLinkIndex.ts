@@ -63,6 +63,7 @@ export function useLinkIndex(notes: Note[]) {
     getBacklinks,
     getOutgoingLinks,
     getEntityStats,
+    getAllEntityStats: () => linkIndex.getAllEntityStats(),
     getEntityMentions,
     findNoteByTitle,
     noteExists,
