@@ -203,15 +203,24 @@ export class CozoUnifiedRegistry {
 
         const insertQuery = `
       ?[id, label, normalized, kind, subtype, first_note, created_at, created_by] <- [[
-        "${id}", "${this.escape(label)}", "${normalized}", "${kind}", 
-        ${options?.subtype ? `"${this.escape(options.subtype)}"` : 'null'}, 
-        "${noteId}", ${now}, "user"
+        $id, $label, $normalized, $kind, $subtype, $first_note, $created_at, $created_by
       ]]
       :put entities {id, label, normalized, kind, subtype, first_note, created_at, created_by}
     `;
 
+        const params = {
+            id,
+            label,
+            normalized,
+            kind,
+            subtype: options?.subtype ?? null,
+            first_note: noteId,
+            created_at: now,
+            created_by: 'user'
+        };
+
         try {
-            const result = cozoDb.runQuery(insertQuery);
+            const result = cozoDb.runQuery(insertQuery, params);
             if (result.ok === false) {
                 console.error('[CozoUnifiedRegistry] Insert failed:', result);
                 throw new Error(`Insert failed: ${JSON.stringify(result)}`);
@@ -243,8 +252,8 @@ export class CozoUnifiedRegistry {
     async getEntityById(id: string): Promise<CozoEntity | null> {
         if (this.entityCache.has(id)) return this.entityCache.get(id)!;
 
-        const query = `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}, id == "${id}"`;
-        const result = cozoDb.runQuery(query);
+        const query = `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}, id == $id`;
+        const result = cozoDb.runQuery(query, { id });
 
         if (!result.rows || result.rows.length === 0) return null;
 
@@ -256,10 +265,16 @@ export class CozoUnifiedRegistry {
     async findEntityByLabel(label: string): Promise<CozoEntity | null> {
         const normalized = this.normalize(label);
 
-        let result = cozoDb.runQuery(`?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}, normalized == "${normalized}"`);
+        let result = cozoDb.runQuery(
+            `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}, normalized == $normalized`,
+            { normalized }
+        );
         if (result.rows?.length > 0) return this.hydrateEntity(result.rows[0]);
 
-        result = cozoDb.runQuery(`?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entity_aliases{entity_id, normalized: alias_norm}, alias_norm == "${normalized}", *entities{id: entity_id, label, normalized, kind, subtype, first_note, created_at, created_by}`);
+        result = cozoDb.runQuery(
+            `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entity_aliases{entity_id, normalized: alias_norm}, alias_norm == $normalized, *entities{id: entity_id, label, normalized, kind, subtype, first_note, created_at, created_by}`,
+            { normalized }
+        );
         if (result.rows?.length > 0) return this.hydrateEntity(result.rows[0]);
 
         return null;
@@ -268,21 +283,29 @@ export class CozoUnifiedRegistry {
     async isRegisteredEntity(label: string): Promise<boolean> {
         const normalized = this.normalize(label);
         try {
-            const query = `?[exists] := *entities{normalized}, normalized == "${normalized}", exists = true ?[exists] := *entity_aliases{normalized}, normalized == "${normalized}", exists = true`;
-            const result = cozoDb.runQuery(query);
+            const query = `?[exists] := *entities{normalized}, normalized == $normalized, exists = true ?[exists] := *entity_aliases{normalized}, normalized == $normalized, exists = true`;
+            const result = cozoDb.runQuery(query, { normalized });
             return result.rows?.length > 0;
         } catch { return false; }
     }
 
     async getAllEntities(filters?: { kind?: EntityKind; subtype?: string; minMentions?: number }): Promise<CozoEntity[]> {
-        let whereClauses: string[] = [];
-        if (filters?.kind) whereClauses.push(`kind == "${filters.kind}"`);
-        if (filters?.subtype) whereClauses.push(`subtype == "${filters.subtype}"`);
+        const whereClauses: string[] = [];
+        const params: Record<string, any> = {};
+        
+        if (filters?.kind) {
+            whereClauses.push(`kind == $filter_kind`);
+            params.filter_kind = filters.kind;
+        }
+        if (filters?.subtype) {
+            whereClauses.push(`subtype == $filter_subtype`);
+            params.filter_subtype = filters.subtype;
+        }
 
         const whereClause = whereClauses.length > 0 ? `,\n        ${whereClauses.join(',\n        ')}` : '';
         const query = `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}${whereClause}`;
 
-        const result = cozoDb.runQuery(query);
+        const result = cozoDb.runQuery(query, params);
         const entities = await Promise.all((result.rows || []).map((row: any) => this.hydrateEntity(row)));
 
         if (filters?.minMentions) return entities.filter(e => (e.totalMentions || 0) >= filters.minMentions);
@@ -313,9 +336,20 @@ export class CozoUnifiedRegistry {
             const newKind = updates.kind || entity.kind;
             const newSubtype = updates.subtype !== undefined ? updates.subtype : entity.subtype;
 
-            const updateQuery = `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] <- [["${id}", "${this.escape(newLabel)}", "${newNorm}", "${newKind}", ${newSubtype ? `"${this.escape(newSubtype)}"` : 'null'}, "${entity.firstNote}", ${entity.createdAt.getTime()}, "${entity.createdBy}"]] :put entities {id, label, normalized, kind, subtype, first_note, created_at, created_by}`;
+            const updateQuery = `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] <- [[$id, $label, $normalized, $kind, $subtype, $first_note, $created_at, $created_by]] :put entities {id, label, normalized, kind, subtype, first_note, created_at, created_by}`;
 
-            try { cozoDb.run(updateQuery); } catch (err) { console.error('[CozoUnifiedRegistry] Update failed:', err); return false; }
+            try {
+                cozoDb.runQuery(updateQuery, {
+                    id,
+                    label: newLabel,
+                    normalized: newNorm,
+                    kind: newKind,
+                    subtype: newSubtype ?? null,
+                    first_note: entity.firstNote,
+                    created_at: entity.createdAt.getTime(),
+                    created_by: entity.createdBy
+                });
+            } catch (err) { console.error('[CozoUnifiedRegistry] Update failed:', err); return false; }
         }
 
         if (updates.metadata) {
@@ -336,11 +370,11 @@ export class CozoUnifiedRegistry {
             this.deleteRelationshipAttributes(relId);
         }
 
-        cozoDb.run(`?[id] := *relationships{id, source_id, target_id}, (source_id == "${id}" || target_id == "${id}") :rm relationships {id}`);
-        cozoDb.run(`?[entity_id, alias, normalized] := *entity_aliases{entity_id, alias, normalized}, entity_id == "${id}" :rm entity_aliases {entity_id, alias, normalized}`);
-        cozoDb.run(`?[entity_id, note_id] := *entity_mentions{entity_id, note_id}, entity_id == "${id}" :rm entity_mentions {entity_id, note_id}`);
-        cozoDb.run(`?[entity_id, key] := *entity_metadata{entity_id, key}, entity_id == "${id}" :rm entity_metadata {entity_id, key}`);
-        cozoDb.run(`?[id] := *entities{id}, id == "${id}" :rm entities {id}`);
+        cozoDb.runQuery(`?[id] := *relationships{id, source_id, target_id}, (source_id == $entity_id || target_id == $entity_id) :rm relationships {id}`, { entity_id: id });
+        cozoDb.runQuery(`?[entity_id, alias, normalized] := *entity_aliases{entity_id, alias, normalized}, entity_id == $entity_id :rm entity_aliases {entity_id, alias, normalized}`, { entity_id: id });
+        cozoDb.runQuery(`?[entity_id, note_id] := *entity_mentions{entity_id, note_id}, entity_id == $entity_id :rm entity_mentions {entity_id, note_id}`, { entity_id: id });
+        cozoDb.runQuery(`?[entity_id, key] := *entity_metadata{entity_id, key}, entity_id == $entity_id :rm entity_metadata {entity_id, key}`, { entity_id: id });
+        cozoDb.runQuery(`?[id] := *entities{id}, id == $id :rm entities {id}`, { id });
 
         this.entityCache.delete(id);
         this.scheduleSnapshot();
@@ -361,12 +395,25 @@ export class CozoUnifiedRegistry {
             for (const [noteId, count] of source.mentionsByNote.entries()) await this.incrementMention(targetId, noteId, count);
         }
 
-        // Migrate relationships
         const rels = await this.getRelationshipsForEntity(sourceId);
         for (const rel of rels) {
             const newSrc = rel.sourceId === sourceId ? targetId : rel.sourceId;
             const newTgt = rel.targetId === sourceId ? targetId : rel.targetId;
-            cozoDb.run(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [["${rel.id}", "${newSrc}", "${newTgt}", "${rel.type}", ${rel.inverseType ? `"${rel.inverseType}"` : 'null'}, ${rel.bidirectional}, ${rel.confidence}, ${rel.namespace ? `"${rel.namespace}"` : 'null'}, ${rel.createdAt.getTime()}, ${Date.now()}]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`);
+            cozoDb.runQuery(
+                `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [[$id, $source_id, $target_id, $type, $inverse_type, $bidirectional, $confidence, $namespace, $created_at, $updated_at]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`,
+                {
+                    id: rel.id,
+                    source_id: newSrc,
+                    target_id: newTgt,
+                    type: rel.type,
+                    inverse_type: rel.inverseType ?? null,
+                    bidirectional: rel.bidirectional,
+                    confidence: rel.confidence,
+                    namespace: rel.namespace ?? null,
+                    created_at: rel.createdAt.getTime(),
+                    updated_at: Date.now()
+                }
+            );
         }
 
         if (source.metadata) {
@@ -380,8 +427,8 @@ export class CozoUnifiedRegistry {
 
     async onNoteDeleted(noteId: string): Promise<void> {
         console.log(`[CozoUnifiedRegistry] Cleaning up note ${noteId}`);
-        cozoDb.run(`?[entity_id, note_id] := *entity_mentions{entity_id, note_id}, note_id == "${noteId}" :rm entity_mentions {entity_id, note_id}`);
-        cozoDb.run(`?[relationship_id, source, origin_id] := *relationship_provenance{relationship_id, source, origin_id}, origin_id == "${noteId}" :rm relationship_provenance {relationship_id, source, origin_id}`);
+        cozoDb.runQuery(`?[entity_id, note_id] := *entity_mentions{entity_id, note_id}, note_id == $note_id :rm entity_mentions {entity_id, note_id}`, { note_id: noteId });
+        cozoDb.runQuery(`?[relationship_id, source, origin_id] := *relationship_provenance{relationship_id, source, origin_id}, origin_id == $origin_id :rm relationship_provenance {relationship_id, source, origin_id}`, { origin_id: noteId });
         this.scheduleSnapshot();
     }
 
@@ -389,7 +436,10 @@ export class CozoUnifiedRegistry {
 
     async addAlias(entityId: string, alias: string): Promise<boolean> {
         const normalized = this.normalize(alias);
-        const existing = cozoDb.runQuery(`?[entity_id] := *entity_aliases{entity_id, normalized}, normalized == "${normalized}"`);
+        const existing = cozoDb.runQuery(
+            `?[entity_id] := *entity_aliases{entity_id, normalized}, normalized == $normalized`,
+            { normalized }
+        );
 
         if (existing.rows?.length > 0) {
             if (existing.rows[0][0] !== entityId) {
@@ -399,20 +449,29 @@ export class CozoUnifiedRegistry {
             return true;
         }
 
-        cozoDb.run(`?[entity_id, alias, normalized] <- [["${entityId}", "${this.escape(alias)}", "${normalized}"]] :put entity_aliases {entity_id, alias, normalized}`);
+        cozoDb.runQuery(
+            `?[entity_id, alias, normalized] <- [[$entity_id, $alias, $normalized]] :put entity_aliases {entity_id, alias, normalized}`,
+            { entity_id: entityId, alias, normalized }
+        );
         this.entityCache.delete(entityId);
         return true;
     }
 
     async removeAlias(entityId: string, alias: string): Promise<boolean> {
         const normalized = this.normalize(alias);
-        cozoDb.run(`?[entity_id, alias, normalized] := *entity_aliases{entity_id, alias, normalized}, entity_id == "${entityId}", normalized == "${normalized}" :rm entity_aliases {entity_id, alias, normalized}`);
+        cozoDb.runQuery(
+            `?[entity_id, alias, normalized] := *entity_aliases{entity_id, alias, normalized}, entity_id == $entity_id, normalized == $normalized :rm entity_aliases {entity_id, alias, normalized}`,
+            { entity_id: entityId, normalized }
+        );
         this.entityCache.delete(entityId);
         return true;
     }
 
     async getAliases(entityId: string): Promise<string[]> {
-        const result = cozoDb.runQuery(`?[alias] := *entity_aliases{entity_id, alias}, entity_id == "${entityId}"`);
+        const result = cozoDb.runQuery(
+            `?[alias] := *entity_aliases{entity_id, alias}, entity_id == $entity_id`,
+            { entity_id: entityId }
+        );
         return (result.rows || []).map((row: any) => row[0]);
     }
 
@@ -420,16 +479,28 @@ export class CozoUnifiedRegistry {
 
     private async incrementMention(entityId: string, noteId: string, delta: number = 1): Promise<void> {
         const now = Date.now();
-        const result = cozoDb.runQuery(`?[count] := *entity_mentions{entity_id, note_id, mention_count: count}, entity_id == "${entityId}", note_id == "${noteId}"`);
+        const result = cozoDb.runQuery(
+            `?[count] := *entity_mentions{entity_id, note_id, mention_count: count}, entity_id == $entity_id, note_id == $note_id`,
+            { entity_id: entityId, note_id: noteId }
+        );
         const currentCount = result.rows?.length > 0 ? result.rows[0][0] : 0;
-        cozoDb.run(`?[entity_id, note_id, mention_count, last_seen] <- [["${entityId}", "${noteId}", ${currentCount + delta}, ${now}]] :put entity_mentions {entity_id, note_id, mention_count, last_seen}`);
+        cozoDb.runQuery(
+            `?[entity_id, note_id, mention_count, last_seen] <- [[$entity_id, $note_id, $mention_count, $last_seen]] :put entity_mentions {entity_id, note_id, mention_count, last_seen}`,
+            { entity_id: entityId, note_id: noteId, mention_count: currentCount + delta, last_seen: now }
+        );
     }
 
     async updateNoteMentions(entityId: string, noteId: string, count: number): Promise<void> {
         if (count <= 0) {
-            cozoDb.run(`?[entity_id, note_id] := *entity_mentions{entity_id, note_id}, entity_id == "${entityId}", note_id == "${noteId}" :rm entity_mentions {entity_id, note_id}`);
+            cozoDb.runQuery(
+                `?[entity_id, note_id] := *entity_mentions{entity_id, note_id}, entity_id == $entity_id, note_id == $note_id :rm entity_mentions {entity_id, note_id}`,
+                { entity_id: entityId, note_id: noteId }
+            );
         } else {
-            cozoDb.run(`?[entity_id, note_id, mention_count, last_seen] <- [["${entityId}", "${noteId}", ${count}, ${Date.now()}]] :put entity_mentions {entity_id, note_id, mention_count, last_seen}`);
+            cozoDb.runQuery(
+                `?[entity_id, note_id, mention_count, last_seen] <- [[$entity_id, $note_id, $mention_count, $last_seen]] :put entity_mentions {entity_id, note_id, mention_count, last_seen}`,
+                { entity_id: entityId, note_id: noteId, mention_count: count, last_seen: Date.now() }
+            );
         }
         this.entityCache.delete(entityId);
     }
@@ -438,12 +509,18 @@ export class CozoUnifiedRegistry {
 
     async setEntityMetadata(entityId: string, key: string, value: any): Promise<void> {
         const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
-        cozoDb.run(`?[entity_id, key, value] <- [["${entityId}", "${this.escape(key)}", "${this.escape(valueStr)}"]] :put entity_metadata {entity_id, key, value}`);
+        cozoDb.runQuery(
+            `?[entity_id, key, value] <- [[$entity_id, $key, $value]] :put entity_metadata {entity_id, key, value}`,
+            { entity_id: entityId, key, value: valueStr }
+        );
         this.entityCache.delete(entityId);
     }
 
     async getEntityMetadata(entityId: string): Promise<Record<string, any>> {
-        const result = cozoDb.runQuery(`?[key, value] := *entity_metadata{entity_id, key, value}, entity_id == "${entityId}"`);
+        const result = cozoDb.runQuery(
+            `?[key, value] := *entity_metadata{entity_id, key, value}, entity_id == $entity_id`,
+            { entity_id: entityId }
+        );
         const metadata: Record<string, any> = {};
         for (const [key, value] of result.rows || []) {
             try { metadata[key] = JSON.parse(value); } catch { metadata[key] = value; }
@@ -469,7 +546,21 @@ export class CozoUnifiedRegistry {
         const id = this.generateId();
         const now = Date.now();
 
-        cozoDb.run(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [["${id}", "${sourceId}", "${targetId}", "${this.escape(type)}", ${options?.inverseType ? `"${this.escape(options.inverseType)}"` : 'null'}, ${options?.bidirectional || false}, ${provenance.confidence}, ${options?.namespace ? `"${this.escape(options.namespace)}"` : 'null'}, ${now}, ${now}]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`);
+        cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [[$id, $source_id, $target_id, $type, $inverse_type, $bidirectional, $confidence, $namespace, $created_at, $updated_at]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`,
+            {
+                id,
+                source_id: sourceId,
+                target_id: targetId,
+                type,
+                inverse_type: options?.inverseType ?? null,
+                bidirectional: options?.bidirectional || false,
+                confidence: provenance.confidence,
+                namespace: options?.namespace ?? null,
+                created_at: now,
+                updated_at: now
+            }
+        );
 
         await this.addProvenance(id, provenance);
         if (options?.attributes) {
@@ -483,7 +574,10 @@ export class CozoUnifiedRegistry {
     async getRelationshipById(id: string): Promise<CozoRelationship | null> {
         if (this.relationshipCache.has(id)) return this.relationshipCache.get(id)!;
 
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, id == "${id}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, id == $id`,
+            { id }
+        );
         if (!result.rows?.length) return null;
 
         const relationship = await this.hydrateRelationship(result.rows[0]);
@@ -492,41 +586,64 @@ export class CozoUnifiedRegistry {
     }
 
     async findRelationship(sourceId: string, targetId: string, type: string, namespace?: string): Promise<CozoRelationship | null> {
-        const nsClause = namespace ? `, namespace == "${this.escape(namespace)}"` : '';
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, source_id == "${sourceId}", target_id == "${targetId}", type == "${this.escape(type)}"${nsClause}`);
+        const params: Record<string, any> = { source_id: sourceId, target_id: targetId, type };
+        let nsClause = '';
+        if (namespace) {
+            nsClause = `, namespace == $namespace`;
+            params.namespace = namespace;
+        }
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, source_id == $source_id, target_id == $target_id, type == $type${nsClause}`,
+            params
+        );
         if (!result.rows?.length) return null;
         return this.hydrateRelationship(result.rows[0]);
     }
 
     async getRelationshipsForEntity(entityId: string): Promise<CozoRelationship[]> {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, (source_id == "${entityId}" || target_id == "${entityId}")`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, (source_id == $entity_id || target_id == $entity_id)`,
+            { entity_id: entityId }
+        );
         return Promise.all((result.rows || []).map((row: any) => this.hydrateRelationship(row)));
     }
 
     async getRelationshipsBySource(sourceId: string): Promise<CozoRelationship[]> {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, source_id == "${sourceId}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, source_id == $source_id`,
+            { source_id: sourceId }
+        );
         return Promise.all((result.rows || []).map((row: any) => this.hydrateRelationship(row)));
     }
 
     async getRelationshipsByTarget(targetId: string): Promise<CozoRelationship[]> {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, target_id == "${targetId}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, target_id == $target_id`,
+            { target_id: targetId }
+        );
         return Promise.all((result.rows || []).map((row: any) => this.hydrateRelationship(row)));
     }
 
     async getRelationshipsByType(type: string): Promise<CozoRelationship[]> {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, type == "${this.escape(type)}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, type == $type`,
+            { type }
+        );
         return Promise.all((result.rows || []).map((row: any) => this.hydrateRelationship(row)));
     }
 
     async getRelationshipsByNamespace(namespace: string): Promise<CozoRelationship[]> {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, namespace == "${this.escape(namespace)}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, namespace == $namespace`,
+            { namespace }
+        );
         return Promise.all((result.rows || []).map((row: any) => this.hydrateRelationship(row)));
     }
 
     async deleteRelationship(id: string): Promise<boolean> {
         this.deleteRelationshipProvenance(id);
         this.deleteRelationshipAttributes(id);
-        cozoDb.run(`?[id] := *relationships{id}, id == "${id}" :rm relationships {id}`);
+        cozoDb.runQuery(`?[id] := *relationships{id}, id == $id :rm relationships {id}`, { id });
         this.relationshipCache.delete(id);
         this.scheduleSnapshot();
         return true;
@@ -543,7 +660,21 @@ export class CozoUnifiedRegistry {
         for (const rel of relationships) {
             const newSrc = rel.sourceId === oldEntityId ? newEntityId : rel.sourceId;
             const newTgt = rel.targetId === oldEntityId ? newEntityId : rel.targetId;
-            cozoDb.run(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [["${rel.id}", "${newSrc}", "${newTgt}", "${rel.type}", ${rel.inverseType ? `"${rel.inverseType}"` : 'null'}, ${rel.bidirectional}, ${rel.confidence}, ${rel.namespace ? `"${rel.namespace}"` : 'null'}, ${rel.createdAt.getTime()}, ${Date.now()}]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`);
+            cozoDb.runQuery(
+                `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [[$id, $source_id, $target_id, $type, $inverse_type, $bidirectional, $confidence, $namespace, $created_at, $updated_at]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`,
+                {
+                    id: rel.id,
+                    source_id: newSrc,
+                    target_id: newTgt,
+                    type: rel.type,
+                    inverse_type: rel.inverseType ?? null,
+                    bidirectional: rel.bidirectional,
+                    confidence: rel.confidence,
+                    namespace: rel.namespace ?? null,
+                    created_at: rel.createdAt.getTime(),
+                    updated_at: Date.now()
+                }
+            );
             this.relationshipCache.delete(rel.id);
         }
         return relationships.length;
@@ -552,17 +683,33 @@ export class CozoUnifiedRegistry {
     // ==================== PROVENANCE MANAGEMENT ====================
 
     private async addProvenance(relationshipId: string, provenance: RelationshipProvenance): Promise<void> {
-        cozoDb.run(`?[relationship_id, source, origin_id, confidence, timestamp, context] <- [["${relationshipId}", "${provenance.source}", "${this.escape(provenance.originId)}", ${provenance.confidence}, ${provenance.timestamp.getTime()}, ${provenance.context ? `"${this.escape(provenance.context)}"` : 'null'}]] :put relationship_provenance {relationship_id, source, origin_id, confidence, timestamp, context}`);
+        cozoDb.runQuery(
+            `?[relationship_id, source, origin_id, confidence, timestamp, context] <- [[$relationship_id, $source, $origin_id, $confidence, $timestamp, $context]] :put relationship_provenance {relationship_id, source, origin_id, confidence, timestamp, context}`,
+            {
+                relationship_id: relationshipId,
+                source: provenance.source,
+                origin_id: provenance.originId,
+                confidence: provenance.confidence,
+                timestamp: provenance.timestamp.getTime(),
+                context: provenance.context ?? null
+            }
+        );
         this.relationshipCache.delete(relationshipId);
     }
 
     private async getProvenance(relationshipId: string): Promise<RelationshipProvenance[]> {
-        const result = cozoDb.runQuery(`?[source, origin_id, confidence, timestamp, context] := *relationship_provenance{relationship_id, source, origin_id, confidence, timestamp, context}, relationship_id == "${relationshipId}"`);
+        const result = cozoDb.runQuery(
+            `?[source, origin_id, confidence, timestamp, context] := *relationship_provenance{relationship_id, source, origin_id, confidence, timestamp, context}, relationship_id == $relationship_id`,
+            { relationship_id: relationshipId }
+        );
         return (result.rows || []).map((row: any) => ({ source: row[0], originId: row[1], confidence: row[2], timestamp: new Date(row[3]), context: row[4] }));
     }
 
     private deleteRelationshipProvenance(relationshipId: string): void {
-        cozoDb.run(`?[relationship_id, source, origin_id] := *relationship_provenance{relationship_id, source, origin_id}, relationship_id == "${relationshipId}" :rm relationship_provenance {relationship_id, source, origin_id}`);
+        cozoDb.runQuery(
+            `?[relationship_id, source, origin_id] := *relationship_provenance{relationship_id, source, origin_id}, relationship_id == $relationship_id :rm relationship_provenance {relationship_id, source, origin_id}`,
+            { relationship_id: relationshipId }
+        );
     }
 
     private async recalculateRelationshipConfidence(relationshipId: string): Promise<void> {
@@ -585,7 +732,21 @@ export class CozoUnifiedRegistry {
         const newConfidence = totalWeight > 0 ? Math.min(1, weightedSum / totalWeight) : 0;
         const rel = await this.getRelationshipById(relationshipId);
         if (rel) {
-            cozoDb.run(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [["${relationshipId}", "${rel.sourceId}", "${rel.targetId}", "${rel.type}", ${rel.inverseType ? `"${rel.inverseType}"` : 'null'}, ${rel.bidirectional}, ${newConfidence}, ${rel.namespace ? `"${rel.namespace}"` : 'null'}, ${rel.createdAt.getTime()}, ${Date.now()}]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`);
+            cozoDb.runQuery(
+                `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [[$id, $source_id, $target_id, $type, $inverse_type, $bidirectional, $confidence, $namespace, $created_at, $updated_at]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`,
+                {
+                    id: relationshipId,
+                    source_id: rel.sourceId,
+                    target_id: rel.targetId,
+                    type: rel.type,
+                    inverse_type: rel.inverseType ?? null,
+                    bidirectional: rel.bidirectional,
+                    confidence: newConfidence,
+                    namespace: rel.namespace ?? null,
+                    created_at: rel.createdAt.getTime(),
+                    updated_at: Date.now()
+                }
+            );
         }
         this.relationshipCache.delete(relationshipId);
     }
@@ -594,12 +755,18 @@ export class CozoUnifiedRegistry {
 
     async setRelationshipAttribute(relationshipId: string, key: string, value: any): Promise<void> {
         const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
-        cozoDb.run(`?[relationship_id, key, value] <- [["${relationshipId}", "${this.escape(key)}", "${this.escape(valueStr)}"]] :put relationship_attributes {relationship_id, key, value}`);
+        cozoDb.runQuery(
+            `?[relationship_id, key, value] <- [[$relationship_id, $key, $value]] :put relationship_attributes {relationship_id, key, value}`,
+            { relationship_id: relationshipId, key, value: valueStr }
+        );
         this.relationshipCache.delete(relationshipId);
     }
 
     private async getRelationshipAttributes(relationshipId: string): Promise<Record<string, any>> {
-        const result = cozoDb.runQuery(`?[key, value] := *relationship_attributes{relationship_id, key, value}, relationship_id == "${relationshipId}"`);
+        const result = cozoDb.runQuery(
+            `?[key, value] := *relationship_attributes{relationship_id, key, value}, relationship_id == $relationship_id`,
+            { relationship_id: relationshipId }
+        );
         const attributes: Record<string, any> = {};
         for (const [key, value] of result.rows || []) {
             try { attributes[key] = JSON.parse(value); } catch { attributes[key] = value; }
@@ -608,7 +775,10 @@ export class CozoUnifiedRegistry {
     }
 
     private deleteRelationshipAttributes(relationshipId: string): void {
-        cozoDb.run(`?[relationship_id, key] := *relationship_attributes{relationship_id, key}, relationship_id == "${relationshipId}" :rm relationship_attributes {relationship_id, key}`);
+        cozoDb.runQuery(
+            `?[relationship_id, key] := *relationship_attributes{relationship_id, key}, relationship_id == $relationship_id :rm relationship_attributes {relationship_id, key}`,
+            { relationship_id: relationshipId }
+        );
     }
 
     // ==================== STATISTICS ====================
@@ -664,7 +834,10 @@ export class CozoUnifiedRegistry {
 
     async findShortestPath(sourceId: string, targetId: string): Promise<string[] | null> {
         try {
-            const result = cozoDb.runQuery(`shortest[path] <~ ShortestPathBFS(*relationships[], "${sourceId}", "${targetId}") ?[path] := shortest[path]`);
+            const result = cozoDb.runQuery(
+                `shortest[path] <~ ShortestPathBFS(*relationships[], $source_id, $target_id) ?[path] := shortest[path]`,
+                { source_id: sourceId, target_id: targetId }
+            );
             return result.rows?.length > 0 ? result.rows[0][0] : null;
         } catch (err) { console.error('[CozoUnifiedRegistry] Shortest path failed:', err); return null; }
     }
@@ -749,12 +922,18 @@ export class CozoUnifiedRegistry {
     // ==================== SYNC WRITE HELPERS ====================
 
     private getProvenanceSync(relationshipId: string): RelationshipProvenance[] {
-        const result = cozoDb.runQuery(`?[source, origin_id, confidence, timestamp, context] := *relationship_provenance{relationship_id, source, origin_id, confidence, timestamp, context}, relationship_id == "${relationshipId}"`);
+        const result = cozoDb.runQuery(
+            `?[source, origin_id, confidence, timestamp, context] := *relationship_provenance{relationship_id, source, origin_id, confidence, timestamp, context}, relationship_id == $relationship_id`,
+            { relationship_id: relationshipId }
+        );
         return (result.rows || []).map((row: any) => ({ source: row[0], originId: row[1], confidence: row[2], timestamp: new Date(row[3]), context: row[4] }));
     }
 
     private getRelationshipAttributesSync(relationshipId: string): Record<string, any> {
-        const result = cozoDb.runQuery(`?[key, value] := *relationship_attributes{relationship_id, key, value}, relationship_id == "${relationshipId}"`);
+        const result = cozoDb.runQuery(
+            `?[key, value] := *relationship_attributes{relationship_id, key, value}, relationship_id == $relationship_id`,
+            { relationship_id: relationshipId }
+        );
         const attributes: Record<string, any> = {};
         for (const [key, value] of result.rows || []) {
             try { attributes[key] = JSON.parse(value); } catch { attributes[key] = value; }
@@ -763,14 +942,23 @@ export class CozoUnifiedRegistry {
     }
 
     private addProvenanceSync(relationshipId: string, provenance: RelationshipProvenance): void {
-        cozoDb.run(`?[relationship_id, source, origin_id, confidence, timestamp, context] <- [["${relationshipId}", "${provenance.source}", "${this.escape(provenance.originId)}", ${provenance.confidence}, ${provenance.timestamp.getTime()}, ${provenance.context ? `"${this.escape(provenance.context)}"` : 'null'}]] :put relationship_provenance {relationship_id, source, origin_id, confidence, timestamp, context}`);
+        cozoDb.runQuery(
+            `?[relationship_id, source, origin_id, confidence, timestamp, context] <- [[$relationship_id, $source, $origin_id, $confidence, $timestamp, $context]] :put relationship_provenance {relationship_id, source, origin_id, confidence, timestamp, context}`,
+            {
+                relationship_id: relationshipId,
+                source: provenance.source,
+                origin_id: provenance.originId,
+                confidence: provenance.confidence,
+                timestamp: provenance.timestamp.getTime(),
+                context: provenance.context ?? null
+            }
+        );
         this.relationshipCache.delete(relationshipId);
     }
 
     private recalculateRelationshipConfidenceSync(relationshipId: string): void {
         const provenance = this.getProvenanceSync(relationshipId);
         if (provenance.length === 0) {
-            // Delete relationship if no provenance
             this.deleteRelationshipSync(relationshipId);
             return;
         }
@@ -791,21 +979,38 @@ export class CozoUnifiedRegistry {
         const newConfidence = totalWeight > 0 ? Math.min(1, weightedSum / totalWeight) : 0;
         const rel = this.getRelationshipByIdSync(relationshipId);
         if (rel) {
-            cozoDb.run(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [["${relationshipId}", "${rel.sourceId}", "${rel.targetId}", "${rel.type}", ${rel.inverseType ? `"${rel.inverseType}"` : 'null'}, ${rel.bidirectional}, ${newConfidence}, ${rel.namespace ? `"${rel.namespace}"` : 'null'}, ${rel.createdAt.getTime()}, ${Date.now()}]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`);
+            cozoDb.runQuery(
+                `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [[$id, $source_id, $target_id, $type, $inverse_type, $bidirectional, $confidence, $namespace, $created_at, $updated_at]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`,
+                {
+                    id: relationshipId,
+                    source_id: rel.sourceId,
+                    target_id: rel.targetId,
+                    type: rel.type,
+                    inverse_type: rel.inverseType ?? null,
+                    bidirectional: rel.bidirectional,
+                    confidence: newConfidence,
+                    namespace: rel.namespace ?? null,
+                    created_at: rel.createdAt.getTime(),
+                    updated_at: Date.now()
+                }
+            );
         }
         this.relationshipCache.delete(relationshipId);
     }
 
     private setRelationshipAttributeSync(relationshipId: string, key: string, value: any): void {
         const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
-        cozoDb.run(`?[relationship_id, key, value] <- [["${relationshipId}", "${this.escape(key)}", "${this.escape(valueStr)}"]] :put relationship_attributes {relationship_id, key, value}`);
+        cozoDb.runQuery(
+            `?[relationship_id, key, value] <- [[$relationship_id, $key, $value]] :put relationship_attributes {relationship_id, key, value}`,
+            { relationship_id: relationshipId, key, value: valueStr }
+        );
         this.relationshipCache.delete(relationshipId);
     }
 
     deleteRelationshipSync(id: string): boolean {
         this.deleteRelationshipProvenance(id);
         this.deleteRelationshipAttributes(id);
-        cozoDb.run(`?[id] := *relationships{id}, id == "${id}" :rm relationships {id}`);
+        cozoDb.runQuery(`?[id] := *relationships{id}, id == $id :rm relationships {id}`, { id });
         this.relationshipCache.delete(id);
         this.scheduleSnapshot();
         return true;
@@ -827,7 +1032,21 @@ export class CozoUnifiedRegistry {
         const id = this.generateId();
         const now = Date.now();
 
-        cozoDb.run(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [["${id}", "${sourceId}", "${targetId}", "${this.escape(type)}", ${options?.inverseType ? `"${this.escape(options.inverseType)}"` : 'null'}, ${options?.bidirectional || false}, ${provenance.confidence}, ${options?.namespace ? `"${this.escape(options.namespace)}"` : 'null'}, ${now}, ${now}]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`);
+        cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] <- [[$id, $source_id, $target_id, $type, $inverse_type, $bidirectional, $confidence, $namespace, $created_at, $updated_at]] :put relationships {id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}`,
+            {
+                id,
+                source_id: sourceId,
+                target_id: targetId,
+                type,
+                inverse_type: options?.inverseType ?? null,
+                bidirectional: options?.bidirectional || false,
+                confidence: provenance.confidence,
+                namespace: options?.namespace ?? null,
+                created_at: now,
+                updated_at: now
+            }
+        );
 
         this.addProvenanceSync(id, provenance);
         if (options?.attributes) {
@@ -880,7 +1099,6 @@ export class CozoUnifiedRegistry {
     // ==================== HELPER METHODS ====================
 
     private normalize(text: string): string { return text.toLowerCase().trim(); }
-    private escape(text: string): string { return text.replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
     private generateId(): string { return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`; }
 
     private cacheEntity(entity: CozoEntity): void {
@@ -897,7 +1115,10 @@ export class CozoUnifiedRegistry {
         const [id, label, normalized, kind, subtype, firstNote, createdAt, createdBy] = row;
         const aliases = await this.getAliases(id);
 
-        const mentionsResult = cozoDb.runQuery(`?[note_id, count, last_seen] := *entity_mentions{entity_id, note_id, mention_count: count, last_seen}, entity_id == "${id}"`);
+        const mentionsResult = cozoDb.runQuery(
+            `?[note_id, count, last_seen] := *entity_mentions{entity_id, note_id, mention_count: count, last_seen}, entity_id == $entity_id`,
+            { entity_id: id }
+        );
         const mentionsByNote = new Map<string, number>();
         let lastSeenDate = new Date(0);
         for (const [noteId, count, lastSeen] of mentionsResult.rows || []) {
@@ -920,7 +1141,10 @@ export class CozoUnifiedRegistry {
     }
 
     async getRelationshipIdsForEntity(entityId: string): Promise<string[]> {
-        const result = cozoDb.runQuery(`?[id] := *relationships{id, source_id, target_id}, (source_id == "${entityId}" || target_id == "${entityId}")`);
+        const result = cozoDb.runQuery(
+            `?[id] := *relationships{id, source_id, target_id}, (source_id == $entity_id || target_id == $entity_id)`,
+            { entity_id: entityId }
+        );
         return (result.rows || []).map((row: any) => row[0]);
     }
 
@@ -929,12 +1153,16 @@ export class CozoUnifiedRegistry {
     private hydrateEntitySync(row: any[]): CozoEntity {
         const [id, label, normalized, kind, subtype, firstNote, createdAt, createdBy] = row;
 
-        // Aliases
-        const aliasResult = cozoDb.runQuery(`?[alias] := *entity_aliases{entity_id, alias}, entity_id == "${id}"`);
+        const aliasResult = cozoDb.runQuery(
+            `?[alias] := *entity_aliases{entity_id, alias}, entity_id == $entity_id`,
+            { entity_id: id }
+        );
         const aliases = (aliasResult.rows || []).map((row: any) => row[0]);
 
-        // Mentions
-        const mentionsResult = cozoDb.runQuery(`?[note_id, count, last_seen] := *entity_mentions{entity_id, note_id, mention_count: count, last_seen}, entity_id == "${id}"`);
+        const mentionsResult = cozoDb.runQuery(
+            `?[note_id, count, last_seen] := *entity_mentions{entity_id, note_id, mention_count: count, last_seen}, entity_id == $entity_id`,
+            { entity_id: id }
+        );
         const mentionsByNote = new Map<string, number>();
         let lastSeenDate = new Date(0);
         for (const [noteId, count, lastSeen] of mentionsResult.rows || []) {
@@ -945,8 +1173,10 @@ export class CozoUnifiedRegistry {
 
         const totalMentions = Array.from(mentionsByNote.values()).reduce((a, b) => a + b, 0);
 
-        // Metadata
-        const metaResult = cozoDb.runQuery(`?[key, value] := *entity_metadata{entity_id, key, value}, entity_id == "${id}"`);
+        const metaResult = cozoDb.runQuery(
+            `?[key, value] := *entity_metadata{entity_id, key, value}, entity_id == $entity_id`,
+            { entity_id: id }
+        );
         const metadata: Record<string, any> = {};
         for (const [key, value] of metaResult.rows || []) {
             try { metadata[key] = JSON.parse(value); } catch { metadata[key] = value; }
@@ -958,12 +1188,16 @@ export class CozoUnifiedRegistry {
     private hydrateRelationshipSync(row: any[]): CozoRelationship {
         const [id, sourceId, targetId, type, inverseType, bidirectional, confidence, namespace, createdAt, updatedAt] = row;
 
-        // Provenance
-        const provResult = cozoDb.runQuery(`?[source, origin_id, confidence, timestamp, context] := *relationship_provenance{relationship_id, source, origin_id, confidence, timestamp, context}, relationship_id == "${id}"`);
+        const provResult = cozoDb.runQuery(
+            `?[source, origin_id, confidence, timestamp, context] := *relationship_provenance{relationship_id, source, origin_id, confidence, timestamp, context}, relationship_id == $relationship_id`,
+            { relationship_id: id }
+        );
         const provenance = (provResult.rows || []).map((row: any) => ({ source: row[0], originId: row[1], confidence: row[2], timestamp: new Date(row[3]), context: row[4] }));
 
-        // Attributes
-        const attrResult = cozoDb.runQuery(`?[key, value] := *relationship_attributes{relationship_id, key, value}, relationship_id == "${id}"`);
+        const attrResult = cozoDb.runQuery(
+            `?[key, value] := *relationship_attributes{relationship_id, key, value}, relationship_id == $relationship_id`,
+            { relationship_id: id }
+        );
         const attributes: Record<string, any> = {};
         for (const [key, value] of attrResult.rows || []) {
             try { attributes[key] = JSON.parse(value); } catch { attributes[key] = value; }
@@ -974,8 +1208,8 @@ export class CozoUnifiedRegistry {
 
     getEntityByIdSync(id: string): CozoEntity | null {
         if (this.entityCache.has(id)) return this.entityCache.get(id)!;
-        const query = `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}, id == "${id}"`;
-        const result = cozoDb.runQuery(query);
+        const query = `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}, id == $id`;
+        const result = cozoDb.runQuery(query, { id });
         if (!result.rows || result.rows.length === 0) return null;
         const entity = this.hydrateEntitySync(result.rows[0]);
         this.cacheEntity(entity);
@@ -984,24 +1218,38 @@ export class CozoUnifiedRegistry {
 
     findEntityByLabelSync(label: string): CozoEntity | null {
         const normalized = this.normalize(label);
-        let result = cozoDb.runQuery(`?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}, normalized == "${normalized}"`);
+        let result = cozoDb.runQuery(
+            `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}, normalized == $normalized`,
+            { normalized }
+        );
         if (result.rows?.length > 0) return this.hydrateEntitySync(result.rows[0]);
 
-        result = cozoDb.runQuery(`?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entity_aliases{entity_id, normalized: alias_norm}, alias_norm == "${normalized}", *entities{id: entity_id, label, normalized, kind, subtype, first_note, created_at, created_by}`);
+        result = cozoDb.runQuery(
+            `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entity_aliases{entity_id, normalized: alias_norm}, alias_norm == $normalized, *entities{id: entity_id, label, normalized, kind, subtype, first_note, created_at, created_by}`,
+            { normalized }
+        );
         if (result.rows?.length > 0) return this.hydrateEntitySync(result.rows[0]);
 
         return null;
     }
 
     getAllEntitiesSync(filters?: { kind?: EntityKind; subtype?: string; minMentions?: number }): CozoEntity[] {
-        let whereClauses: string[] = [];
-        if (filters?.kind) whereClauses.push(`kind == "${filters.kind}"`);
-        if (filters?.subtype) whereClauses.push(`subtype == "${filters.subtype}"`);
+        const whereClauses: string[] = [];
+        const params: Record<string, any> = {};
+        
+        if (filters?.kind) {
+            whereClauses.push(`kind == $filter_kind`);
+            params.filter_kind = filters.kind;
+        }
+        if (filters?.subtype) {
+            whereClauses.push(`subtype == $filter_subtype`);
+            params.filter_subtype = filters.subtype;
+        }
 
         const whereClause = whereClauses.length > 0 ? `,\n        ${whereClauses.join(',\n        ')}` : '';
         const query = `?[id, label, normalized, kind, subtype, first_note, created_at, created_by] := *entities{id, label, normalized, kind, subtype, first_note, created_at, created_by}${whereClause}`;
 
-        const result = cozoDb.runQuery(query);
+        const result = cozoDb.runQuery(query, params);
         const entities = (result.rows || []).map((row: any) => this.hydrateEntitySync(row));
 
         if (filters?.minMentions) return entities.filter(e => (e.totalMentions || 0) >= filters.minMentions);
@@ -1009,13 +1257,19 @@ export class CozoUnifiedRegistry {
     }
 
     getRelationshipsForEntitySync(entityId: string): CozoRelationship[] {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, (source_id == "${entityId}" || target_id == "${entityId}")`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, (source_id == $entity_id || target_id == $entity_id)`,
+            { entity_id: entityId }
+        );
         return (result.rows || []).map((row: any) => this.hydrateRelationshipSync(row));
     }
 
     getRelationshipByIdSync(id: string): CozoRelationship | null {
         if (this.relationshipCache.has(id)) return this.relationshipCache.get(id)!;
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, id == "${id}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, id == $id`,
+            { id }
+        );
         if (!result.rows?.length) return null;
         const relationship = this.hydrateRelationshipSync(result.rows[0]);
         this.cacheRelationship(relationship);
@@ -1023,29 +1277,49 @@ export class CozoUnifiedRegistry {
     }
 
     findRelationshipSync(sourceId: string, targetId: string, type: string, namespace?: string): CozoRelationship | null {
-        const nsClause = namespace ? `, namespace == "${this.escape(namespace)}"` : '';
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, source_id == "${sourceId}", target_id == "${targetId}", type == "${this.escape(type)}"${nsClause}`);
+        const params: Record<string, any> = { source_id: sourceId, target_id: targetId, type };
+        let nsClause = '';
+        if (namespace) {
+            nsClause = `, namespace == $namespace`;
+            params.namespace = namespace;
+        }
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, source_id == $source_id, target_id == $target_id, type == $type${nsClause}`,
+            params
+        );
         if (!result.rows?.length) return null;
         return this.hydrateRelationshipSync(result.rows[0]);
     }
 
     getRelationshipsBySourceSync(sourceId: string): CozoRelationship[] {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, source_id == "${sourceId}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, source_id == $source_id`,
+            { source_id: sourceId }
+        );
         return (result.rows || []).map((row: any) => this.hydrateRelationshipSync(row));
     }
 
     getRelationshipsByTargetSync(targetId: string): CozoRelationship[] {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, target_id == "${targetId}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, target_id == $target_id`,
+            { target_id: targetId }
+        );
         return (result.rows || []).map((row: any) => this.hydrateRelationshipSync(row));
     }
 
     getRelationshipsByTypeSync(type: string): CozoRelationship[] {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, type == "${this.escape(type)}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, type == $type`,
+            { type }
+        );
         return (result.rows || []).map((row: any) => this.hydrateRelationshipSync(row));
     }
 
     getRelationshipsByNamespaceSync(namespace: string): CozoRelationship[] {
-        const result = cozoDb.runQuery(`?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, namespace == "${this.escape(namespace)}"`);
+        const result = cozoDb.runQuery(
+            `?[id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at] := *relationships{id, source_id, target_id, type, inverse_type, bidirectional, confidence, namespace, created_at, updated_at}, namespace == $namespace`,
+            { namespace }
+        );
         return (result.rows || []).map((row: any) => this.hydrateRelationshipSync(row));
     }
 
