@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Sparkles, AlertCircle, ChevronDown, Check, X, RefreshCw, Book, Lightbulb, Brain, Zap, Settings } from 'lucide-react';
 import { extractionService, runNer } from '@/lib/extraction';
@@ -50,131 +50,11 @@ const GLINER_ENTITY_TYPES = [
     'creature',     // Fantastical beings
 ];
 
-interface EntityCardProps {
-    entity: NEREntity;
-    onAccept: (entity: NEREntity, kind: string) => void;
-    onDismiss: (entity: NEREntity) => void;
-    entityTypes?: Array<{ entity_kind: string; color?: string; display_name: string }>;
-    possibleKinds: string[];
-}
+import { VirtualizedEntityList } from './entities/VirtualizedEntityList';
+import { EntityCard } from './entities/EntityCard';
 
-function EntityCard({ entity, onAccept, onDismiss, entityTypes, possibleKinds }: EntityCardProps) {
-    const [selectedKind, setSelectedKind] = useState<string>(possibleKinds[0]);
+// Local EntityCard removed, moved to src/components/entities/EntityCard.tsx
 
-    // Get color for selected kind - check blueprint types first, then fallback to ENTITY_COLORS
-    const getEntityColor = (kind: string): string => {
-        const blueprintType = entityTypes?.find(t => t.entity_kind === kind);
-        if (blueprintType?.color) return blueprintType.color;
-        return ENTITY_COLORS[kind as EntityKind] || '#6b7280';
-    };
-
-    const selectedColor = getEntityColor(selectedKind);
-
-    return (
-        <div className="p-3 rounded-lg border bg-card group hover:shadow-md transition-all">
-            <div className="flex items-start justify-between gap-2 mb-3">
-                <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate text-base">{entity.word}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span
-                            className="text-xs px-2 py-0.5 rounded-full font-medium"
-                            style={{
-                                backgroundColor: `${selectedColor}20`,
-                                color: selectedColor
-                            }}
-                        >
-                            {entity.entity_type}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                            {Math.round(entity.score * 100)}% confidence
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-                {/* Entity Type Selector - Shows ALL types, grouped by likelihood */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 justify-between"
-                            style={{ borderColor: `${selectedColor}40` }}
-                        >
-                            <span className="truncate font-medium">{selectedKind}</span>
-                            <ChevronDown className="ml-1 h-3 w-3 shrink-0" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-[200px] max-h-[300px] overflow-y-auto">
-                        {/* Suggested types first */}
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                            Suggested
-                        </div>
-                        {possibleKinds.map((kind) => (
-                            <DropdownMenuItem
-                                key={kind}
-                                onClick={() => setSelectedKind(kind)}
-                                className={selectedKind === kind ? 'bg-accent' : ''}
-                            >
-                                <div
-                                    className="w-2 h-2 rounded-full mr-2 shrink-0"
-                                    style={{ backgroundColor: getEntityColor(kind) }}
-                                />
-                                {kind}
-                            </DropdownMenuItem>
-                        ))}
-
-                        {/* Divider */}
-                        {entityTypes && possibleKinds.length < entityTypes.length && (
-                            <>
-                                <div className="border-t my-1" />
-                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                                    All Types
-                                </div>
-                                {entityTypes.filter(t => !possibleKinds.includes(t.entity_kind)).map((type) => (
-                                    <DropdownMenuItem
-                                        key={type.entity_kind}
-                                        onClick={() => setSelectedKind(type.entity_kind)}
-                                        className={selectedKind === type.entity_kind ? 'bg-accent' : ''}
-                                    >
-                                        <div
-                                            className="w-2 h-2 rounded-full mr-2 shrink-0"
-                                            style={{ backgroundColor: getEntityColor(type.entity_kind) }}
-                                        />
-                                        {type.display_name || type.entity_kind}
-                                    </DropdownMenuItem>
-                                ))}
-                            </>
-                        )}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Accept Button */}
-                <Button
-                    size="sm"
-                    variant="default"
-                    onClick={() => onAccept(entity, selectedKind)}
-                    className="shrink-0"
-                    style={{ backgroundColor: selectedColor }}
-                >
-                    <Check className="h-4 w-4" />
-                </Button>
-
-                {/* Dismiss Button */}
-                <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onDismiss(entity)}
-                    className="shrink-0 hover:bg-destructive/10 hover:text-destructive"
-                >
-                    <X className="h-4 w-4" />
-                </Button>
-            </div>
-        </div>
-    );
-}
 
 // Helper to deduplicate entities
 function deduplicateEntities(entities: NEREntity[]): NEREntity[] {
@@ -212,7 +92,7 @@ export function EntitiesPanel() {
     // New state for model selection
     const [modelType, setModelType] = useState<'ner' | 'extraction'>('ner');
 
-    const getLabelMappings = (): Record<string, string[]> => {
+    const getLabelMappings = useMemo((): Record<string, string[]> => {
         if (!compiledBlueprint?.extractionProfile?.labelMappings) {
             return DEFAULT_NER_TO_ENTITY_MAP;
         }
@@ -223,7 +103,7 @@ export function EntitiesPanel() {
         });
 
         return mappings;
-    };
+    }, [compiledBlueprint?.extractionProfile?.labelMappings]);
 
     const loadModel = async (type: 'ner' | 'extraction') => {
         // Don't reload if already loaded and type matches
@@ -349,22 +229,10 @@ export function EntitiesPanel() {
         loadModel(modelType);
     };
 
-    const handleAccept = async (entity: NEREntity, kind: string) => {
+    const handleAccept = useCallback(async (entity: NEREntity, kind: string) => {
         if (!selectedNote) return;
 
         try {
-            // Phase 1: Register in EntityRegistry (Singleton)
-            // We do extensive import here to emulate lazy loading if needed,
-            // but cleaner to just use the one we have globally or import at top.
-            // We already imported entityRegistry from lib/entities/entity-registry in other files.
-            // But wait, this file doesn't import entityRegistry yet?
-            // Let's rely on dynamic import or add it to imports.
-            // Actually, I'll add the import dynamically inside this handler to avoid modifying imports again if possible,
-            // BUT I already modified imports in previous step.
-
-            // Wait, I did NOT import entityRegistry in previous step.
-            // I'll use dynamic import for safety.
-
             const { entityRegistry } = await import('@/lib/entities/entity-registry');
             const { autoSaveEntityRegistry } = await import('@/lib/storage/entityStorage');
 
@@ -386,11 +254,11 @@ export function EntitiesPanel() {
             });
             console.error(err);
         }
-    };
+    }, [selectedNote, toast, setEntities]);
 
-    const handleDismiss = (entity: NEREntity) => {
+    const handleDismiss = useCallback((entity: NEREntity) => {
         setEntities(prev => prev.filter(e => e !== entity));
-    };
+    }, [setEntities]);
 
     return (
         <div className="flex flex-col h-full bg-background">
@@ -484,7 +352,7 @@ export function EntitiesPanel() {
                     </div>
 
                     {/* Results */}
-                    <div className="flex-1 overflow-auto p-4 space-y-3">
+                    <div className="flex-1 overflow-hidden flex flex-col">
                         {entities.length === 0 ? (
                             <div className="text-center text-muted-foreground text-sm py-8">
                                 <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -495,7 +363,7 @@ export function EntitiesPanel() {
                             </div>
                         ) : (
                             <>
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between p-4 pb-2">
                                     <p className="text-sm text-muted-foreground">
                                         Found {entities.length} suggestions
                                     </p>
@@ -503,29 +371,13 @@ export function EntitiesPanel() {
                                         Clear All
                                     </Button>
                                 </div>
-                                <div className="space-y-3 pb-8">
-                                    {entities.map((entity, idx) => {
-                                        // For LFM2, the entity_type IS the target kind, so map directly
-                                        let possibleKinds = [entity.entity_type];
-
-                                        // For NER, we map broad categories to specific kinds
-                                        if (modelType === 'ner') {
-                                            const labelMappings = getLabelMappings();
-                                            possibleKinds = labelMappings[entity.entity_type.toLowerCase()] || ['CONCEPT'];
-                                        }
-
-                                        return (
-                                            <EntityCard
-                                                key={`${entity.word}-${idx}`}
-                                                entity={entity}
-                                                onAccept={handleAccept}
-                                                onDismiss={handleDismiss}
-                                                entityTypes={compiledBlueprint?.entityTypes}
-                                                possibleKinds={possibleKinds}
-                                            />
-                                        );
-                                    })}
-                                </div>
+                                <VirtualizedEntityList
+                                    entities={entities}
+                                    onAccept={handleAccept}
+                                    onDismiss={handleDismiss}
+                                    entityTypes={compiledBlueprint?.entityTypes}
+                                    getLabelMappings={getLabelMappings}
+                                />
                             </>
                         )}
                     </div>

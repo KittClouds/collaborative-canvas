@@ -41,7 +41,9 @@ export type WorkerMessageType =
   // ResoRank cache operations
   | 'GET_RESORANK_CACHE'
   | 'SET_RESORANK_CACHE'
-  | 'CLEAR_RESORANK_CACHE';
+  | 'CLEAR_RESORANK_CACHE'
+  // Transaction operations (Weapons-Grade Sync)
+  | 'TRANSACTION_EXECUTE';
 
 export interface WorkerMessage {
   id: string;

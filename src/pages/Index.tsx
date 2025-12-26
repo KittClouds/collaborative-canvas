@@ -1,5 +1,6 @@
 
 import { AppSidebar } from '@/components/app-sidebar';
+import { AppHeader } from '@/components/AppHeader';
 import { FooterLinksPanel } from '@/components/FooterLinksPanel';
 import { useBlueprintHub } from '@/features/blueprint-hub/hooks/useBlueprintHub';
 import {
@@ -199,6 +200,7 @@ function NotesApp() {
 
               {/* Header Actions */}
               <div className="flex items-center gap-1">
+                <AppHeader />
                 <SchemaManager />
                 {selectedNote && (
                   <AlertDialog>

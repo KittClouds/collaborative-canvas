@@ -1,3 +1,4 @@
+import { memo, useCallback, useMemo, useState } from 'react';
 import * as React from "react";
 import {
   ChevronRight,
@@ -269,9 +270,12 @@ function EntityFolderCreationMenu() {
 }
 
 
-// Settings Button Component
-function SettingsButton() {
-  const [isOpen, setIsOpen] = React.useState(false);
+// Settings Button Component (Memoized)
+const SettingsButton = memo(function SettingsButton() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const handleOpen = useCallback(() => setIsOpen(true), []);
+  const handleClose = useCallback((value: boolean) => setIsOpen(value), []);
 
   return (
     <>
@@ -279,15 +283,35 @@ function SettingsButton() {
         variant="outline"
         size="sm"
         className="h-8 w-8 p-0 shrink-0"
-        onClick={() => setIsOpen(true)}
+        onClick={handleOpen}
         aria-label="Settings"
       >
         <Settings className="h-4 w-4" />
       </Button>
-      <SettingsPanel open={isOpen} onOpenChange={setIsOpen} />
+      <SettingsPanel open={isOpen} onOpenChange={handleClose} />
     </>
   );
-}
+});
+
+// Blueprint Hub Button Component (Memoized)
+const BlueprintHubButton = memo(function BlueprintHubButton() {
+  const { toggleHub, isHubOpen } = useBlueprintHub();
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={toggleHub}
+      className={cn(
+        "flex-1 gap-2 h-8",
+        isHubOpen && "bg-accent text-accent-foreground border-accent-foreground/20"
+      )}
+    >
+      <Boxes className="h-4 w-4" />
+      Blueprint Hub
+    </Button>
+  );
+});
 
 interface NoteItemProps {
   note: Note;
@@ -509,7 +533,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setSearchQuery,
   } = useNotes();
 
-  const { toggleHub, isHubOpen } = useBlueprintHub();
+  // No longer needed here as we use memoized button
+  // const { toggleHub, isHubOpen } = useBlueprintHub();
 
   const [activeTab, setActiveTab] = React.useState(() => {
     return localStorage.getItem('sidebar-tab') || 'folders';
@@ -519,6 +544,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setActiveTab(value);
     localStorage.setItem('sidebar-tab', value);
   };
+
+  // ✅ Memoize footer content
+  const footerContent = useMemo(() => (
+    <>
+      <div className="flex items-center gap-2 mb-3">
+        <BlueprintHubButton />
+        <SettingsButton />
+      </div>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>{state.notes.length} notes</span>
+        {state.isSaving ? (
+          <span className="flex items-center gap-1 animate-pulse">
+            <Clock className="h-3 w-3" />
+            Saving...
+          </span>
+        ) : state.lastSaved ? (
+          <span className="flex items-center gap-1">
+            <Check className="h-3 w-3 text-green-500" />
+            Saved
+          </span>
+        ) : null}
+      </div>
+    </>
+  ), [state.notes.length, state.isSaving, state.lastSaved]);
 
   return (
     <Sidebar className="border-r border-sidebar-border" {...props}>
@@ -619,32 +668,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-2 mb-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={toggleHub}
-            className={cn("flex-1 gap-2", isHubOpen && "bg-accent text-accent-foreground")}
-          >
-            <Boxes className="h-4 w-4" />
-            Blueprint Hub
-          </Button>
-          <SettingsButton />
-        </div>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{state.notes.length} notes</span>
-          {state.isSaving ? (
-            <span className="flex items-center gap-1 animate-pulse">
-              <Clock className="h-3 w-3" />
-              Saving...
-            </span>
-          ) : state.lastSaved ? (
-            <span className="flex items-center gap-1">
-              <Check className="h-3 w-3 text-green-500" />
-              Saved
-            </span>
-          ) : null}
-        </div>
+        {footerContent}
       </SidebarFooter>
 
       <SidebarRail />

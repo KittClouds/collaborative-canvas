@@ -18,6 +18,7 @@ import { seedStarterBlueprint } from '../api/seedBlueprint';
 import { publishVersion, createVersion, getVersionById } from '../api/storage';
 import { toast } from '@/hooks/use-toast';
 import type { BlueprintVersion } from '../types';
+import { cn } from '@/lib/utils';
 
 export function BlueprintHubPanel() {
     const { isHubOpen, closeHub, isLoading, refresh } = useBlueprintHub();
@@ -125,10 +126,25 @@ export function BlueprintHubPanel() {
         loadVersion();
     }, [versionId, isPublishing]); // Reload when publishing changes state
 
-    if (!isHubOpen) return null;
+    // We keep the component mounted to allow Collapsible to handle the "pop up" animation
+    // The fixed positioning keeps it at the bottom.
+    // If we return null, it unmounts and we lose the closing animation.
 
     return (
-        <div className="border-t bg-background fixed bottom-0 left-0 right-0 z-[60] shadow-xl">
+        <div className={cn(
+            "border-t bg-background fixed bottom-0 left-0 right-0 z-[60] shadow-xl transition-all duration-300 ease-in-out",
+            // If hub is closed, we still want to render for animation, but pointer events might be an issue.
+            // Radix Collapsible handles content visibility.
+            // But we might want to hide the header bar if closed? 
+            // The footer panel keeps its header always visible as a trigger.
+            // Here, the triggers are elsewhere (Sidebar/Header). 
+            // So when closed, this whole container should probably be hidden or translated out.
+            // If we rely on Collapsible 'open', only the CONTENT is hidden. The header remains.
+            // We want the WHOLE panel to disappear when closed? Or mimic FooterLinksPanel?
+            // User said "pop up from the footer".
+            // Let's hide the container when closed to prevent it blocking the footer.
+            !isHubOpen && "invisible pointer-events-none translate-y-full"
+        )}>
             <Collapsible open={isHubOpen} onOpenChange={(open) => !open && closeHub()}>
                 <div className="flex items-center justify-between p-3 border-b bg-muted/30">
                     <div className="flex items-center gap-3">

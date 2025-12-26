@@ -1,8 +1,8 @@
 import { initializeSQLite, getDatabase } from './init';
-import type { 
-  WorkerMessage, 
-  WorkerResponse, 
-  SQLiteNode, 
+import type {
+  WorkerMessage,
+  WorkerResponse,
+  SQLiteNode,
   SQLiteNodeInput,
   SQLiteEdge,
   SQLiteEdgeInput,
@@ -13,6 +13,7 @@ import type {
   NodeType,
 } from '../client/types';
 import { EMBEDDING_MODELS, serializeJson } from '../client/types';
+import type { Delta, TransactionResult, DeltaPatch } from '../sync/types';
 
 let isInitialized = false;
 
@@ -88,7 +89,7 @@ function handleGetNode(id: string): SQLiteNode | null {
     bind: [id],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteNode[];
+  }) as unknown as SQLiteNode[];
 
   return rows.length > 0 ? rows[0] : null;
 }
@@ -99,7 +100,7 @@ function handleGetAllNodes(): SQLiteNode[] {
     sql: 'SELECT * FROM nodes ORDER BY created_at',
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteNode[];
+  }) as unknown as SQLiteNode[];
 }
 
 function handleGetNodesByType(type: NodeType): SQLiteNode[] {
@@ -109,7 +110,7 @@ function handleGetNodesByType(type: NodeType): SQLiteNode[] {
     bind: [type],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteNode[];
+  }) as unknown as SQLiteNode[];
 }
 
 function handleGetNodesByParent(parentId: string): SQLiteNode[] {
@@ -119,7 +120,7 @@ function handleGetNodesByParent(parentId: string): SQLiteNode[] {
     bind: [parentId],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteNode[];
+  }) as unknown as SQLiteNode[];
 }
 
 function handleGetNodesByEntityKind(entityKind: string): SQLiteNode[] {
@@ -129,7 +130,7 @@ function handleGetNodesByEntityKind(entityKind: string): SQLiteNode[] {
     bind: [entityKind],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteNode[];
+  }) as unknown as SQLiteNode[];
 }
 
 function handleUpdateNode(payload: { id: string; updates: Partial<SQLiteNodeInput> }): void {
@@ -179,7 +180,7 @@ function handleUpdateNode(payload: { id: string; updates: Partial<SQLiteNodeInpu
 
   db.exec({
     sql: `UPDATE nodes SET ${setClauses.join(', ')} WHERE id = ?`,
-    bind: values,
+    bind: values as (string | number | null | Uint8Array)[],
   });
 }
 
@@ -253,7 +254,7 @@ function handleGetEdge(id: string): SQLiteEdge | null {
     bind: [id],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteEdge[];
+  }) as unknown as SQLiteEdge[];
 
   return rows.length > 0 ? rows[0] : null;
 }
@@ -265,7 +266,7 @@ function handleGetEdgesBySource(sourceId: string): SQLiteEdge[] {
     bind: [sourceId],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteEdge[];
+  }) as unknown as SQLiteEdge[];
 }
 
 function handleGetEdgesByTarget(targetId: string): SQLiteEdge[] {
@@ -275,7 +276,7 @@ function handleGetEdgesByTarget(targetId: string): SQLiteEdge[] {
     bind: [targetId],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteEdge[];
+  }) as unknown as SQLiteEdge[];
 }
 
 function handleGetEdgesBetween(payload: { source: string; target: string }): SQLiteEdge[] {
@@ -285,7 +286,7 @@ function handleGetEdgesBetween(payload: { source: string; target: string }): SQL
     bind: [payload.source, payload.target, payload.target, payload.source],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteEdge[];
+  }) as unknown as SQLiteEdge[];
 }
 
 function handleGetAllEdges(): SQLiteEdge[] {
@@ -294,7 +295,7 @@ function handleGetAllEdges(): SQLiteEdge[] {
     sql: 'SELECT * FROM edges ORDER BY created_at',
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteEdge[];
+  }) as unknown as SQLiteEdge[];
 }
 
 function handleUpdateEdge(payload: { id: string; updates: Partial<SQLiteEdgeInput> }): void {
@@ -339,7 +340,7 @@ function handleUpdateEdge(payload: { id: string; updates: Partial<SQLiteEdgeInpu
 
   db.exec({
     sql: `UPDATE edges SET ${setClauses.join(', ')} WHERE id = ?`,
-    bind: values,
+    bind: values as (string | number | null | Uint8Array)[],
   });
 }
 
@@ -425,7 +426,7 @@ function handleGetEmbedding(nodeId: string): SQLiteEmbedding | null {
     bind: [nodeId],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteEmbedding[];
+  }) as unknown as SQLiteEmbedding[];
 
   return rows.length > 0 ? rows[0] : null;
 }
@@ -436,7 +437,7 @@ function handleGetAllEmbeddings(): SQLiteEmbedding[] {
     sql: 'SELECT * FROM embeddings',
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as SQLiteEmbedding[];
+  }) as unknown as SQLiteEmbedding[];
 }
 
 function handleDeleteEmbedding(nodeId: string): void {
@@ -453,7 +454,7 @@ function handleDeleteEmbedding(nodeId: string): void {
 
 function handleFTSSearch(options: FTSSearchOptions): FTSSearchResult[] {
   const db = getDatabase();
-  
+
   let sql = `
     SELECT node_id, label, content, rank
     FROM nodes_fts
@@ -479,10 +480,10 @@ function handleFTSSearch(options: FTSSearchOptions): FTSSearchResult[] {
 
   return db.exec({
     sql,
-    bind: params,
+    bind: params as (string | number)[],
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as FTSSearchResult[];
+  }) as unknown as FTSSearchResult[];
 }
 
 // ============================================
@@ -522,7 +523,7 @@ function handleGetResoRankCache(): ResoRankCacheEntry[] {
     sql: 'SELECT * FROM resorank_cache',
     returnValue: 'resultRows',
     rowMode: 'object',
-  }) as ResoRankCacheEntry[];
+  }) as unknown as ResoRankCacheEntry[];
 }
 
 function handleSetResoRankCache(entries: ResoRankCacheEntry[]): void {
@@ -551,6 +552,165 @@ function handleClearResoRankCache(): void {
 }
 
 // ============================================
+// TRANSACTION OPERATIONS (Weapons-Grade Sync)
+// ============================================
+
+/**
+ * Execute all deltas in a single atomic transaction
+ * This is the core of the weapons-grade sync engine
+ */
+function handleTransactionExecute(deltas: Delta[]): TransactionResult {
+  const db = getDatabase();
+  const startTime = performance.now();
+  const result: TransactionResult = {
+    success: false,
+    processedCount: 0,
+    insertedNodes: 0,
+    updatedNodes: 0,
+    deletedNodes: 0,
+    insertedEdges: 0,
+    updatedEdges: 0,
+    deletedEdges: 0,
+    errors: [],
+    duration: 0
+  };
+
+  if (deltas.length === 0) {
+    result.success = true;
+    return result;
+  }
+
+  try {
+    // Begin immediate transaction (write lock)
+    db.exec('BEGIN IMMEDIATE');
+
+    for (const delta of deltas) {
+      try {
+        if (delta.type === 'node') {
+          processNodeDelta(delta, result);
+        } else if (delta.type === 'edge') {
+          processEdgeDelta(delta, result);
+        }
+        result.processedCount++;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        result.errors.push({ id: delta.id, message });
+        // Continue processing other deltas
+      }
+    }
+
+    // Update sync metadata
+    const now = Date.now();
+    db.exec({
+      sql: 'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, ?)',
+      bind: ['last_sync', String(now), now]
+    });
+
+    // Commit transaction
+    db.exec('COMMIT');
+    result.success = true;
+
+  } catch (err) {
+    // Rollback on any failure
+    try {
+      db.exec('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('[SQLite Worker] Rollback failed:', rollbackErr);
+    }
+
+    const message = err instanceof Error ? err.message : String(err);
+    result.errors.push({ id: 'transaction', message });
+    result.success = false;
+  }
+
+  result.duration = performance.now() - startTime;
+  return result;
+}
+
+/**
+ * Process a single node delta within the transaction
+ */
+function processNodeDelta(delta: Delta, result: TransactionResult): void {
+  const db = getDatabase();
+  const now = Date.now();
+
+  switch (delta.operation) {
+    case 'INSERT': {
+      if (!delta.fullData) throw new Error('INSERT delta missing fullData');
+      const node = delta.fullData as SQLiteNodeInput & { id: string };
+      handleInsertNode({ ...node, id: delta.id });
+      result.insertedNodes++;
+      break;
+    }
+
+    case 'UPDATE': {
+      if (delta.patches && delta.patches.length > 0) {
+        // Apply field-level patches
+        const updates: Partial<SQLiteNodeInput> = {};
+        for (const patch of delta.patches) {
+          if (patch.path.length > 0) {
+            const key = patch.path[0] as keyof SQLiteNodeInput;
+            (updates as any)[key] = patch.value;
+          }
+        }
+        handleUpdateNode({ id: delta.id, updates });
+      } else if (delta.fullData) {
+        // Full data update (backward compatibility)
+        const node = delta.fullData as SQLiteNodeInput;
+        handleUpdateNode({ id: delta.id, updates: node });
+      }
+      result.updatedNodes++;
+      break;
+    }
+
+    case 'DELETE': {
+      handleDeleteNode(delta.id);
+      result.deletedNodes++;
+      break;
+    }
+  }
+}
+
+/**
+ * Process a single edge delta within the transaction
+ */
+function processEdgeDelta(delta: Delta, result: TransactionResult): void {
+  switch (delta.operation) {
+    case 'INSERT': {
+      if (!delta.fullData) throw new Error('INSERT delta missing fullData');
+      const edge = delta.fullData as SQLiteEdgeInput & { id: string };
+      handleInsertEdge({ ...edge, id: delta.id });
+      result.insertedEdges++;
+      break;
+    }
+
+    case 'UPDATE': {
+      if (delta.fullData) {
+        const edge = delta.fullData as SQLiteEdgeInput;
+        handleUpdateEdge({ id: delta.id, updates: edge });
+      } else if (delta.patches && delta.patches.length > 0) {
+        const updates: Partial<SQLiteEdgeInput> = {};
+        for (const patch of delta.patches) {
+          if (patch.path.length > 0) {
+            const key = patch.path[0] as keyof SQLiteEdgeInput;
+            (updates as any)[key] = patch.value;
+          }
+        }
+        handleUpdateEdge({ id: delta.id, updates });
+      }
+      result.updatedEdges++;
+      break;
+    }
+
+    case 'DELETE': {
+      handleDeleteEdge(delta.id);
+      result.deletedEdges++;
+      break;
+    }
+  }
+}
+
+// ============================================
 // GENERIC OPERATIONS
 // ============================================
 
@@ -567,7 +727,7 @@ function handleQuery(payload: { sql: string; params?: unknown[] }): unknown {
   const db = getDatabase();
   return db.exec({
     sql: payload.sql,
-    bind: payload.params,
+    bind: payload.params as (string | number | null | Uint8Array)[] | undefined,
     returnValue: 'resultRows',
     rowMode: 'object',
   });
@@ -702,6 +862,11 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         break;
       case 'QUERY':
         result = handleQuery(payload as { sql: string; params?: unknown[] });
+        break;
+
+      // Transaction operations (Weapons-Grade Sync)
+      case 'TRANSACTION_EXECUTE':
+        result = handleTransactionExecute(payload as Delta[]);
         break;
 
       default:

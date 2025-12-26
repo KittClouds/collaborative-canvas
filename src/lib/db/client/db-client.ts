@@ -14,6 +14,7 @@ import type {
   ResoRankCacheEntry,
 } from './types';
 import { float32ToBlob } from './types';
+import type { Delta, TransactionResult } from '../sync/types';
 
 type PendingRequest = {
   resolve: (value: unknown) => void;
@@ -51,7 +52,7 @@ class DBClient {
     this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const { id, success, data, error } = event.data;
       const pending = this.pending.get(id);
-      
+
       if (pending) {
         this.pending.delete(id);
         if (success) {
@@ -229,6 +230,14 @@ class DBClient {
 
   async query<T = unknown>(sql: string, params?: unknown[]): Promise<T[]> {
     return this.send<T[]>('QUERY', { sql, params });
+  }
+
+  /**
+   * Execute an atomic transaction with multiple deltas
+   * This is the core of the weapons-grade sync engine
+   */
+  async executeTransaction(deltas: Delta[]): Promise<TransactionResult> {
+    return this.send<TransactionResult>('TRANSACTION_EXECUTE', deltas);
   }
 
   isReady(): boolean {

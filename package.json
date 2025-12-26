@@ -57,6 +57,7 @@
     "@radix-ui/react-tooltip": "^1.2.7",
     "@sqliteai/sqlite-wasm": "^3.50.4-sync.0.8.57-vector.0.9.52",
     "@tanstack/react-query": "^5.83.0",
+    "@tanstack/react-virtual": "^3.13.13",
     "@theme-toggles/react": "^4.1.0",
     "@tiptap/extension-document": "^3.13.0",
     "@tiptap/extension-hard-break": "^3.13.0",

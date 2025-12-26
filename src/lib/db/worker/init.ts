@@ -70,50 +70,59 @@ function getTableColumns(db: SQLite3Database, tableName: string): Set<string> {
 }
 
 function migrateNodesTable(db: SQLite3Database): void {
+  console.log('[SQLite Worker] Migrating nodes table using CREATE-INSERT-DROP pattern...');
+  
   const existingColumns = getTableColumns(db, 'nodes');
-  if (existingColumns.size === 0) {
+  if (existingColumns.size === 0) return;
+
+  // 1. Rename existing table
+  db.exec('ALTER TABLE nodes RENAME TO nodes_temp_old');
+
+  // 2. Create new table (use the schema definition)
+  const createStmt = SCHEMA_STATEMENTS.find(s => s.trim().toUpperCase().startsWith('CREATE TABLE IF NOT EXISTS NODES')) 
+    || SCHEMA_STATEMENTS.find(s => s.trim().toUpperCase().startsWith('CREATE TABLE NODES'));
+    
+  if (!createStmt) {
+    console.error('[SQLite Worker] Could not find nodes table schema for migration');
+    db.exec('ALTER TABLE nodes_temp_old RENAME TO nodes');
     return;
   }
 
-  const newColumns: Array<{ name: string; def: string }> = [
-    { name: 'entity_kind', def: 'TEXT' },
-    { name: 'entity_subtype', def: 'TEXT' },
-    { name: 'is_entity', def: 'INTEGER DEFAULT 0' },
-    { name: 'source_note_id', def: 'TEXT' },
-    { name: 'blueprint_id', def: 'TEXT' },
-    { name: 'sequence', def: 'INTEGER' },
-    { name: 'color', def: 'TEXT' },
-    { name: 'is_pinned', def: 'INTEGER DEFAULT 0' },
-    { name: 'favorite', def: 'INTEGER DEFAULT 0' },
-    { name: 'attributes', def: 'TEXT' },
-    { name: 'extraction', def: 'TEXT' },
-    { name: 'temporal', def: 'TEXT' },
-    { name: 'narrative_metadata', def: 'TEXT' },
-    { name: 'scene_metadata', def: 'TEXT' },
-    { name: 'event_metadata', def: 'TEXT' },
-    { name: 'blueprint_data', def: 'TEXT' },
-    { name: 'inherited_kind', def: 'TEXT' },
-    { name: 'inherited_subtype', def: 'TEXT' },
-    { name: 'is_typed_root', def: 'INTEGER DEFAULT 0' },
-    { name: 'is_subtype_root', def: 'INTEGER DEFAULT 0' },
-  ];
+  db.exec(createStmt);
+  const targetColumns = getTableColumns(db, 'nodes');
 
-  let addedCount = 0;
-  for (const col of newColumns) {
-    if (!existingColumns.has(col.name)) {
-      const success = safeExec(
-        db,
-        `ALTER TABLE nodes ADD COLUMN ${col.name} ${col.def}`,
-        'Migrate nodes',
-        true
-      );
-      if (success) addedCount++;
-    }
-  }
+  // 3. Map columns that exist in both
+  const commonColumns = Array.from(existingColumns).filter(col => targetColumns.has(col));
+  const columnsStr = commonColumns.join(', ');
 
-  if (addedCount > 0) {
-    console.log(`[SQLite Worker] Added ${addedCount} new columns to nodes table`);
+  console.log(`[SQLite Worker] Mapping ${commonColumns.length} columns: ${columnsStr}`);
+
+  // 4. Copy data
+  db.exec(`INSERT INTO nodes (${columnsStr}) SELECT ${columnsStr} FROM nodes_temp_old`);
+
+  // 5. Drop old table
+  db.exec('DROP TABLE nodes_temp_old');
+
+  // 6. Rebuild FTS index (since triggers weren't active during INSERT)
+  try {
+    db.exec('DELETE FROM nodes_fts');
+    db.exec(`
+      INSERT INTO nodes_fts(node_id, label, content, tags, entity_kind, type)
+      SELECT 
+        id, 
+        label, 
+        COALESCE(content, ''),
+        COALESCE(json_extract(attributes, '$.tags'), ''),
+        COALESCE(entity_kind, ''),
+        type
+      FROM nodes
+    `);
+    console.log('[SQLite Worker] FTS index rebuilt');
+  } catch (err) {
+    console.warn('[SQLite Worker] Could not rebuild FTS index during migration:', err);
   }
+  
+  console.log('[SQLite Worker] Nodes table migration complete');
 }
 
 function runMigrations(db: SQLite3Database): void {

@@ -4,8 +4,6 @@ export * from './types';
 
 export * from './schema';
 
-export * from './migration';
-
 export * from './graph';
 
 export * from './analytics';

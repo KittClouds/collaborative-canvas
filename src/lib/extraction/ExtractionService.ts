@@ -1,4 +1,4 @@
-import { pipeline } from '@huggingface/transformers';
+// Static import removed, using dynamic import in initialize() for performance
 import type { NEREntity, NERSpan, ExtractionSpan } from './types';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 
@@ -89,8 +89,8 @@ class ExtractionService {
         try {
             console.log(`Loading ${modelType} model: ${config.modelId}...`);
 
-            // Check if using WebGPU or WASM backend based on environment capabilities could be a future optimization
-            // For now, rely on default behavior or explicit options
+            // Lazy import transformers library
+            const { pipeline } = await import('@huggingface/transformers');
 
             this.pipelineInstance = await pipeline(
                 config.pipelineType as any,
