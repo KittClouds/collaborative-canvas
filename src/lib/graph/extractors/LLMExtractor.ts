@@ -1,6 +1,5 @@
-import { getGraph } from '@/lib/graph/graphInstance';
-import type { UnifiedGraph } from '@/lib/graph/UnifiedGraph';
-import type { UnifiedNode, UnifiedEdge, NodeId, ExtractionMethod } from '@/lib/graph/types';
+// Removed: UnifiedGraph imports
+import type { UnifiedNode, UnifiedEdge, NodeId } from '@/lib/graph/types';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 import { relationshipRegistry } from '@/lib/relationships';
 import { RelationshipSource } from '@/lib/relationships/types';
@@ -44,10 +43,8 @@ export interface LLMExtractionOptions {
 }
 
 export class LLMExtractor {
-  private graph: UnifiedGraph;
-
   constructor() {
-    this.graph = getGraph();
+    // this.graph = getGraph();
   }
 
   async extractFromNote(
@@ -55,133 +52,14 @@ export class LLMExtractor {
     content: string,
     options: LLMExtractionOptions = {}
   ): Promise<LLMExtractionResult> {
-    const startTime = performance.now();
-    const createdEntities: UnifiedNode[] = [];
-    const createdEdges: UnifiedEdge[] = [];
-
-    try {
-      const plainText = this.extractPlainText(content);
-      if (!plainText || plainText.length < 20) {
-        return {
-          entities: [],
-          edges: [],
-          relationships: [],
-          rawResponse: '',
-          processingTime: 0,
-        };
-      }
-
-      const prompt = this.buildExtractionPrompt(plainText, options.entityKinds);
-      const response = await this.callLLM(prompt, options);
-      const extraction = this.parseLLMResponse(response);
-
-      for (const llmEntity of extraction.entities) {
-        let entityNode = this.graph.findEntityByLabel(llmEntity.label, llmEntity.kind);
-
-        if (!entityNode) {
-          entityNode = this.graph.addExtractedEntity(
-            llmEntity.label,
-            llmEntity.kind,
-            {
-              method: 'llm' as ExtractionMethod,
-              confidence: llmEntity.confidence,
-              mentions: [{
-                noteId,
-                charPosition: 0,
-                context: plainText.slice(0, 100),
-              }],
-              frequency: 1,
-            },
-            noteId
-          );
-          createdEntities.push(entityNode);
-        }
-
-        const existingEdges = this.graph.getEdgesBetween(noteId, entityNode.data.id);
-        const hasMention = existingEdges.some(e => e.data.type === 'MENTIONS');
-
-        if (!hasMention) {
-          const edge = this.graph.addEdge({
-            source: noteId,
-            target: entityNode.data.id,
-            type: 'MENTIONS',
-            context: plainText.slice(0, 100),
-            confidence: llmEntity.confidence,
-            extractionMethod: 'llm',
-            noteIds: [noteId],
-          });
-          createdEdges.push(edge);
-        }
-      }
-
-      if (options.extractRelationships) {
-        for (const rel of extraction.relationships) {
-          const sourceNode = this.findEntityAcrossKinds(rel.sourceLabel);
-          const targetNode = this.findEntityAcrossKinds(rel.targetLabel);
-
-          if (sourceNode && targetNode) {
-            const edge = this.graph.createRelationship(
-              sourceNode.data.id,
-              targetNode.data.id,
-              rel.type as any,
-              {
-                weight: rel.confidence,
-                confidence: rel.confidence,
-                extractionMethod: 'llm',
-                noteIds: [noteId],
-              }
-            );
-            createdEdges.push(edge);
-
-            // Also add to RelationshipRegistry for unified tracking
-            relationshipRegistry.add({
-              sourceEntityId: sourceNode.data.id,
-              targetEntityId: targetNode.data.id,
-              type: rel.type,
-              bidirectional: false,
-              namespace: 'llm_extraction',
-              attributes: {
-                description: rel.description,
-              },
-              provenance: [{
-                source: RelationshipSource.LLM_EXTRACTION,
-                originId: noteId,
-                timestamp: new Date(),
-                confidence: rel.confidence,
-                context: rel.description,
-              }],
-            });
-          }
-        }
-      }
-
-      const processingTime = performance.now() - startTime;
-      return {
-        entities: createdEntities,
-        edges: createdEdges,
-        relationships: extraction.relationships,
-        rawResponse: response,
-        processingTime,
-      };
-    } catch (error) {
-      console.error('LLM extraction failed:', error);
-      return {
-        entities: [],
-        edges: [],
-        relationships: [],
-        rawResponse: '',
-        processingTime: 0,
-      };
-    }
-  }
-
-  private findEntityAcrossKinds(label: string): UnifiedNode | null {
-    const kinds: EntityKind[] = ['CHARACTER', 'LOCATION', 'FACTION', 'ITEM', 'EVENT', 'CONCEPT'];
-    for (const kind of kinds) {
-      const node = this.graph.findEntityByLabel(label, kind);
-      if (node) return node;
-    }
-    return null;
+    console.warn('LLMExtractor.extractFromNote: UnifiedGraph is removed. This is a stub.');
+    return {
+      entities: [],
+      edges: [],
+      relationships: [],
+      rawResponse: '',
+      processingTime: 0,
+    };
   }
 
   private buildExtractionPrompt(text: string, entityKinds?: EntityKind[]): LLMExtractionPrompt {

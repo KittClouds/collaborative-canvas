@@ -4,8 +4,8 @@ import { loadFromStorage, saveToStorage, exportNotes, importNotes } from '@/lib/
 import type { DocumentConnections, EntityKind } from '@/lib/entities/entityTypes';
 import { parseEntityFromTitle, parseFolderEntityFromName } from '@/lib/entities/titleParser';
 import { migrateExistingNotes, migrateExistingFolders, needsMigration } from '@/lib/entities/migration';
-import { NARRATIVE_FOLDER_CONFIGS, getTemplateForKind } from '@/lib/templates/narrativeTemplates';
-import { getGraphSyncManager, type GraphSyncManager } from '@/lib/graph/integration';
+import { NARRATIVE_FOLDER_CONFIGS } from '@/lib/templates/narrativeTemplates';
+// import { getGraphSyncManager, type GraphSyncManager } from '@/lib/graph/integration';
 import { entityRegistry } from '@/lib/entities/entity-registry';
 import { relationshipRegistry } from '@/lib/relationships';
 import { UnifiedEntityLifecycle } from '@/lib/entities/unified-lifecycle';
@@ -264,15 +264,7 @@ const NotesContext = createContext<NotesContextValue | null>(null);
 
 export function NotesProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(notesReducer, initialState);
-  const graphSyncRef = useRef<GraphSyncManager | null>(null);
   const initialHydrationDone = useRef(false);
-
-  const getGraphSync = useCallback((): GraphSyncManager => {
-    if (!graphSyncRef.current) {
-      graphSyncRef.current = getGraphSyncManager();
-    }
-    return graphSyncRef.current;
-  }, []);
 
   // Load initial data with migration
   useEffect(() => {
@@ -289,7 +281,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_NOTES', payload: notes });
       dispatch({ type: 'SET_FOLDERS', payload: folders });
 
-      getGraphSync().hydrateFromNotesContext(notes, folders);
       initialHydrationDone.current = true;
 
       // Phase 1: Load Entity Registry
@@ -319,7 +310,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
 
     initializeApp();
-  }, [getGraphSync]);
+  }, []);
 
   // Auto-save with backup
   useEffect(() => {
@@ -535,7 +526,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
 
     return newNote;
-  }, [state.folders, getInheritedKindFromFolder, state.notes, getGraphSync]);
+  }, [state.folders, getInheritedKindFromFolder, state.notes]);
 
 
   const updateNote = useCallback((id: string, updates: Partial<Note>) => {
@@ -560,7 +551,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
     if (initialHydrationDone.current) {
       const updatedNote = { ...existingNote, ...updates, updatedAt: new Date() };
-      getGraphSync().onNoteUpdated(updatedNote, state.notes);
 
       // Unified Entity Lifecycle Hook
       if (updates.title && updates.title !== existingNote.title) {
@@ -574,19 +564,15 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         UnifiedEntityLifecycle.onNoteMoved(updatedNote, oldFolder, newFolder);
       }
     }
-  }, [state.notes, state.folders, getGraphSync]);
+  }, [state.notes, state.folders]);
 
   const updateNoteContent = useCallback((id: string, content: string) => {
     dispatch({ type: 'UPDATE_NOTE', payload: { id, updates: { content } } });
 
     if (initialHydrationDone.current) {
-      const existingNote = state.notes.find(n => n.id === id);
-      if (existingNote) {
-        const updatedNote = { ...existingNote, content, updatedAt: new Date() };
-        getGraphSync().onNoteUpdated(updatedNote, state.notes);
-      }
+      // Note content updates no longer trigger graph sync as UnifiedGraph is removed
     }
-  }, [state.notes, getGraphSync]);
+  }, [state.notes]);
 
   const deleteNote = useCallback((id: string) => {
     dispatch({ type: 'PUSH_HISTORY' });
@@ -600,7 +586,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         note?.entityLabel
       );
     }
-  }, [getGraphSync]);
+  }, [state.notes]);
 
   const selectNote = useCallback((id: string | null) => {
     dispatch({ type: 'SELECT_NOTE', payload: id });
@@ -646,7 +632,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
 
     return newFolder;
-  }, [state.folders, getInheritedKindFromFolder, getInheritedSubtypeFromFolder, getGraphSync]);
+  }, [state.folders, getInheritedKindFromFolder, getInheritedSubtypeFromFolder]);
 
   const updateFolder = useCallback((id: string, updates: Partial<Folder>) => {
     const existingFolder = state.folders.find(f => f.id === id);
@@ -672,7 +658,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
     if (initialHydrationDone.current) {
       const updatedFolder = { ...existingFolder, ...updates };
-      getGraphSync().onFolderUpdated(updatedFolder);
 
       // Handle folder move
       if (updates.parentId !== undefined && updates.parentId !== existingFolder.parentId) {
@@ -681,7 +666,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         UnifiedEntityLifecycle.onFolderMoved(updatedFolder, oldParent, newParent);
       }
     }
-  }, [state.folders, getGraphSync]);
+  }, [state.folders]);
 
 
   const deleteFolder = useCallback((id: string) => {
@@ -696,7 +681,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         folder?.entityKind
       );
     }
-  }, [getGraphSync]);
+  }, [state.folders]);
 
   const undo = useCallback(() => {
     dispatch({ type: 'UNDO' });
@@ -714,11 +699,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'PUSH_HISTORY' });
     const data = await importNotes(file);
     dispatch({ type: 'IMPORT_DATA', payload: data });
-
-    if (initialHydrationDone.current) {
-      getGraphSync().hydrateFromNotesContext(data.notes, data.folders);
-    }
-  }, [getGraphSync]);
+  }, []);
 
   // Find canonical entity note by kind and label
   const getEntityNote = useCallback((kind: EntityKind, label: string): Note | undefined => {

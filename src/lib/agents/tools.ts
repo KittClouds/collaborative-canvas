@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { tool } from 'ai';
 import { search } from '@/lib/search/searchOrchestrator';
 import { getEntityStore, getTemporalStore } from '@/lib/storage/index';
-import { getGraph } from '@/lib/graph';
 
 // 1. Vector Search Tool
 export const searchVectorTool = tool({
@@ -16,7 +15,7 @@ export const searchVectorTool = tool({
       const results = await search({
         query,
         maxResults: maxResults || 10,
-        enableGraphExpansion: true,
+        enableGraphExpansion: false, // Disabled graph expansion as UnifiedGraph is removed
       });
 
       return {
@@ -35,7 +34,7 @@ export const searchVectorTool = tool({
   },
 } as any);
 
-// 2. Graph Search Tool (Neighbors)
+// 2. Graph Search Tool (Neighbors) - STUBBED
 export const searchGraphTool = tool({
   description: 'Find entities connected to a specific entity in the knowledge graph. Useful for finding related characters or concepts.',
   parameters: z.object({
@@ -44,20 +43,7 @@ export const searchGraphTool = tool({
     groupId: z.string().optional().describe('Scope/Group ID for the graph (default: "global")'),
   }),
   execute: async ({ entityId, maxHops }) => {
-    try {
-      const graph = getGraph();
-      const neighborhood = graph.getNeighborhood(entityId, maxHops || 2);
-      
-      const neighbors = neighborhood.nodes.map(n => ({
-        id: n.data.id,
-        name: n.data.label,
-        type: n.data.entityKind || n.data.type,
-      }));
-      
-      return { success: true, neighbors, count: neighbors.length };
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
+    return { success: false, error: 'Graph search is currently disabled during system migration.' };
   },
 } as any);
 
@@ -121,7 +107,7 @@ export const getEntityTool = tool({
   },
 } as any);
 
-// 5. Find Path
+// 5. Find Path - STUBBED
 export const findPathTool = tool({
   description: 'Find the shortest path between two entities in the knowledge graph.',
   parameters: z.object({
@@ -130,31 +116,7 @@ export const findPathTool = tool({
     groupId: z.string().optional().describe('Scope/Group ID (default: "global")'),
   }),
   execute: async ({ fromEntityId, toEntityId }) => {
-    try {
-      const graph = getGraph();
-      const pathResult = graph.findPath(fromEntityId, toEntityId);
-
-      if (!pathResult) {
-        return { success: false, error: 'No path found' };
-      }
-
-      const pathNodes = pathResult.path.map(nodeId => {
-        const node = graph.getNode(nodeId);
-        return {
-          id: nodeId,
-          name: node?.data.label || nodeId,
-          type: node?.data.entityKind || node?.data.type,
-        };
-      });
-
-      return { 
-        success: true, 
-        path: pathNodes,
-        length: pathResult.length
-      };
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
+    return { success: false, error: 'Path finding is currently disabled during system migration.' };
   },
 } as any);
 
@@ -175,35 +137,14 @@ export const getHistoryTool = tool({
   },
 } as any);
 
-// 7. Analyze Communities
+// 7. Analyze Communities - STUBBED
 export const analyzeCommunitiesTool = tool({
   description: 'Detect communities or clusters of related entities within a scope.',
   parameters: z.object({
     groupId: z.string().optional().describe('Scope/Group ID (default: "global")'),
   }),
   execute: async () => {
-    try {
-      const graph = getGraph();
-      const communityMap = graph.detectCommunities();
-      
-      const communityGroups = new Map<string, string[]>();
-      communityMap.forEach((communityId, nodeId) => {
-        if (!communityGroups.has(communityId)) {
-          communityGroups.set(communityId, []);
-        }
-        communityGroups.get(communityId)!.push(nodeId);
-      });
-
-      const communities = Array.from(communityGroups.entries()).map(([id, members]) => ({
-        id,
-        members,
-        size: members.length,
-      }));
-
-      return { success: true, communities, count: communities.length };
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
+    return { success: false, error: 'Community detection is currently disabled during system migration.' };
   },
 } as any);
 

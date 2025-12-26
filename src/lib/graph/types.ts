@@ -640,6 +640,24 @@ export interface ExtractionResult {
   };
 }
 
+export interface GraphSyncResult {
+  createdNodes: string[];
+  updatedNodes: string[];
+  createdEdges: string[];
+  updatedEdges: string[];
+  errors: Array<{
+    entity?: string;
+    relationship?: string;
+    error: string;
+  }>;
+  stats: {
+    entitiesSynced: number;
+    relationshipsSynced: number;
+    coOccurrencesSynced: number;
+    duration: number;
+  };
+}
+
 export interface GraphEntity {
   id: string;
   kind: string;

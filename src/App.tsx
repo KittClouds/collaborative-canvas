@@ -10,7 +10,6 @@ import { initializeStorage, getBlueprintStore } from "@/lib/storage/index";
 import { BlueprintHubProvider } from "@/features/blueprint-hub/context/BlueprintHubContext";
 import { BlueprintHubPanel } from "@/features/blueprint-hub/components/BlueprintHubPanel";
 import { NERProvider } from "@/contexts/NERContext";
-import { initializeGraph } from "@/lib/graph";
 import { initializeSQLiteAndHydrate } from "@/lib/db";
 
 const queryClient = new QueryClient();
@@ -22,10 +21,6 @@ const App = () => {
   useEffect(() => {
     const initStorage = async () => {
       try {
-        setInitStatus("Initializing graph...");
-        initializeGraph();
-        console.log("UnifiedGraph initialized");
-
         setInitStatus("Initializing SQLite persistence...");
         const { nodesLoaded, embeddingsLoaded } = await initializeSQLiteAndHydrate();
         console.log(`SQLite initialized: ${nodesLoaded} nodes, ${embeddingsLoaded} embeddings`);
@@ -60,27 +55,20 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BlueprintHubProvider>
+      <TooltipProvider>
         <NERProvider>
-          <TooltipProvider>
+          <BlueprintHubProvider>
             <Toaster />
             <Sonner />
-            <BrowserRouter
-              future={{
-                v7_startTransition: true,
-                v7_relativeSplatPath: true,
-              }}
-            >
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <Routes>
                 <Route path="/" element={<Index />} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
-            <BlueprintHubPanel />
-          </TooltipProvider>
+          </BlueprintHubProvider>
         </NERProvider>
-      </BlueprintHubProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   );
 };

@@ -73,7 +73,6 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "comlink": "^4.4.2",
-    "cytoscape": "^3.33.1",
     "cozo-lib-wasm": "^0.7.6",
     "date-fns": "^3.6.0",
     "easydrawer": "^0.0.18",
@@ -111,7 +110,6 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.16",
-    "@types/cytoscape": "^3.21.9",
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",

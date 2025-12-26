@@ -6,13 +6,6 @@ export * from './sync/types';
 
 export {
   initializeSQLiteAndHydrate,
-  syncNodeToSQLite,
-  markNodeDirty,
-  syncNodeDelete,
-  flushPendingSync,
-  hasPendingChanges,
-  getSyncState,
-  convertNodeToSQLite,
 } from './sync/sqliteInit';
 export type { SQLiteInitResult } from './sync/sqliteInit';
 

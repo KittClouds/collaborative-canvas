@@ -2,13 +2,12 @@
  * UnifiedEntityLifecycle - Ensures all entity-aware operations synchronize:
  * 1. NotesContext (file system layer)
  * 2. EntityRegistry (entity graph layer)
- * 3. SQLite (persistence via GraphSync)
- * 4. FolderRelationshipCreator (automatic relationships from folder structure)
- * 5. RelationshipRegistry (unified relationship management)
+ * 3. FolderRelationshipCreator (automatic relationships from folder structure)
+ * 4. RelationshipRegistry (unified relationship management)
  */
 
 import { entityRegistry } from './entity-registry';
-import { getGraphSyncManager } from '@/lib/graph/integration';
+// import { getGraphSyncManager } from '@/lib/graph/integration';
 import { autoSaveEntityRegistry } from '@/lib/storage/entityStorage';
 import { folderRelationshipCreator } from '@/lib/folders/relationship-creator';
 import { relationshipRegistry, RelationshipSource } from '@/lib/relationships';
@@ -62,7 +61,7 @@ export class UnifiedEntityLifecycle {
             autoSaveEntityRegistry(entityRegistry);
         }
 
-        getGraphSyncManager().onNoteCreated(note);
+        // getGraphSyncManager().onNoteCreated(note);
     }
 
     /**
@@ -140,7 +139,7 @@ export class UnifiedEntityLifecycle {
 
         // Persist and sync
         autoSaveEntityRegistry(entityRegistry);
-        getGraphSyncManager().onNoteDeleted(noteId);
+        // getGraphSyncManager().onNoteDeleted(noteId);
     }
 
     /**
@@ -171,7 +170,7 @@ export class UnifiedEntityLifecycle {
         }
 
         // Sync to SQLite
-        getGraphSyncManager().onFolderCreated(folder);
+        // getGraphSyncManager().onFolderCreated(folder);
     }
 
     /**
@@ -242,7 +241,7 @@ export class UnifiedEntityLifecycle {
 
         // Persist and sync
         autoSaveEntityRegistry(entityRegistry);
-        getGraphSyncManager().onFolderDeleted(folderId);
+        // getGraphSyncManager().onFolderDeleted(folderId);
     }
 
     /**
@@ -259,4 +258,3 @@ export class UnifiedEntityLifecycle {
         return relationshipRegistry.getStats();
     }
 }
-
