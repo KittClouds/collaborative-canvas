@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { dbClient } from '@/lib/db/client/db-client';
 import { generateId } from '@/lib/utils/ids';
+import { folderNetworkGraphSync } from '@/lib/cozo/sync';
 import type { SQLiteNode, SQLiteNodeInput, NodeType } from '@/lib/db/client/types';
 
 import type { DocumentConnections } from '@/lib/entities/entityTypes';
@@ -91,6 +92,24 @@ export function NotesProvider({ children }: { children: React.ReactNode }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
+    const graphSyncInitialized = useRef(false);
+
+    // Initialize graph sync service
+    useEffect(() => {
+        if (!graphSyncInitialized.current) {
+            graphSyncInitialized.current = true;
+            folderNetworkGraphSync.init().catch(err => {
+                console.warn('[NotesContext] Graph sync init failed:', err);
+            });
+        }
+    }, []);
+
+    // Sync folders to CozoDB graph layer when they change
+    useEffect(() => {
+        if (folders.length > 0) {
+            folderNetworkGraphSync.onFoldersChanged(folders);
+        }
+    }, [folders]);
 
     // Load initial data
     useEffect(() => {

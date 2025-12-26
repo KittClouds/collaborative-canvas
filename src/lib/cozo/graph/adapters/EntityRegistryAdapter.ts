@@ -58,14 +58,33 @@ export interface EntityStats {
 
 export class EntityRegistryAdapter {
     private initialized = false;
+    private initPromise: Promise<void> | null = null;
+
+    /**
+     * Check if the adapter is initialized
+     */
+    isInitialized(): boolean {
+        return this.initialized;
+    }
 
     /**
      * Initialize the registry (delegates to CozoUnifiedRegistry)
      */
     async init(): Promise<void> {
         if (this.initialized) return;
-        await unifiedRegistry.init();
-        this.initialized = true;
+        if (this.initPromise) return this.initPromise;
+
+        this.initPromise = (async () => {
+            try {
+                await unifiedRegistry.init();
+                this.initialized = true;
+            } catch (err) {
+                this.initPromise = null;
+                throw err;
+            }
+        })();
+
+        return this.initPromise;
     }
 
     /**
@@ -95,10 +114,14 @@ export class EntityRegistryAdapter {
             metadata: options?.attributes,
         });
 
+        if (!entity) {
+            throw new Error(`Failed to register entity: ${label}`);
+        }
+
         return {
             entity: this.convertToLegacyEntity(entity),
             isNew,
-            wasMerged: false, // Not implemented in simple registerEntity
+            wasMerged: false,
         };
     }
 
@@ -148,13 +171,16 @@ export class EntityRegistryAdapter {
      * Get all entities synchronously (requires CozoDB init)
      */
     getAllEntitiesSync(): RegisteredEntity[] {
-        // Assume init called already
         if (!this.initialized) {
-            console.warn('[EntityRegistryAdapter] getAllEntitiesSync called before init');
             return [];
         }
-        const entities = unifiedRegistry.getAllEntitiesSync();
-        return entities.map(e => this.convertToLegacyEntity(e));
+        try {
+            const entities = unifiedRegistry.getAllEntitiesSync();
+            return entities.map(e => this.convertToLegacyEntity(e));
+        } catch (err) {
+            console.warn('[EntityRegistryAdapter] getAllEntitiesSync failed:', err);
+            return [];
+        }
     }
 
     findEntitySync(label: string): RegisteredEntity | null {

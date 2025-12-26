@@ -39,6 +39,33 @@ export {
 export { LAYER1_INDICES, LAYER2_INDICES, ALL_INDICES, INDEX_QUERIES } from './indices';
 
 export {
+  FOLDER_HIERARCHY_SCHEMA,
+  FOLDER_HIERARCHY_QUERIES
+} from './layer2-folder-hierarchy';
+
+export {
+  NETWORK_INSTANCE_SCHEMA,
+  NETWORK_INSTANCE_QUERIES
+} from './layer2-network-instance';
+
+export {
+  NETWORK_MEMBERSHIP_SCHEMA,
+  NETWORK_MEMBERSHIP_QUERIES
+} from './layer2-network-membership';
+
+export {
+  NETWORK_RELATIONSHIP_SCHEMA,
+  NETWORK_RELATIONSHIP_QUERIES
+} from './layer2-network-relationship';
+
+export { UNIFIED_EDGE_QUERIES } from './layer2-unified-edges';
+
+export {
+  MUTATION_LOG_SCHEMA,
+  MUTATION_LOG_QUERIES
+} from './layer1-mutation-log';
+
+export {
   applyEmbeddingSchema,
   getEmbeddingForNote,
   saveEmbeddingForNote,

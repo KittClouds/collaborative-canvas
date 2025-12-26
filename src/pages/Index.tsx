@@ -19,11 +19,13 @@ import RichEditor from '@/components/editor/RichEditor';
 import { useTheme } from '@/hooks/useTheme';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNotes, NotesProvider } from '@/contexts/NotesContext';
+import { CozoProvider } from '@/contexts/CozoContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SchemaProvider } from '@/contexts/SchemaContext';
 import { SchemaManager } from '@/components/schema/SchemaManager';
 import { useLinkIndex } from '@/hooks/useLinkIndex';
+import { useEntitySync } from '@/hooks/useEntitySync';
 import { EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
 import { RightSidebar, RightSidebarProvider, RightSidebarTrigger } from '@/components/RightSidebar';
 import { TemporalHighlightProvider, useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
@@ -52,6 +54,8 @@ function NotesApp() {
 
   const { selectedNote, updateNoteContent, deleteNote, createNote, selectNote, state } = useNotes();
   const { activateTimelineWithTemporal } = useTemporalHighlight();
+
+  useEntitySync({ debounceMs: 2000 });
 
   // Link index for wikilink navigation and footer links panel
   const { findNoteByTitle, noteExists, getBacklinks, getOutgoingLinks, getEntityStats, getEntityMentions } = useLinkIndex(state.notes);
@@ -314,13 +318,15 @@ const Index = () => {
     <ErrorBoundary>
       <SchemaProvider>
         <NotesProvider>
-          <SearchProvider>
-            <EntitySelectionProvider>
-              <TemporalHighlightProvider>
-                <NotesApp />
-              </TemporalHighlightProvider>
-            </EntitySelectionProvider>
-          </SearchProvider>
+          <CozoProvider>
+            <SearchProvider>
+              <EntitySelectionProvider>
+                <TemporalHighlightProvider>
+                  <NotesApp />
+                </TemporalHighlightProvider>
+              </EntitySelectionProvider>
+            </SearchProvider>
+          </CozoProvider>
         </NotesProvider>
       </SchemaProvider>
     </ErrorBoundary>

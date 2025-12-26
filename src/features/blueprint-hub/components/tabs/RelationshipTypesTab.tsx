@@ -3,45 +3,36 @@ import { useBlueprintHubContext } from '../../context/BlueprintHubContext';
 import { useRelationshipTypes } from '../../hooks/useRelationshipTypes';
 import { useEntityTypes } from '../../hooks/useEntityTypes';
 import { RelationshipPreview } from '../previews/RelationshipPreview';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  QuickCreateTab,
+  BlueprintsTab,
+  AdvancedTab,
+  type RelationshipPreset,
+} from '../relationships';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, ArrowRight, ArrowLeft } from 'lucide-react';
-import type { RelationshipDirection } from '../../types';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, Trash2, ArrowRight, ArrowLeft, Zap, LayoutGrid, Settings2 } from 'lucide-react';
 
 interface RelationshipTypesTabProps {
   isLoading: boolean;
 }
 
+type ViewMode = 'list' | 'create';
+
 export function RelationshipTypesTab({ isLoading: contextLoading }: RelationshipTypesTabProps) {
   const { versionId } = useBlueprintHubContext();
   const { relationshipTypes, isLoading: hookLoading, create, remove } = useRelationshipTypes(versionId);
   const { entityTypes } = useEntityTypes(versionId);
-  const [view, setView] = useState<'list' | 'create'>('list');
-  const [formData, setFormData] = useState({
-    relationship_name: '',
-    display_label: '',
-    source_entity_kind: '',
-    target_entity_kind: '',
-    direction: 'directed' as RelationshipDirection,
-    inverse_label: '',
-    description: '',
-  });
+  const [view, setView] = useState<ViewMode>('list');
+  const [activeTab, setActiveTab] = useState('quick');
+  const [presetData, setPresetData] = useState<RelationshipPreset | undefined>(undefined);
 
   const isLoading = contextLoading || hookLoading;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && view !== 'list') {
+      if (e.key === 'Escape' && view === 'create') {
         setView('list');
       }
     };
@@ -49,40 +40,26 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [view]);
 
-  // Get entity type for preview
-  const sourceEntityType = entityTypes.find(et => et.entity_kind === formData.source_entity_kind);
-  const targetEntityType = entityTypes.find(et => et.entity_kind === formData.target_entity_kind);
+  const handleCreate = async (input: Parameters<typeof create>[0]) => {
+    await create(input);
+    setView('list');
+    setPresetData(undefined);
+  };
 
-  const handleCreate = async () => {
-    if (!formData.relationship_name || !formData.display_label || !formData.source_entity_kind || !formData.target_entity_kind) {
-      return;
-    }
+  const handleSelectPreset = (preset: RelationshipPreset) => {
+    setPresetData(preset);
+    setActiveTab('quick');
+  };
 
-    try {
-      await create({
-        relationship_name: formData.relationship_name,
-        display_label: formData.display_label,
-        source_entity_kind: formData.source_entity_kind,
-        target_entity_kind: formData.target_entity_kind,
-        direction: formData.direction,
-        inverse_label: formData.inverse_label || undefined,
-        description: formData.description || undefined,
-      });
+  const handleOpenCreate = () => {
+    setPresetData(undefined);
+    setActiveTab('quick');
+    setView('create');
+  };
 
-      // Reset form
-      setFormData({
-        relationship_name: '',
-        display_label: '',
-        source_entity_kind: '',
-        target_entity_kind: '',
-        direction: 'directed',
-        inverse_label: '',
-        description: '',
-      });
-      setView('list');
-    } catch (err) {
-      console.error('Failed to create relationship type:', err);
-    }
+  const handleBack = () => {
+    setView('list');
+    setPresetData(undefined);
   };
 
   const handleDelete = async (relationshipTypeId: string) => {
@@ -106,11 +83,11 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
   if (view === 'create') {
     return (
       <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-200">
-        <div className="flex items-center gap-2 mb-6">
+        <div className="flex items-center gap-3 mb-6">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setView('list')}
+            onClick={handleBack}
             className="h-8 w-8 p-0"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -118,151 +95,48 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
           <div>
             <h3 className="text-lg font-semibold">Create Relationship Type</h3>
             <p className="text-sm text-muted-foreground">
-              Define a new relationship type between entity types.
+              Define how entities connect to each other.
             </p>
           </div>
         </div>
 
-        <div className="space-y-6 max-w-3xl">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="relationship_name">Relationship Name (Key)</Label>
-              <Input
-                id="relationship_name"
-                value={formData.relationship_name}
-                onChange={(e) => setFormData({ ...formData, relationship_name: e.target.value })}
-                placeholder="e.g., character_belongs_to_faction"
-              />
-            </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
+          <TabsList className="grid grid-cols-3 mb-6">
+            <TabsTrigger value="quick" className="flex items-center gap-1.5">
+              <Zap className="w-4 h-4" />
+              Quick
+            </TabsTrigger>
+            <TabsTrigger value="blueprints" className="flex items-center gap-1.5">
+              <LayoutGrid className="w-4 h-4" />
+              Blueprints
+            </TabsTrigger>
+            <TabsTrigger value="advanced" className="flex items-center gap-1.5">
+              <Settings2 className="w-4 h-4" />
+              Advanced
+            </TabsTrigger>
+          </TabsList>
 
-            <div className="space-y-2">
-              <Label htmlFor="display_label">Display Label</Label>
-              <Input
-                id="display_label"
-                value={formData.display_label}
-                onChange={(e) => setFormData({ ...formData, display_label: e.target.value })}
-                placeholder="e.g., belongs to"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="source_entity_kind">From Type</Label>
-              <Select
-                value={formData.source_entity_kind}
-                onValueChange={(value) => setFormData({ ...formData, source_entity_kind: value })}
-              >
-                <SelectTrigger id="source_entity_kind">
-                  <SelectValue placeholder="Select source type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {entityTypes.map((et) => (
-                    <SelectItem key={et.entity_type_id} value={et.entity_kind}>
-                      {et.display_name} ({et.entity_kind})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="target_entity_kind">To Type</Label>
-              <Select
-                value={formData.target_entity_kind}
-                onValueChange={(value) => setFormData({ ...formData, target_entity_kind: value })}
-              >
-                <SelectTrigger id="target_entity_kind">
-                  <SelectValue placeholder="Select target type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {entityTypes.map((et) => (
-                    <SelectItem key={et.entity_type_id} value={et.entity_kind}>
-                      {et.display_name} ({et.entity_kind})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="direction">Direction</Label>
-            <Select
-              value={formData.direction}
-              onValueChange={(value) => setFormData({ ...formData, direction: value as RelationshipDirection })}
-            >
-              <SelectTrigger id="direction">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="directed">Directed (one-way)</SelectItem>
-                <SelectItem value="bidirectional">Bidirectional (two-way)</SelectItem>
-                <SelectItem value="undirected">Undirected (symmetric)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {formData.direction === 'bidirectional' && (
-            <div className="space-y-2">
-              <Label htmlFor="inverse_label">Inverse Label (Optional)</Label>
-              <Input
-                id="inverse_label"
-                value={formData.inverse_label}
-                onChange={(e) => setFormData({ ...formData, inverse_label: e.target.value })}
-                placeholder="e.g., has member"
-              />
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Description (Optional)</Label>
-            <Input
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Brief description"
+          <TabsContent value="quick" className="mt-0">
+            <QuickCreateTab
+              onCreate={handleCreate}
+              onCancel={handleBack}
+              initialData={presetData}
+              entityTypes={entityTypes}
             />
-          </div>
+          </TabsContent>
 
-          {formData.source_entity_kind && formData.target_entity_kind && (
-            <div className="space-y-2">
-              <Label>Preview</Label>
-              <RelationshipPreview
-                fromType={{
-                  display_name: sourceEntityType?.display_name || formData.source_entity_kind,
-                  color: sourceEntityType?.color,
-                }}
-                toType={{
-                  display_name: targetEntityType?.display_name || formData.target_entity_kind,
-                  color: targetEntityType?.color,
-                }}
-                relationship={{
-                  direction: formData.direction,
-                  display_label: formData.display_label || 'relates to',
-                  inverse_label: formData.inverse_label,
-                }}
-              />
-            </div>
-          )}
+          <TabsContent value="blueprints" className="mt-0">
+            <BlueprintsTab onSelectPreset={handleSelectPreset} />
+          </TabsContent>
 
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button variant="outline" onClick={() => setView('list')}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreate}
-              disabled={
-                !formData.relationship_name ||
-                !formData.display_label ||
-                !formData.source_entity_kind ||
-                !formData.target_entity_kind
-              }
-            >
-              Create Relationship Type
-            </Button>
-          </div>
-        </div>
+          <TabsContent value="advanced" className="mt-0">
+            <AdvancedTab
+              onCreate={handleCreate}
+              onCancel={handleBack}
+              entityTypes={entityTypes}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     );
   }
@@ -271,16 +145,27 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
     <div className="space-y-4 animate-in fade-in duration-200">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Relationship Types</h3>
-        <Button size="sm" onClick={() => setView('create')}>
+        <Button size="sm" onClick={handleOpenCreate}>
           <Plus className="w-4 h-4 mr-2" />
-          Create Relationship Type
+          New Relationship
         </Button>
       </div>
 
       {relationshipTypes.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <p>No relationship types defined yet.</p>
-          <p className="text-sm mt-2">Click "Create Relationship Type" to get started.</p>
+        <div className="text-center py-12 text-muted-foreground border rounded-lg bg-muted/20">
+          <div className="space-y-3">
+            <div className="w-12 h-12 rounded-full bg-muted mx-auto flex items-center justify-center">
+              <ArrowRight className="w-6 h-6" />
+            </div>
+            <p className="font-medium">No relationship types defined yet.</p>
+            <p className="text-sm">
+              Define how your entities connect to each other.
+            </p>
+            <Button size="sm" variant="outline" onClick={handleOpenCreate}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create Your First Relationship
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-3">
@@ -291,39 +176,61 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
             return (
               <div
                 key={relType.relationship_type_id}
-                className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                className="border rounded-lg p-4 hover:bg-muted/50 transition-colors group"
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center gap-2">
                       <h4 className="font-semibold">{relType.display_label}</h4>
                       <Badge variant="outline" className="text-xs">
                         {relType.direction}
                       </Badge>
+                      {relType.cardinality && (
+                        <Badge variant="secondary" className="text-xs">
+                          {relType.cardinality.replace(/_/g, ':')}
+                        </Badge>
+                      )}
                     </div>
+
                     {relType.description && (
-                      <p className="text-sm text-muted-foreground mb-3">
+                      <p className="text-sm text-muted-foreground">
                         {relType.description}
                       </p>
                     )}
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-medium" style={{ color: sourceType?.color }}>
-                        {relType.source_entity_kind}
+
+                    <RelationshipPreview
+                      fromType={{
+                        display_name: sourceType?.display_name || relType.source_entity_kind,
+                        color: sourceType?.color,
+                      }}
+                      toType={{
+                        display_name: targetType?.display_name || relType.target_entity_kind,
+                        color: targetType?.color,
+                      }}
+                      relationship={{
+                        direction: relType.direction,
+                        display_label: relType.display_label,
+                        inverse_label: relType.inverse_label,
+                      }}
+                    />
+
+                    <div className="text-xs text-muted-foreground">
+                      <span className="font-mono text-[11px] bg-muted px-1.5 py-0.5 rounded">
+                        {relType.relationship_name}
                       </span>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-medium" style={{ color: targetType?.color }}>
-                        {relType.target_entity_kind}
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-2">
-                      {relType.attributes.length} attribute{relType.attributes.length !== 1 ? 's' : ''}
+                      {relType.attributes.length > 0 && (
+                        <span className="ml-3">
+                          {relType.attributes.length} attribute{relType.attributes.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
                   </div>
+
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => handleDelete(relType.relationship_type_id)}
-                    className="text-destructive hover:text-destructive"
+                    className="text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>

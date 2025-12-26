@@ -128,26 +128,42 @@ export class CozoUnifiedRegistry {
     }
 
     private async createSchema(): Promise<void> {
+        console.log('[CozoUnifiedRegistry] Creating schemas...');
+        
         const schemas = [
-            { name: 'entities', script: `::create entities { id: String, label: String, normalized: String, kind: String, subtype: String?, first_note: String, created_at: Int, created_by: String, => id }` },
-            { name: 'entity_aliases', script: `::create entity_aliases { entity_id: String, alias: String, normalized: String, => entity_id, normalized }` },
-            { name: 'entity_mentions', script: `::create entity_mentions { entity_id: String, note_id: String, mention_count: Int, last_seen: Int, => entity_id, note_id }` },
-            { name: 'entity_metadata', script: `::create entity_metadata { entity_id: String, key: String, value: String, => entity_id, key }` },
-            { name: 'relationships', script: `::create relationships { id: String, source_id: String, target_id: String, type: String, inverse_type: String?, bidirectional: Bool, confidence: Float, namespace: String?, created_at: Int, updated_at: Int, => id }` },
-            { name: 'relationship_provenance', script: `::create relationship_provenance { relationship_id: String, source: String, origin_id: String, confidence: Float, timestamp: Int, context: String?, => relationship_id, source, origin_id }` },
-            { name: 'relationship_attributes', script: `::create relationship_attributes { relationship_id: String, key: String, value: String, => relationship_id, key }` },
+            { name: 'entities', script: `:create entities { id: String => label: String, normalized: String, kind: String, subtype: String?, first_note: String, created_at: Int, created_by: String }` },
+            { name: 'entity_aliases', script: `:create entity_aliases { entity_id: String, normalized: String => alias: String }` },
+            { name: 'entity_mentions', script: `:create entity_mentions { entity_id: String, note_id: String => mention_count: Int, last_seen: Int }` },
+            { name: 'entity_metadata', script: `:create entity_metadata { entity_id: String, key: String => value: String }` },
+            { name: 'relationships', script: `:create relationships { id: String => source_id: String, target_id: String, type: String, inverse_type: String?, bidirectional: Bool, confidence: Float, namespace: String?, created_at: Int, updated_at: Int }` },
+            { name: 'relationship_provenance', script: `:create relationship_provenance { relationship_id: String, source: String, origin_id: String => confidence: Float, timestamp: Int, context: String? }` },
+            { name: 'relationship_attributes', script: `:create relationship_attributes { relationship_id: String, key: String => value: String }` },
         ];
 
         for (const { name, script } of schemas) {
             try {
-                cozoDb.run(script.trim());
+                const resultStr = cozoDb.run(script.trim());
+                const result = JSON.parse(resultStr);
+                if (result.ok === false) {
+                    const msg = result.message || result.display || 'Unknown error';
+                    if (!msg.includes('already exists')) {
+                        console.error(`[CozoUnifiedRegistry] Schema ${name} failed:`, msg);
+                    } else {
+                        console.log(`[CozoUnifiedRegistry] Schema ${name} already exists`);
+                    }
+                } else {
+                    console.log(`[CozoUnifiedRegistry] Schema ${name} created`);
+                }
             } catch (err) {
                 const errMsg = String(err);
                 if (!errMsg.includes('already exists')) {
                     console.error(`[CozoUnifiedRegistry] Schema creation failed for ${name}:`, err);
+                    throw err;
                 }
             }
         }
+        
+        console.log('[CozoUnifiedRegistry] Schema creation complete');
     }
 
     // ==================== ENTITY OPERATIONS ====================
@@ -194,7 +210,16 @@ export class CozoUnifiedRegistry {
       :put entities {id, label, normalized, kind, subtype, first_note, created_at, created_by}
     `;
 
-        cozoDb.run(insertQuery);
+        try {
+            const result = cozoDb.runQuery(insertQuery);
+            if (result.ok === false) {
+                console.error('[CozoUnifiedRegistry] Insert failed:', result);
+                throw new Error(`Insert failed: ${JSON.stringify(result)}`);
+            }
+        } catch (err) {
+            console.error('[CozoUnifiedRegistry] registerEntity insert error:', err);
+            throw err;
+        }
 
         if (options?.aliases) {
             for (const alias of options.aliases) await this.addAlias(id, alias);
@@ -207,7 +232,12 @@ export class CozoUnifiedRegistry {
         await this.incrementMention(id, noteId);
         this.scheduleSnapshot();
 
-        return (await this.getEntityById(id))!;
+        const insertedEntity = await this.getEntityById(id);
+        if (!insertedEntity) {
+            console.error('[CozoUnifiedRegistry] Entity not found after insert, id:', id);
+            throw new Error(`Entity insert succeeded but retrieval failed for id: ${id}`);
+        }
+        return insertedEntity;
     }
 
     async getEntityById(id: string): Promise<CozoEntity | null> {

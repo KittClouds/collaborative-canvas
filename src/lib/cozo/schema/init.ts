@@ -27,8 +27,13 @@ import {
   EXTRACTION_LABEL_MAPPING_SCHEMA,
   EXTRACTION_IGNORE_LIST_SCHEMA,
 } from './layer3-blueprints';
+import { FOLDER_HIERARCHY_SCHEMA } from './layer2-folder-hierarchy';
+import { NETWORK_INSTANCE_SCHEMA } from './layer2-network-instance';
+import { NETWORK_MEMBERSHIP_SCHEMA } from './layer2-network-membership';
+import { NETWORK_RELATIONSHIP_SCHEMA } from './layer2-network-relationship';
+import { MUTATION_LOG_SCHEMA } from './layer1-mutation-log';
 
-export const SCHEMA_VERSION = '1.1.0';
+export const SCHEMA_VERSION = '1.3.0';
 
 const ALL_SCHEMAS = [
   { name: 'episode', schema: EPISODE_SCHEMA },
@@ -54,6 +59,11 @@ const ALL_SCHEMAS = [
   { name: 'extraction_profile', schema: EXTRACTION_PROFILE_SCHEMA },
   { name: 'extraction_label_mapping', schema: EXTRACTION_LABEL_MAPPING_SCHEMA },
   { name: 'extraction_ignore_list', schema: EXTRACTION_IGNORE_LIST_SCHEMA },
+  { name: 'folder_hierarchy', schema: FOLDER_HIERARCHY_SCHEMA },
+  { name: 'network_instance', schema: NETWORK_INSTANCE_SCHEMA },
+  { name: 'network_membership', schema: NETWORK_MEMBERSHIP_SCHEMA },
+  { name: 'network_relationship', schema: NETWORK_RELATIONSHIP_SCHEMA },
+  { name: 'mutation_log', schema: MUTATION_LOG_SCHEMA },
 ];
 
 export interface SchemaInitResult {
