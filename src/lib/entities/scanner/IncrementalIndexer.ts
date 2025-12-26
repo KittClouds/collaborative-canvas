@@ -1,4 +1,4 @@
-import { entityRegistry } from '../entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import { EntityKind } from '../entityTypes';
 
 export interface PendingUpdate {

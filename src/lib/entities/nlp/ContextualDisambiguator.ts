@@ -1,6 +1,6 @@
 import { ResoRankScorer, TokenMetadata, CorpusStatistics, ProximityStrategy } from '@/lib/resorank';
 import { getWinkProcessor, Token, Sentence } from './WinkProcessor';
-import { entityRegistry, RegisteredEntity } from '../entity-registry';
+import { entityRegistry, type RegisteredEntity } from '@/lib/cozo/graph/adapters';
 import { EntityKind } from '../entityTypes';
 
 // Universal POS tags from wink-eng-lite-web-model

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ContextualDisambiguator } from '../nlp/ContextualDisambiguator';
-import { entityRegistry } from '../entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import { getWinkProcessor } from '../nlp/WinkProcessor';
 
 describe('ContextualDisambiguator', () => {

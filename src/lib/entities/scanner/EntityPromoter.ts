@@ -8,7 +8,7 @@
  * 4. Indexed: matched via PrefixTrie
  */
 
-import { entityRegistry } from '../entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import { EntityKind } from '../entityTypes';
 import { rebuildPrefixTrie } from './PrefixTrie';
 

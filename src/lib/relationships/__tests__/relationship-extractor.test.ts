@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RelationshipExtractor, getRelationshipExtractor } from '../RelationshipExtractor';
-import { entityRegistry } from '../../entities/entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 
 describe('RelationshipExtractor', () => {
     let extractor: RelationshipExtractor;

@@ -13,7 +13,7 @@
  */
 
 import { getWinkProcessor, type Sentence, type Token } from '../entities/nlp/WinkProcessor';
-import { entityRegistry, type RegisteredEntity } from '../entities/entity-registry';
+import { entityRegistry, type RegisteredEntity } from '@/lib/cozo/graph/adapters';
 import { relationshipRegistry } from './relationship-registry';
 import { RelationshipSource, type RelationshipProvenance } from './types';
 import { EntityKind } from '../entities/entityTypes';

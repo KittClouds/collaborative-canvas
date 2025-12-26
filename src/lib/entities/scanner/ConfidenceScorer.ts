@@ -7,8 +7,8 @@
  * - Context similarity
  */
 
-import { entityRegistry, EntityRegistry } from '../entity-registry';
-import type { RegisteredEntity } from '../types/registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
+import type { RegisteredEntity } from '@/lib/cozo/graph/adapters';
 import type { EntityCandidate } from './AdaptiveWindowGenerator';
 import type { ScanResult } from '../types/registry';
 import { frequencyBooster } from './FrequencyBooster';

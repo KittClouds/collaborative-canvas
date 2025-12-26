@@ -109,7 +109,8 @@ function createExtensions(
   checkWikilinkExists?: (title: string) => boolean,
   onTemporalClick?: (temporal: string) => void,
   onBacklinkClick?: (title: string) => void,
-  getNEREntities?: () => any[]
+  getNEREntities?: () => any[],
+  noteId?: string
 ) {
   return [
     // Base Extensions
@@ -269,6 +270,8 @@ function createExtensions(
       onBacklinkClick,
       nerEntities: getNEREntities,
       useWidgetMode: true,
+      enableLinkTracking: true,
+      currentNoteId: noteId,
     }),
   ];
 }
@@ -287,6 +290,7 @@ const RichEditor = ({
 }: RichEditorProps) => {
   const previousContentRef = useRef<string>('');
   const previousNoteIdRef = useRef<string | undefined>(noteId);
+  const currentNoteIdRef = useRef<string | undefined>(noteId);
   const { entities } = useNER();
   const nerEntitiesRef = useRef(entities);
 
@@ -294,6 +298,11 @@ const RichEditor = ({
   useEffect(() => {
     nerEntitiesRef.current = entities;
   }, [entities]);
+
+  // Keep noteId ref updated
+  useEffect(() => {
+    currentNoteIdRef.current = noteId;
+  }, [noteId]);
 
   // Use refs for callbacks to keep extensions stable
   const optionsRef = useRef({ onWikilinkClick, checkWikilinkExists, onTemporalClick, onBacklinkClick });
@@ -308,9 +317,10 @@ const RichEditor = ({
       (title) => optionsRef.current.checkWikilinkExists?.(title) ?? true,
       (temporal) => optionsRef.current.onTemporalClick?.(temporal),
       (title) => optionsRef.current.onBacklinkClick?.(title),
-      () => nerEntitiesRef.current
+      () => nerEntitiesRef.current,
+      noteId
     ),
-    [] // Empty deps = never recreated
+    [noteId] // Recreate when noteId changes
   );
 
 

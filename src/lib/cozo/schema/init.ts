@@ -32,8 +32,12 @@ import { NETWORK_INSTANCE_SCHEMA } from './layer2-network-instance';
 import { NETWORK_MEMBERSHIP_SCHEMA } from './layer2-network-membership';
 import { NETWORK_RELATIONSHIP_SCHEMA } from './layer2-network-relationship';
 import { MUTATION_LOG_SCHEMA } from './layer1-mutation-log';
+import {
+  NOTE_ENTITY_LINKS_SCHEMA,
+  ENTITY_BACKLINKS_SCHEMA,
+} from './layer2-bidirectional-links';
 
-export const SCHEMA_VERSION = '1.3.0';
+export const SCHEMA_VERSION = '1.4.0';
 
 const ALL_SCHEMAS = [
   { name: 'episode', schema: EPISODE_SCHEMA },
@@ -64,6 +68,8 @@ const ALL_SCHEMAS = [
   { name: 'network_membership', schema: NETWORK_MEMBERSHIP_SCHEMA },
   { name: 'network_relationship', schema: NETWORK_RELATIONSHIP_SCHEMA },
   { name: 'mutation_log', schema: MUTATION_LOG_SCHEMA },
+  { name: 'note_entity_links', schema: NOTE_ENTITY_LINKS_SCHEMA },
+  { name: 'entity_backlinks', schema: ENTITY_BACKLINKS_SCHEMA },
 ];
 
 export interface SchemaInitResult {

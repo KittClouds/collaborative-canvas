@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { entityRegistry } from '../entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import { getWinkProcessor } from '../nlp/WinkProcessor';
 import { findEntityMentionsParallel } from '../documentScanner';
 import { AhoCorasickMatcher } from '../workers/EntityMatcherWorker';

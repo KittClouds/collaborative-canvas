@@ -7,7 +7,7 @@
  * 3. Stop if gap between tokens > threshold
  */
 
-import { entityRegistry } from '../entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import { PrefixTrie } from './PrefixTrie';
 import { getContextExtractor } from './ContextExtractor';
 

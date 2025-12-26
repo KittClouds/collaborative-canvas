@@ -1,5 +1,5 @@
 
-import { entityRegistry } from './entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import type { DocumentConnections, EntityReference, Triple } from './entityTypes';
 import { parseEntityFromTitle, parseEntityWithRelation } from './titleParser';
 import { getWinkProcessor, type Sentence, type LinguisticAnalysis } from './nlp/WinkProcessor';

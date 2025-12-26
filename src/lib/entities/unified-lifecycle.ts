@@ -6,7 +6,7 @@
  * 4. RelationshipRegistry (unified relationship management)
  */
 
-import { entityRegistry } from './entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 // import { getGraphSyncManager } from '@/lib/graph/integration';
 import { autoSaveEntityRegistry } from '@/lib/storage/entityStorage';
 import { folderRelationshipCreator } from '@/lib/folders/relationship-creator';

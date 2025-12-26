@@ -4,8 +4,10 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '../entities/entityTypes';
 import type { NEREntity } from '../extraction';
-import { entityRegistry } from '../entities/entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import { patternRegistry, type PatternDefinition, type RefKind } from '../refs';
+import { mentionEventQueue } from '../entities/mention-event-queue';
+import type { EntityMentionEvent, PositionType } from '../cozo/types';
 
 export interface UnifiedSyntaxOptions {
   onWikilinkClick?: (title: string) => void;
@@ -16,6 +18,8 @@ export interface UnifiedSyntaxOptions {
   nerEntities?: NEREntity[] | (() => NEREntity[]);
   onNEREntityClick?: (entity: NEREntity) => void;
   useWidgetMode?: boolean;
+  enableLinkTracking?: boolean;
+  currentNoteId?: string;
 }
 
 const syntaxPluginKey = new PluginKey('unified-syntax-highlighter');
@@ -37,6 +41,55 @@ function isEditing(selection: { from: number; to: number }, range: EditingRange)
     (selection.to >= range.from - buffer && selection.to <= range.to + buffer) ||
     (selection.from <= range.from && selection.to >= range.to)
   );
+}
+
+function extractEntityMentionsFromDoc(
+  doc: ProseMirrorNode,
+  noteId: string
+): EntityMentionEvent[] {
+  const mentions: EntityMentionEvent[] = [];
+  const patterns = patternRegistry.getActivePatterns().filter(p => p.kind === 'entity');
+
+  doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+
+    const text = node.text;
+
+    for (const pattern of patterns) {
+      const regex = patternRegistry.getCompiledPattern(pattern.id);
+      let match: RegExpExecArray | null;
+      regex.lastIndex = 0;
+
+      while ((match = regex.exec(text)) !== null) {
+        if (match.index === regex.lastIndex) {
+          regex.lastIndex++;
+        }
+
+        const entityId = match[2] || match[1] || match[0];
+        if (!entityId) continue;
+
+        const contextStart = Math.max(0, match.index - 50);
+        const contextEnd = Math.min(text.length, match.index + match[0].length + 50);
+        const context = text.substring(contextStart, contextEnd);
+
+        mentions.push({
+          type: 'entityMentioned',
+          noteId,
+          entityId,
+          mention: {
+            text: match[0],
+            position: pos + match.index,
+            context,
+            mentionType: 'explicit',
+            positionType: 'body' as PositionType,
+          },
+          timestamp: Date.now(),
+        });
+      }
+    }
+  });
+
+  return mentions;
 }
 
 /**
@@ -355,10 +408,12 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
       checkWikilinkExists: undefined,
       onTemporalClick: undefined,
       onBacklinkClick: undefined,
-      onRefClick: undefined, // Universal handler
+      onRefClick: undefined,
       nerEntities: undefined,
       onNEREntityClick: undefined,
       useWidgetMode: false,
+      enableLinkTracking: true,
+      currentNoteId: undefined,
     };
   },
 
@@ -466,6 +521,26 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
               return false;
             },
           },
+        },
+      }),
+      new Plugin({
+        key: new PluginKey('bidirectional-link-tracker'),
+        appendTransaction(transactions, oldState, newState) {
+          if (options.enableLinkTracking === false || !options.currentNoteId) {
+            return null;
+          }
+
+          if (!transactions.some(tr => tr.docChanged)) {
+            return null;
+          }
+
+          const mentions = extractEntityMentionsFromDoc(newState.doc, options.currentNoteId);
+
+          if (mentions.length > 0) {
+            mentions.forEach(mention => mentionEventQueue.enqueue(mention));
+          }
+
+          return null;
         },
       }),
     ];

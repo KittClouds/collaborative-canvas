@@ -7,7 +7,7 @@
  * - Domain context (Folder types)
  */
 
-import { entityRegistry } from '../entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 
 export class FrequencyBooster {
     private userInteractions: Map<string, number> = new Map(); // entityId -> interactionCount

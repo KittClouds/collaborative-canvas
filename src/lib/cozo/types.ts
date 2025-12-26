@@ -491,3 +491,104 @@ export function mapRowToUnifiedEdge(row: unknown[]): CozoUnifiedEdge {
     direction: row[8] as 'outgoing' | 'incoming' | undefined,
   };
 }
+
+export type LinkType = 'mention' | 'explicit' | 'implicit';
+export type MentionType = 'explicit' | 'implicit' | 'inferred';
+export type LinkCreatedBy = 'user' | 'auto-extraction' | 'ai-inference';
+export type PositionType = 'title' | 'heading' | 'body' | 'footnote';
+
+export interface CozoBidirectionalLink {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  linkType: LinkType;
+  mentionType: MentionType;
+  createdBy: LinkCreatedBy;
+
+  context: string;
+  charPosition: number;
+  sentenceIndex?: number;
+
+  positionType: PositionType;
+  positionWeight: number;
+
+  relevance: number;
+  frequencyScore: number;
+  contextScore: number;
+  temporalScore: number;
+
+  confidence: number;
+  validated: boolean;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CozoEntityBacklink {
+  id: string;
+  entityId: string;
+  noteId: string;
+
+  mentionCount: number;
+  avgRelevance: number;
+  firstMentionPos: number;
+  lastMentionPos: number;
+
+  noteTitle: string;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface EntityMentionEvent {
+  type: 'entityMentioned' | 'entityRemoved';
+  noteId: string;
+  entityId: string;
+  mention: {
+    text: string;
+    position: number;
+    context: string;
+    mentionType: MentionType;
+    positionType: PositionType;
+  };
+  timestamp: number;
+}
+
+export function mapRowToBidirectionalLink(row: unknown[]): CozoBidirectionalLink {
+  return {
+    id: row[0] as string,
+    sourceId: row[1] as string,
+    targetId: row[2] as string,
+    linkType: row[3] as LinkType,
+    mentionType: row[4] as MentionType,
+    createdBy: row[5] as LinkCreatedBy,
+    context: row[6] as string,
+    charPosition: row[7] as number,
+    sentenceIndex: row[8] as number | undefined,
+    positionType: row[9] as PositionType,
+    positionWeight: row[10] as number,
+    relevance: row[11] as number,
+    frequencyScore: row[12] as number,
+    contextScore: row[13] as number,
+    temporalScore: row[14] as number,
+    confidence: row[15] as number,
+    validated: row[16] as boolean,
+    createdAt: new Date(row[17] as number),
+    updatedAt: new Date(row[18] as number),
+  };
+}
+
+export function mapRowToEntityBacklink(row: unknown[]): CozoEntityBacklink {
+  return {
+    id: row[0] as string,
+    entityId: row[1] as string,
+    noteId: row[2] as string,
+    mentionCount: row[3] as number,
+    avgRelevance: row[4] as number,
+    firstMentionPos: row[5] as number,
+    lastMentionPos: row[6] as number,
+    noteTitle: row[7] as string,
+    createdAt: new Date(row[8] as number),
+    updatedAt: new Date(row[9] as number),
+  };
+}

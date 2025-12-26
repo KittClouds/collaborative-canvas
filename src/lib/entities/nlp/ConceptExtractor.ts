@@ -18,7 +18,7 @@ import {
     type NounChunk,
     type Token
 } from './WinkProcessor';
-import { entityRegistry } from '../entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 
 // ==================== TYPE DEFINITIONS ====================
 

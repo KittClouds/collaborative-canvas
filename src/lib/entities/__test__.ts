@@ -4,11 +4,10 @@ import {
     hasRawEntitySyntax
 } from './documentScanner';
 
-import { EntityRegistry, entityRegistry } from './entity-registry';
+import { entityRegistry, type RegisteredEntity } from '@/lib/cozo/graph/adapters';
 import { RegexEntityParser, regexEntityParser } from './regex-entity-parser';
 
 import type {
-    RegisteredEntity,
     ParsedEntity,
     ScanResult
 } from './types/registry';

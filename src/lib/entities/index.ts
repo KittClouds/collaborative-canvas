@@ -17,3 +17,13 @@ export type {
 export { entityRegistry } from '@/lib/cozo/graph/adapters';
 export type { RegisteredEntity } from '@/lib/cozo/graph/adapters';
 export * from './regex-entity-parser';
+
+// Hot cache and React Query hooks
+export { entityHotCache, type HotCacheEntity } from './EntityHotCache';
+export {
+    useEntity,
+    useEntities,
+    useEntitySearch,
+    useEntityStats,
+    useEntityMutations,
+} from './useEntityCache';

@@ -7,7 +7,7 @@
  * - Relationship migration via callbacks
  */
 
-import { entityRegistry, RegisteredEntity } from '../entity-registry';
+import { entityRegistry, type RegisteredEntity } from '@/lib/cozo/graph/adapters';
 import { EntityKind } from '../entityTypes';
 
 export interface DuplicateCandidate {

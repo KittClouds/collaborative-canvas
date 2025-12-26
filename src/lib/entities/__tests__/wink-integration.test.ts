@@ -5,7 +5,7 @@ import {
     detectCoOccurrencesEnhanced,
     getEntityDisambiguationContext,
 } from '../documentScanner';
-import { entityRegistry } from '../entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import type { JSONContent } from '@tiptap/react';
 
 describe('WinkProcessor Integration Tests', () => {

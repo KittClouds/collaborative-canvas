@@ -7,7 +7,7 @@
  * - Entity-to-Note mapping
  */
 
-import { entityRegistry, RegisteredEntity } from '../entity-registry';
+import { entityRegistry, type RegisteredEntity } from '@/lib/cozo/graph/adapters';
 import type { Note } from '@/contexts/NotesContext';
 import { JSONContent } from '@tiptap/react';
 

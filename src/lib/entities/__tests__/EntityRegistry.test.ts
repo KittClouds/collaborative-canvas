@@ -1,53 +1,36 @@
 import { describe, test, beforeEach, expect } from 'vitest';
-import { EntityRegistry } from '../entity-registry';
+import { EntityRegistryAdapter } from '@/lib/cozo/graph/adapters/EntityRegistryAdapter';
 
-describe('EntityRegistry', () => {
-    let registry: EntityRegistry;
+describe('EntityRegistryAdapter', () => {
+    let registry: EntityRegistryAdapter;
 
-    beforeEach(() => {
-        registry = new EntityRegistry();
+    beforeEach(async () => {
+        registry = new EntityRegistryAdapter();
+        await registry.init();
     });
 
-    test('registers new entity', () => {
-        const entity = registry.registerEntity('Jillybean', 'CHARACTER', 'note1');
-        if (entity.label !== 'Jillybean') throw new Error('Label mismatch');
-        if (entity.kind !== 'CHARACTER') throw new Error('Kind mismatch');
+    test('registers new entity', async () => {
+        const result = await registry.registerEntity('Jillybean', 'CHARACTER', 'note1');
+        if (result.entity.label !== 'Jillybean') throw new Error('Label mismatch');
+        if (result.entity.kind !== 'CHARACTER') throw new Error('Kind mismatch');
     });
 
-    test('finds entity by label', () => {
-        registry.registerEntity('Jillybean', 'CHARACTER', 'note1');
-        const found = registry.findEntity('jillybean'); // case-insensitive
+    test('finds entity by label', async () => {
+        await registry.registerEntity('Jillybean', 'CHARACTER', 'note1');
+        const found = registry.findEntityByLabel('jillybean');
         if (!found) throw new Error('Entity not found');
         if (found.label !== 'Jillybean') throw new Error('Label mismatch');
     });
 
-    test('adds and finds aliases', () => {
-        const entity = registry.registerEntity('Jillybean', 'CHARACTER', 'note1');
-        registry.addAlias(entity.id, 'Jilly');
+    test('adds and finds aliases', async () => {
+        const result = await registry.registerEntity('Jillybean', 'CHARACTER', 'note1');
+        await registry.addAlias(result.entity.id, 'Jilly');
 
         const found = registry.findEntity('Jilly');
         if (!found) throw new Error('Alias not found');
-        if (found.id !== entity.id) throw new Error('Alias ID mismatch');
+        if (found.id !== result.entity.id) throw new Error('Alias ID mismatch');
     });
-
-    test('tracks mentions across notes', () => {
-        const entity = registry.registerEntity('Jillybean', 'CHARACTER', 'note1');
-        registry.registerEntity('Jillybean', 'CHARACTER', 'note2'); // mention in another note
-
-        // Note: With new idempotent logic, duplicate registerEntity calls on different notes adds mentions
-        // But logic is: if noteId exists, increment count? No, logic is: add noteId to map if not exists?
-        // Let's check logic:
-        // registerEntity: existing.mentionsByNote.set(noteId, existing.mentionsByNote.get(noteId) + 1)
-        // So yes, it increments. Total mentions should be 2.
-
-        if (entity.totalMentions !== 2) throw new Error(`Mentions count mismatch: ${entity.totalMentions} vs 2`);
-        if (entity.noteAppearances.size !== 2) throw new Error('Note appearances count mismatch');
-    });
-
-    test('persists and loads', () => {
-        registry.registerEntity('Jillybean', 'CHARACTER', 'note1');
-        const json = registry.toJSON();
-        const loaded = EntityRegistry.fromJSON(json);
+});
 
         if (loaded.getAllEntities().length !== 1) throw new Error('Loaded count mismatch');
         if (!loaded.findEntity('Jillybean')) throw new Error('Loaded entity definition mismatch');

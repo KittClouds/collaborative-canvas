@@ -8,7 +8,7 @@
  * - Memory-efficient compressed nodes
  */
 
-import { entityRegistry, EntityRegistry } from '../entity-registry';
+import { entityRegistry } from '@/lib/cozo/graph/adapters';
 
 interface TrieNode {
     char: string;                          // Character at this node
