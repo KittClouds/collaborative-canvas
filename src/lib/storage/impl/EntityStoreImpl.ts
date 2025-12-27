@@ -193,6 +193,8 @@ export class EntityStoreImpl implements IEntityStore {
       const entities: Entity[] = [];
 
       // The getByKind query in schema returns limited fields. For correctness, we fetch all details.
+      if (!result?.rows || !Array.isArray(result.rows)) return [];
+
       for (const row of result.rows) {
         const id = row[0]; // first header is id
         const fullEntity = await this.getEntityById(id);
@@ -215,6 +217,11 @@ export class EntityStoreImpl implements IEntityStore {
     try {
       const result = cozoDb.runQuery(ENTITY_QUERIES.getByGroupId, { group_id: groupId });
       const entities: Entity[] = [];
+
+      if (!result?.rows || !Array.isArray(result.rows)) {
+        console.warn('[EntityStore] getAllEntities: No rows returned', result);
+        return [];
+      }
 
       for (const row of result.rows) {
         const id = row[0];

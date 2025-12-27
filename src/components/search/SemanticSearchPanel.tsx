@@ -8,13 +8,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { EmbeddingHealthCard } from './EmbeddingHealthCard';
 import { SyncScopeSelector } from './SyncScopeSelector';
 import { SearchResultsList } from './SearchResultsList';
-import { useSearch } from '@/contexts/SearchContext';
-import { useNotes } from '@/contexts/NotesContext';
+import { useJotaiSearch } from '@/hooks/useJotaiSearch';
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 
 type SearchMode = 'semantic' | 'hybrid';
 
 export function SemanticSearchPanel() {
-  const { selectNote } = useNotes();
+  const { selectNote } = useJotaiNotes();
   const {
     query,
     setQuery,
@@ -29,7 +29,7 @@ export function SemanticSearchPanel() {
     setSearchMode,
     hybridWeights,
     setHybridWeights,
-  } = useSearch();
+  } = useJotaiSearch();
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -73,8 +73,8 @@ export function SemanticSearchPanel() {
         <button
           onClick={() => handleSearchModeChange('semantic')}
           className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded text-xs font-medium transition-colors ${searchMode === 'semantic'
-              ? 'bg-sidebar text-sidebar-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+            ? 'bg-sidebar text-sidebar-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground'
             }`}
         >
           <Sparkles className="w-3.5 h-3.5" />
@@ -83,8 +83,8 @@ export function SemanticSearchPanel() {
         <button
           onClick={() => handleSearchModeChange('hybrid')}
           className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded text-xs font-medium transition-colors ${searchMode === 'hybrid'
-              ? 'bg-sidebar text-sidebar-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+            ? 'bg-sidebar text-sidebar-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground'
             }`}
         >
           <Network className="w-3.5 h-3.5" />

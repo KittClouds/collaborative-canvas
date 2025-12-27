@@ -276,21 +276,45 @@ function createExtensions(
   ];
 }
 
+// ... imports
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import {
+  noteContentAtom,
+  debouncedNoteContentAtom,
+  hasUnsavedChangesAtom,
+  autosaveAtom,
+  manualSaveAtom,
+  initNoteContentAtom,
+  selectedNoteAtom,
+  selectedNoteIdAtom,
+} from '@/atoms';
+
+// ... extensions factory ...
+
 const RichEditor = ({
-  content,
-  onChange,
   isDarkMode = false,
-  noteId,
+  // content, // Deprecated
+  // onChange, // Deprecated
+  // noteId, // Deprecated - using atom
   toolbarVisible = true,
   onToolbarVisibilityChange,
   onWikilinkClick,
   checkWikilinkExists,
   onTemporalClick,
   onBacklinkClick,
-}: RichEditorProps) => {
+}: Omit<RichEditorProps, 'content' | 'onChange' | 'noteId'> & { content?: string, onChange?: any, noteId?: string }) => {
+  const selectedNote = useAtomValue(selectedNoteAtom);
+  const noteId = useAtomValue(selectedNoteIdAtom) || undefined;
+
+  const [content, setContent] = useAtom(noteContentAtom);
+  const debouncedContent = useAtomValue(debouncedNoteContentAtom);
+  const hasUnsavedChanges = useAtomValue(hasUnsavedChangesAtom);
+  const triggerAutosave = useSetAtom(autosaveAtom);
+  const manualSave = useSetAtom(manualSaveAtom);
+  const initContent = useSetAtom(initNoteContentAtom);
+
   const previousContentRef = useRef<string>('');
-  const previousNoteIdRef = useRef<string | undefined>(noteId);
-  const currentNoteIdRef = useRef<string | undefined>(noteId);
+  const previousNoteIdRef = useRef<string | undefined>(undefined);
   const { entities } = useNER();
   const nerEntitiesRef = useRef(entities);
 
@@ -299,10 +323,37 @@ const RichEditor = ({
     nerEntitiesRef.current = entities;
   }, [entities]);
 
-  // Keep noteId ref updated
+  // Initialize content when note is selected
   useEffect(() => {
-    currentNoteIdRef.current = noteId;
-  }, [noteId]);
+    // Only init if we have a note and it's different from previous init or we just mounted
+    if (selectedNote?.id && selectedNote.id !== previousNoteIdRef.current) {
+      // console.log('[RichEditor] Initializing content for note:', selectedNote.id);
+      const initialContent = selectedNote.content || '';
+      initContent(initialContent);
+      previousNoteIdRef.current = selectedNote.id;
+      previousContentRef.current = initialContent; // Reset change tracking
+    }
+  }, [selectedNote?.id, selectedNote?.content, initContent]);
+
+  // Trigger autosave when debounced content changes
+  useEffect(() => {
+    if (selectedNote?.id) {
+      triggerAutosave();
+    }
+  }, [debouncedContent, selectedNote?.id, triggerAutosave]);
+
+  // Manual save handler (Cmd+S / Ctrl+S)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        manualSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [manualSave]);
 
   // Use refs for callbacks to keep extensions stable
   const optionsRef = useRef({ onWikilinkClick, checkWikilinkExists, onTemporalClick, onBacklinkClick });
@@ -310,7 +361,7 @@ const RichEditor = ({
     optionsRef.current = { onWikilinkClick, checkWikilinkExists, onTemporalClick, onBacklinkClick };
   });
 
-  // Create extensions ONCE - use refs for dynamic callback access
+  // Create extensions ONCE - using noteId from atom
   const extensions = useMemo(
     () => createExtensions(
       (title) => optionsRef.current.onWikilinkClick?.(title),
@@ -320,10 +371,8 @@ const RichEditor = ({
       () => nerEntitiesRef.current,
       noteId
     ),
-    [noteId] // Recreate when noteId changes
+    [noteId]
   );
-
-
 
   // Parse content to JSON if needed
   const parseContent = useCallback((contentStr: string) => {
@@ -345,14 +394,14 @@ const RichEditor = ({
 
   const editor = useEditor({
     extensions,
-    content: parseContent(content),
+    content: parseContent(content), // Initial render content
     onUpdate: ({ editor }) => {
       const json = editor.getJSON();
       const jsonString = JSON.stringify(json);
 
       if (jsonString !== previousContentRef.current) {
         previousContentRef.current = jsonString;
-        onChange(jsonString);
+        setContent(jsonString); // Update atom
       }
     },
     editorProps: {
@@ -377,24 +426,28 @@ const RichEditor = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [toolbarVisible, onToolbarVisibilityChange]);
 
-  // ONLY update editor content when noteId changes (switching notes)
-  useEffect(() => {
-    if (!editor || !noteId) return;
+  // Force editor update when noteId changes (switching notes) creates a ref mismatch?
+  // We use selectedNoteId vs internal previousNoteIdRef.
+  // The initContent effect sets the atom. 
+  // We need to update the EDITOR instance if the content changed externally (e.g. note switch).
 
-    // Only trigger on actual note switch, not on content updates
-    if (previousNoteIdRef.current !== noteId) {
-      const parsedContent = parseContent(content);
-      editor.commands.setContent(parsedContent, { emitUpdate: false });
-      previousContentRef.current = typeof content === 'string' ? content : JSON.stringify(content);
-      previousNoteIdRef.current = noteId;
+  // Actually, I'll use a `lastRenderedNoteId` ref.
+  const lastRenderedNoteId = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (editor && selectedNote?.id && selectedNote.id !== lastRenderedNoteId.current) {
+      // Note switched!
+      const parsed = parseContent(selectedNote.content);
+      editor.commands.setContent(parsed, { emitUpdate: false });
+      lastRenderedNoteId.current = selectedNote.id;
+      previousContentRef.current = selectedNote.content; // Reset change tracker
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteId, editor]);
+  }, [selectedNote?.id, selectedNote?.content, editor, parseContent]);
+
 
   // Force editor update when NER entities change to refresh decorations
   useEffect(() => {
     if (editor && entities.length > 0) {
-      // Create a transaction that doesn't change doc but triggers plugin updates
       editor.view.dispatch(editor.state.tr.setMeta('nerUpdate', true));
     }
   }, [entities, editor]);
@@ -408,7 +461,15 @@ const RichEditor = ({
   }
 
   return (
-    <div className="h-full flex flex-col min-h-0 reactjs-tiptap-editor">
+    <div className="h-full flex flex-col min-h-0 reactjs-tiptap-editor relative">
+      {/* Unsaved changes indicator */}
+      {hasUnsavedChanges && (
+        <div className="absolute top-2 right-2 flex items-center gap-2 text-xs text-muted-foreground z-50 bg-background/80 px-2 py-1 rounded border shadow-sm">
+          <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+          <span>Unsaved</span>
+        </div>
+      )}
+
       <RichTextProvider editor={editor} dark={isDarkMode}>
         {/* Toolbar */}
         {toolbarVisible && <EditorToolbar />}

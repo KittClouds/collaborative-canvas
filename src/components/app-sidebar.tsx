@@ -78,6 +78,7 @@ import { useNotes, FolderWithChildren, Note } from "@/contexts/NotesContext";
 import { ENTITY_COLORS, ENTITY_SUBTYPES, EntityKind, ENTITY_ICONS, getSubtypesForKind } from "@/lib/entities/entityTypes";
 import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName, formatSubtypeFolderName } from "@/lib/entities/titleParser";
 import { useBlueprintHub } from "@/features/blueprint-hub/hooks/useBlueprintHub";
+import { useJotaiNotes } from "@/hooks/useJotaiNotes";
 
 
 
@@ -206,7 +207,7 @@ function RenameInput({
 
 // Entity folder creation dropdown menu
 function EntityFolderCreationMenu() {
-  const { createFolder } = useNotes();
+  const { createFolder } = useJotaiNotes();
   const [isOpen, setIsOpen] = React.useState(false);
 
   const handleCreateEntityFolder = (kind: EntityKind) => {
@@ -322,7 +323,7 @@ interface NoteItemProps {
 }
 
 function NoteItem({ note, depth = 0, folderColor, autoRename, onRenameComplete }: NoteItemProps) {
-  const { selectNote, updateNote, deleteNote, state, getEntityNote } = useNotes();
+  const { selectNote, updateNote, deleteNote, state, getEntityNote } = useJotaiNotes();
   const [isHovered, setIsHovered] = React.useState(false);
   const [isRenaming, setIsRenaming] = React.useState(autoRename || false);
   const isActive = state.selectedNoteId === note.id;
@@ -341,7 +342,7 @@ function NoteItem({ note, depth = 0, folderColor, autoRename, onRenameComplete }
 
   // Check for kind mismatch with folder
   const folder = note.folderId ? state.folders.find(f => f.id === note.folderId) : undefined;
-  const folderKind = folder?.entityKind || folder?.inheritedKind;
+  const folderKind = folder?.entityKind || folder?.inherited_kind;
   const hasKindMismatch = note.isEntity && note.entityKind && folderKind && note.entityKind !== folderKind;
 
   const handleCopyLink = (e: React.MouseEvent) => {
@@ -354,7 +355,7 @@ function NoteItem({ note, depth = 0, folderColor, autoRename, onRenameComplete }
   const handleToggleFavorite = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    updateNote(note.id, { favorite: !note.favorite });
+    updateNote(note.id, { favorite: note.favorite === 1 ? 0 : 1 });
   };
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -531,7 +532,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     createNote,
     createFolder,
     setSearchQuery,
-  } = useNotes();
+  } = useJotaiNotes();
 
   // No longer needed here as we use memoized button
   // const { toggleHub, isHubOpen } = useBlueprintHub();

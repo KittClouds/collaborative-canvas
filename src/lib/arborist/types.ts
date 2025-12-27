@@ -26,8 +26,8 @@ export interface ArboristNode {
 
     // Note-specific properties
     isEntity?: boolean;
-    favorite?: boolean;
-    isPinned?: boolean;
+    favorite?: number;
+    isPinned?: number;
     folderId?: string;
 
     // Network-specific properties

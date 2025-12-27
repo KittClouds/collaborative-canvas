@@ -1,13 +1,13 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { useNotes } from '@/contexts/NotesContext';
 import { useCozoContext } from '@/contexts/CozoContext';
 import { useLinkIndex } from '@/hooks/useLinkIndex';
 import { EntityMentionsPanel as EntityList } from '@/components/EntityMentionsPanel';
 import { EntityPanelLoading, EntityPanelError, CreateEntityDialog } from '@/components/entities';
 import type { EntityKind } from '@/lib/entities/entityTypes';
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 
 export function EntitiesPanel() {
-    const { state, selectNote } = useNotes();
+    const { state, selectNote } = useJotaiNotes();
     const { isReady, isInitializing, error, entities, refreshEntities } = useCozoContext();
     const { getEntityMentions: getLinkIndexMentions } = useLinkIndex(state.notes);
 

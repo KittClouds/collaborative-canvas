@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useNotes } from '@/contexts/NotesContext';
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { useCozoContext } from '@/contexts/CozoContext';
 import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import type { EntityKind } from '@/lib/entities/entityTypes';
@@ -83,7 +83,7 @@ function extractEntitiesFromNote(noteContent: string): ExtractedEntity[] {
 export function useEntitySync(options: UseEntitySyncOptions = {}) {
     const { debounceMs = 2000, autoSync = true, enabled = true } = options;
 
-    const { state } = useNotes();
+    const { state } = useJotaiNotes();
     const { isReady, refreshEntities } = useCozoContext();
 
     const syncedNotesRef = useRef<Map<string, string>>(new Map());

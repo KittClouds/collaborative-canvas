@@ -4,6 +4,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+// ✅ ADD THESE IMPORTS
+import { Provider as JotaiProvider } from "jotai";
+import { jotaiStore, initializeJotaiStore } from "@/lib/store";
+
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { initializeStorage, getBlueprintStore } from "@/lib/storage/index";
@@ -11,11 +15,14 @@ import { BlueprintHubProvider } from "@/features/blueprint-hub/context/Blueprint
 import { BlueprintHubPanel } from "@/features/blueprint-hub/components/BlueprintHubPanel";
 import { NERProvider } from "@/contexts/NERContext";
 import { initializeSQLiteAndHydrate } from "@/lib/db";
+import { initCozoGraphSchema } from '@/lib/cozo/schema/init';
 
 const queryClient = new QueryClient();
 
 const App = () => {
     const [storageReady, setStorageReady] = useState(false);
+    // ✅ ADD JOTAI READY STATE
+    const [jotaiReady, setJotaiReady] = useState(false);
     const [initStatus, setInitStatus] = useState("Initializing...");
 
     useEffect(() => {
@@ -26,7 +33,11 @@ const App = () => {
                 const { entityRegistry, relationshipRegistry } = await import("@/lib/cozo/graph/adapters");
                 await entityRegistry.init();
                 await relationshipRegistry.init();
-                console.log("Unified Registry initialized");
+
+                // Initialize Layer 2 Schemas (required for EntityStoreImpl / BlueprintHub)
+                await initCozoGraphSchema();
+
+                console.log("Unified Registry and Layer 2 Schemas initialized");
 
                 // Initialize Legacy SQLite (if needed for other components)
                 setInitStatus("Initializing legacy storage...");
@@ -41,6 +52,12 @@ const App = () => {
                 await blueprintStore.initialize();
                 console.log("Blueprint store initialized");
 
+                // ✅ INITIALIZE JOTAI STORE
+                setInitStatus("Initializing Jotai state...");
+                await initializeJotaiStore();
+                console.log("Jotai store initialized");
+                setJotaiReady(true);
+
                 setStorageReady(true);
             } catch (e) {
                 console.error("Storage initialization failed:", e);
@@ -50,7 +67,8 @@ const App = () => {
         initStorage();
     }, []);
 
-    if (!storageReady) {
+    // ✅ WAIT FOR BOTH STORAGE AND JOTAI
+    if (!storageReady || !jotaiReady) {
         return (
             <div className="flex items-center justify-center h-screen">
                 <div className="text-center">
@@ -62,24 +80,28 @@ const App = () => {
     }
 
     return (
-        <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-                <NERProvider>
-                    <BlueprintHubProvider>
-                        <Toaster />
-                        <Sonner />
-                        <BlueprintHubPanel />
-                        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                            <Routes>
-                                <Route path="/" element={<Index />} />
-                                <Route path="*" element={<NotFound />} />
-                            </Routes>
-                        </BrowserRouter>
-                    </BlueprintHubProvider>
-                </NERProvider>
-            </TooltipProvider>
-        </QueryClientProvider>
+        // ✅ WRAP WITH JOTAI PROVIDER
+        <JotaiProvider store={jotaiStore}>
+            <QueryClientProvider client={queryClient}>
+                <TooltipProvider>
+                    <NERProvider>
+                        <BlueprintHubProvider>
+                            <Toaster />
+                            <Sonner />
+                            <BlueprintHubPanel />
+                            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                                <Routes>
+                                    <Route path="/" element={<Index />} />
+                                    <Route path="*" element={<NotFound />} />
+                                </Routes>
+                            </BrowserRouter>
+                        </BlueprintHubProvider>
+                    </NERProvider>
+                </TooltipProvider>
+            </QueryClientProvider>
+        </JotaiProvider>
     );
 };
 
 export default App;
+

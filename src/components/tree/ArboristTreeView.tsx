@@ -17,6 +17,7 @@ import {
     DropdownMenuSubTrigger,
     DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { cn } from '@/lib/utils';
 import { Pencil, Plus, X, FolderPlus, Star, StarOff, LinkIcon, Sparkles } from 'lucide-react';
 
@@ -39,7 +40,7 @@ export function ArboristTreeView({
         deleteNote,
         deleteFolder,
         selectNote,
-    } = useNotes();
+    } = useJotaiNotes();
 
     const treeRef = useRef<TreeApi<ArboristNode>>(null);
     const [treeHeight, setTreeHeight] = React.useState(600);
@@ -128,7 +129,7 @@ export function ArboristTreeView({
 
     const handleToggleFavorite = useCallback(() => {
         if (!contextNode || contextNode.type !== 'note') return;
-        updateNote(contextNode.id, { favorite: !contextNode.favorite });
+        updateNote(contextNode.id, { favorite: contextNode.favorite === 1 ? 0 : 1 });
         setContextNode(null);
     }, [contextNode, updateNote]);
 
@@ -154,7 +155,7 @@ export function ArboristTreeView({
     const handleTypedSubfolderCreate = useCallback((kind: EntityKind, subtype?: string, label?: string) => {
         if (!contextNode || contextNode.type !== 'folder') return;
 
-        const name = label 
+        const name = label
             ? (subtype ? `[${kind}:${subtype}|${label}]` : `[${kind}|${label}]`)
             : (subtype ? `[${kind}:${subtype}]` : `[${kind}]`);
 

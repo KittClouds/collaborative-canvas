@@ -7,7 +7,7 @@ import {
   TrendingUp,
   Hash
 } from 'lucide-react';
-import { useNotes } from '@/contexts/NotesContext';
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { analyzeText, parseContentToPlainText, TextAnalytics } from '@/lib/analytics/textAnalytics';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { FlowScoreSection } from './FlowScoreSection';
 
 export function AnalyticsPanel() {
-  const { state } = useNotes();
+  const { state } = useJotaiNotes();
   const selectedNote = state.notes.find(n => n.id === state.selectedNoteId);
   const [minCount, setMinCount] = useState(1);
 

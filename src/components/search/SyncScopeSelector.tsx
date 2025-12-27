@@ -6,13 +6,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
-import { useNotes } from '@/contexts/NotesContext';
-import { useSearch } from '@/contexts/SearchContext';
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
+import { useJotaiSearch } from '@/hooks/useJotaiSearch';
 import type { SyncScope } from '@/lib/embeddings/syncService';
 
 export function SyncScopeSelector() {
-  const { selectedNote, state } = useNotes();
-  const { syncEmbeddings, cancelSync, syncStatus, syncProgress } = useSearch();
+  const { selectedNote, state } = useJotaiNotes();
+  const { syncEmbeddings, cancelSync, syncStatus, syncProgress } = useJotaiSearch();
 
   const [isOpen, setIsOpen] = useState(false);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
@@ -76,8 +76,8 @@ export function SyncScopeSelector() {
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
             {syncProgress?.phase === 'embedding' ? 'Embedding...' :
-             syncProgress?.phase === 'saving' ? 'Saving...' :
-             syncProgress?.phase === 'preparing' ? 'Preparing...' : 'Syncing...'}
+              syncProgress?.phase === 'saving' ? 'Saving...' :
+                syncProgress?.phase === 'preparing' ? 'Preparing...' : 'Syncing...'}
           </span>
           <Button variant="ghost" size="sm" onClick={cancelSync} className="h-6 px-2">
             <X className="h-3 w-3 mr-1" />

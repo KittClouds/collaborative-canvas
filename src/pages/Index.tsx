@@ -18,7 +18,6 @@ import { Menu, FileText, Trash2 } from 'lucide-react';
 import RichEditor from '@/components/editor/RichEditor';
 import { useTheme } from '@/hooks/useTheme';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { useNotes, NotesProvider } from '@/contexts/NotesContext';
 import { CozoProvider } from '@/contexts/CozoContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -29,7 +28,6 @@ import { useEntitySync } from '@/hooks/useEntitySync';
 import { EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
 import { RightSidebar, RightSidebarProvider, RightSidebarTrigger } from '@/components/RightSidebar';
 import { TemporalHighlightProvider, useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
-import { SearchProvider } from '@/contexts/SearchContext';
 import { formatEntityTitle, getDisplayName } from '@/lib/entities/titleParser';
 import type { WikiLink } from '@/lib/linking/LinkIndex';
 import {
@@ -44,6 +42,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
+
 function NotesApp() {
   const { theme } = useTheme();
   const { toggleHub, isHubOpen } = useBlueprintHub();
@@ -52,7 +52,7 @@ function NotesApp() {
     return saved !== null ? JSON.parse(saved) : true;
   });
 
-  const { selectedNote, updateNoteContent, deleteNote, createNote, selectNote, state } = useNotes();
+  const { selectedNote, updateNoteContent, deleteNote, createNote, selectNote, state } = useJotaiNotes();
   const { activateTimelineWithTemporal } = useTemporalHighlight();
 
   useEntitySync({ debounceMs: 2000 });
@@ -76,7 +76,7 @@ function NotesApp() {
   );
 
   // Navigate to a note by title (for footer links panel)
-  const handleNavigateToNote = useCallback((
+  const handleNavigateToNote = useCallback(async (
     title: string,
     createIfNotExists?: boolean,
     link?: WikiLink
@@ -93,7 +93,7 @@ function NotesApp() {
 
       // Pass source note ID for backlink creation
       const sourceNoteId = selectedNoteRef.current?.id;
-      const newNote = createNoteRef.current(undefined, noteTitle, sourceNoteId);
+      const newNote = await createNoteRef.current(undefined, noteTitle, sourceNoteId);
       selectNoteRef.current(newNote.id);
     }
   }, []);
@@ -134,12 +134,12 @@ function NotesApp() {
   };
 
   // STABLE callbacks using refs - no dependencies means reference never changes
-  const handleWikilinkClick = useCallback((title: string) => {
+  const handleWikilinkClick = useCallback(async (title: string) => {
     const existingNote = findNoteByTitleRef.current(title);
     if (existingNote) {
       selectNoteRef.current(existingNote.id);
     } else {
-      const newNote = createNoteRef.current(undefined, title);
+      const newNote = await createNoteRef.current(undefined, title);
       selectNoteRef.current(newNote.id);
     }
   }, []);
@@ -317,17 +317,13 @@ const Index = () => {
   return (
     <ErrorBoundary>
       <SchemaProvider>
-        <NotesProvider>
-          <CozoProvider>
-            <SearchProvider>
-              <EntitySelectionProvider>
-                <TemporalHighlightProvider>
-                  <NotesApp />
-                </TemporalHighlightProvider>
-              </EntitySelectionProvider>
-            </SearchProvider>
-          </CozoProvider>
-        </NotesProvider>
+        <CozoProvider>
+          <EntitySelectionProvider>
+            <TemporalHighlightProvider>
+              <NotesApp />
+            </TemporalHighlightProvider>
+          </EntitySelectionProvider>
+        </CozoProvider>
       </SchemaProvider>
     </ErrorBoundary>
   );

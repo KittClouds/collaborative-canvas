@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
-import { useNotes } from '@/contexts/NotesContext';
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Clock, Calendar, Sparkles, SlidersHorizontal, Plus } from 'lucide-react';
@@ -15,7 +15,7 @@ import { EntityKind } from '@/lib/entities/entityTypes';
 import { generateId } from '@/lib/utils/ids';
 
 export function TimelinePanel() {
-  const { selectedNote, createNote, state, selectNote } = useNotes();
+  const { selectedNote, createNote, state, selectNote } = useJotaiNotes();
   const { highlightedTemporal, clearHighlight } = useTemporalHighlight();
   const highlightRef = useRef<HTMLDivElement>(null);
 
@@ -76,7 +76,7 @@ export function TimelinePanel() {
   // 3. Initialize/Update Query based on Context
   useEffect(() => {
     const newQuery = TimelineQueryEngine.fromContext(
-      contextEntity?.kind,
+      contextEntity?.kind as EntityKind,
       contextEntity?.id
     );
     setQuery(newQuery);

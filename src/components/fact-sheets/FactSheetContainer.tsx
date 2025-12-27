@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useCallback, useState } from 'react';
-import { useNotes } from '@/contexts/NotesContext';
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { useEntitySelection } from '@/contexts/EntitySelectionContext';
 import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentScanner';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
@@ -53,7 +53,7 @@ function setPanelMode(mode: PanelMode) {
 }
 
 export function FactSheetContainer() {
-  const { selectedNote, updateNoteContent } = useNotes();
+  const { selectedNote, updateNoteContent } = useJotaiNotes();
   const {
     selectedEntity,
     setSelectedEntity,
@@ -94,7 +94,7 @@ export function FactSheetContainer() {
     // Check if note itself is an entity
     if (selectedNote?.isEntity && selectedNote.entityKind && selectedNote.entityLabel) {
       entities.push({
-        kind: selectedNote.entityKind,
+        kind: selectedNote.entityKind as EntityKind,
         subtype: selectedNote.entitySubtype,
         label: selectedNote.entityLabel,
         noteId: selectedNote.id,

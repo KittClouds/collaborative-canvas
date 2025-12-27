@@ -42,7 +42,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { useNotes } from '@/contexts/NotesContext';
+import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { generateId } from '@/lib/utils/ids';
 import { cn } from '@/lib/utils';
 import type { EntityKind } from '@/lib/entities/entityTypes';
@@ -128,7 +128,7 @@ export function NetworkFolderCreationMenu({
     className,
     onNetworkCreated
 }: NetworkFolderCreationMenuProps) {
-    const { createFolder } = useNotes();
+    const { createFolder } = useJotaiNotes();
     const [isOpen, setIsOpen] = React.useState(false);
     const [dialogOpen, setDialogOpen] = React.useState(false);
     const [selectedKind, setSelectedKind] = React.useState<NetworkKind | null>(null);
@@ -156,7 +156,7 @@ export function NetworkFolderCreationMenu({
 
             // Create folder with network syntax: [NETWORK:KIND|Name]
             const folderName = `[NETWORK:${selectedKind}|${networkName.trim()}]`;
-            const folder = createFolder(folderName, undefined, {
+            const folder = await createFolder(folderName, undefined, {
                 entityKind: 'NETWORK',
                 entitySubtype: selectedKind,
                 entityLabel: networkName.trim(),
@@ -345,7 +345,7 @@ export function NetworkMemberCreationMenu({
     currentEntityKind = 'CHARACTER',
     onMemberCreated,
 }: NetworkMemberCreationMenuProps) {
-    const { createNote } = useNotes();
+    const { createNote } = useJotaiNotes();
     const [isOpen, setIsOpen] = React.useState(false);
 
     // Get relationships where current entity can be the source
@@ -358,7 +358,7 @@ export function NetworkMemberCreationMenu({
     const handleCreateMember = async (relationship: NetworkRelationshipDef) => {
         // Create a note with entity prefix for the target kind
         const noteTitle = `[${relationship.targetKind}|New ${relationship.label}]`;
-        const note = createNote(undefined, noteTitle);
+        const note = await createNote(undefined, noteTitle);
 
         onMemberCreated?.(note.id, relationship.code);
         setIsOpen(false);
