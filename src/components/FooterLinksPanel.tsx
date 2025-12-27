@@ -7,7 +7,7 @@ import BacklinksPanel from './BacklinksPanel';
 import OutgoingLinksPanel from './OutgoingLinksPanel';
 import { EntityMentionsPanel } from './EntityMentionsPanel';
 import type { BacklinkInfo, WikiLink } from '@/lib/linking/LinkIndex';
-import type { Note } from '@/contexts/NotesContext';
+import type { Note } from '@/types/noteTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 import { cn } from '@/lib/utils';
 
@@ -54,7 +54,7 @@ export const FooterLinksPanel = ({
   const entityCount = entityStats.length;
 
   return (
-    <div className="border-t bg-background fixed bottom-0 left-0 right-0 z-50 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
+    <div className="border-t bg-background w-full mt-auto z-10 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <div className="flex items-center h-9 px-2 gap-2 bg-card/50 backdrop-blur-sm">
           {/* Blueprint Hub Trigger */}
@@ -112,7 +112,7 @@ export const FooterLinksPanel = ({
           </div>
         </div>
 
-        <CollapsibleContent className="border-t max-h-[50vh] overflow-auto bg-background">
+        <CollapsibleContent className="border-t max-h-[50vh] overflow-auto custom-scrollbar bg-background">
           <div className="p-4">
             <Tabs defaultValue="out" className="w-full">
               <TabsList className="grid w-full grid-cols-3">

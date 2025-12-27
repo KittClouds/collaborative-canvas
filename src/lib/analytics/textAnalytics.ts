@@ -305,10 +305,10 @@ function calculateKeywordDensity(
     frequencies[normalized] = (frequencies[normalized] || 0) + 1;
   });
 
-  // Sort by frequency and take top 15
+  // Sort by frequency and take top 100
   return Object.entries(frequencies)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 15)
+    .slice(0, 100)
     .map(([word, count]) => ({
       word,
       count,

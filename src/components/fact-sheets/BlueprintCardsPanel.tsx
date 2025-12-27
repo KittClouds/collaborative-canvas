@@ -61,7 +61,7 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
   // Find entity type in compiled blueprint
   const entityType = useMemo<CompiledEntityType | null>(() => {
     if (!compiledBlueprint) return null;
-    
+
     return compiledBlueprint.entityTypes.find(
       (et) => et.entity_kind === entity.kind
     ) || null;
@@ -143,7 +143,7 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
   // Generate default layout from entity type fields
   const generateDefaultLayout = useCallback((entityType: CompiledEntityType): RenderSection[] => {
     const groups = new Map<string, FieldDef[]>();
-    
+
     for (const field of entityType.fields) {
       const groupName = field.group_name || 'General';
       if (!groups.has(groupName)) {
@@ -270,7 +270,7 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
     // Try to find and parse view template (stub)
     // In the future, check entityType.defaultViewTemplateId
     const template = null; // Future: compiledBlueprint?.viewTemplates.find(...)
-    
+
     if (template) {
       const parsedLayout = parseTemplateLayout(template, entityType);
       if (parsedLayout) {
@@ -348,16 +348,16 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
     (sectionId: string, direction: 'up' | 'down') => {
       const currentOrder = overrides.sectionOrder || effectiveLayout.map(s => s.id);
       const currentIndex = currentOrder.indexOf(sectionId);
-      
+
       if (currentIndex === -1) return;
-      
+
       const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-      
+
       if (newIndex < 0 || newIndex >= currentOrder.length) return;
-      
+
       const newOrder = [...currentOrder];
       [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
-      
+
       updateOverrides({
         ...overrides,
         sectionOrder: newOrder,
@@ -371,11 +371,11 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
     (sectionId: string) => {
       const hiddenSections = overrides.hiddenSections || [];
       const isHidden = hiddenSections.includes(sectionId);
-      
+
       const newHiddenSections = isHidden
         ? hiddenSections.filter(id => id !== sectionId)
         : [...hiddenSections, sectionId];
-      
+
       updateOverrides({
         ...overrides,
         hiddenSections: newHiddenSections,
@@ -389,20 +389,20 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
     (sectionId: string, blockId: string, direction: 'up' | 'down') => {
       const section = effectiveLayout.find(s => s.id === sectionId);
       if (!section) return;
-      
+
       const sectionOverride = overrides.sections?.[sectionId] || {};
       const currentOrder = sectionOverride.blockOrder || section.blocks.map(b => b.id);
       const currentIndex = currentOrder.indexOf(blockId);
-      
+
       if (currentIndex === -1) return;
-      
+
       const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-      
+
       if (newIndex < 0 || newIndex >= currentOrder.length) return;
-      
+
       const newOrder = [...currentOrder];
       [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
-      
+
       updateOverrides({
         ...overrides,
         sections: {
@@ -423,14 +423,14 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
       // Find the block to check for required fields
       const section = effectiveLayout.find(s => s.id === sectionId);
       const block = section?.blocks.find(b => b.id === blockId);
-      
+
       if (block && block.type === 'field_group') {
         const hasRequiredFields = block.fields.some(f => f.is_required);
-        
+
         if (hasRequiredFields) {
           const sectionOverride = overrides.sections?.[sectionId] || {};
           const isCurrentlyHidden = sectionOverride.hiddenBlocks?.includes(blockId);
-          
+
           if (!isCurrentlyHidden) {
             // Trying to hide a block with required fields
             toast({
@@ -442,15 +442,15 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
           }
         }
       }
-      
+
       const sectionOverride = overrides.sections?.[sectionId] || {};
       const hiddenBlocks = sectionOverride.hiddenBlocks || [];
       const isHidden = hiddenBlocks.includes(blockId);
-      
+
       const newHiddenBlocks = isHidden
         ? hiddenBlocks.filter(id => id !== blockId)
         : [...hiddenBlocks, blockId];
-      
+
       updateOverrides({
         ...overrides,
         sections: {
@@ -511,7 +511,7 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 bg-card/50">
         <div className="text-sm font-medium text-muted-foreground">
-          {entity.label} - {entityType.display_label}
+          {entity.label} - {entityType.display_name}
         </div>
         <Button
           variant={isCustomizing ? 'default' : 'outline'}
@@ -524,10 +524,10 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
       </div>
 
       {/* Cards */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
         {effectiveLayout.map((section, sectionIndex) => {
           const sectionOverride = overrides.sections?.[section.id];
-          
+
           // Section action buttons for customization mode
           const sectionActions = isCustomizing ? (
             <>
@@ -657,8 +657,8 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
                           hasRequiredFields && !isHidden
                             ? 'Cannot hide block with required fields'
                             : isHidden
-                            ? 'Show block'
-                            : 'Hide block'
+                              ? 'Show block'
+                              : 'Hide block'
                         }
                       >
                         {isHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}

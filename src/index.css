@@ -205,10 +205,15 @@
     @apply bg-[hsl(var(--toolbar-bg))] border-b border-[hsl(var(--editor-border))] px-2 py-1.5;
   }
 
-  /* Scrollbar styling */
+  /* Scrollbar styling - Sleek minimal design */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
   .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
@@ -216,11 +221,27 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-border rounded-full;
+    @apply rounded-full;
+    background: hsl(var(--muted-foreground) / 0.2);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background 0.2s ease;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/30;
+    background: hsl(var(--muted-foreground) / 0.4);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary) / 0.5);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-corner {
+    @apply bg-transparent;
   }
 }
 

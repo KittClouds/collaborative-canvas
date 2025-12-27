@@ -290,7 +290,7 @@ export function FactSheetContainer() {
       )}
 
       {/* Fact sheet content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto custom-scrollbar">
         {selectedEntity && panelMode === 'standard' && FactSheetComponent && (
           <FactSheetComponent
             entity={selectedEntity}

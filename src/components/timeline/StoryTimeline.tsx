@@ -9,18 +9,18 @@ import { StoryTimelineBuilder, TimelineBuilderOptions } from '@/lib/timeline/tim
 import { SceneEntity, EventEntity, TimelineConfig } from '@/types/storyEntities';
 import { ENTITY_COLORS } from '@/lib/entities/entityTypes';
 import { Button } from '@/components/ui/button';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Columns, 
-  LayoutList, 
-  AlignLeft, 
+import {
+  Columns,
+  LayoutList,
+  AlignLeft,
   Filter,
   User,
   MapPin
@@ -58,8 +58,8 @@ export function StoryTimeline({
   const timelineItems = useMemo(() => {
     const builder = new StoryTimelineBuilder(scenes, events, entities, {
       ...options,
-      filterByImportance: importanceFilter.length > 0 
-        ? importanceFilter as any[] 
+      filterByImportance: importanceFilter.length > 0
+        ? importanceFilter as any[]
         : undefined
     });
 
@@ -95,7 +95,7 @@ export function StoryTimeline({
   // Handle item selection
   const handleItemSelected = (data: { cardTitle?: string, cardSubtitle?: string }) => {
     // Find matching item by title
-    const item = timelineItems.find(i => 
+    const item = timelineItems.find(i =>
       i.cardTitle === data.cardTitle && i.cardSubtitle === data.cardSubtitle
     );
     if (item?.entityId && item?.entityKind && onItemClick) {
@@ -104,8 +104,8 @@ export function StoryTimeline({
   };
 
   const toggleImportance = (level: string) => {
-    setImportanceFilter(prev => 
-      prev.includes(level) 
+    setImportanceFilter(prev =>
+      prev.includes(level)
         ? prev.filter(l => l !== level)
         : [...prev, level]
     );
@@ -189,7 +189,7 @@ export function StoryTimeline({
       </div>
 
       {/* Timeline */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto custom-scrollbar p-4">
         <Chrono
           items={timelineItems}
           mode={mode}

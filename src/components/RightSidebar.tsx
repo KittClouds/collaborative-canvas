@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { PanelRightClose, PanelRight, Sparkles, BarChart3, Clock, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { FactSheetContainer } from '@/components/fact-sheets/FactSheetContainer';
@@ -163,7 +163,7 @@ export function RightSidebar() {
           </div>
 
           {/* Content */}
-          <div className={cn("flex-1", activeTab === 'agent' ? "overflow-hidden flex flex-col" : "overflow-auto")}>
+          <div className={cn("flex-1", activeTab === 'agent' ? "overflow-hidden flex flex-col" : "overflow-auto custom-scrollbar")}>
             {activeTab === 'entities' && <FactSheetContainer />}
             {activeTab === 'analytics' && <AnalyticsPanel />}
             {activeTab === 'timeline' && <TimelinePanel />}

@@ -173,12 +173,12 @@ function NotesApp() {
   return (
     <RightSidebarProvider>
       <SidebarProvider>
-        <div className="min-h-screen flex w-full bg-background">
+        <div className="h-screen overflow-hidden flex w-full bg-background">
           {/* Left Sidebar */}
           <AppSidebar />
 
           {/* Main Content Area */}
-          <div className="flex flex-col flex-1 min-w-0">
+          <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
             {/* Header */}
             <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
               <SidebarTrigger className="-ml-1" />
@@ -253,7 +253,7 @@ function NotesApp() {
             </header>
 
             {/* Editor Area */}
-            <main className="flex-1 min-h-0 pb-16">
+            <main className="flex-1 min-h-0 overflow-auto custom-scrollbar">
               {selectedNote ? (
                 <RichEditor
                   content={selectedNote.content}
@@ -287,26 +287,24 @@ function NotesApp() {
                 </div>
               )}
             </main>
+            <FooterLinksPanel
+              backlinks={selectedNote ? backlinks : []}
+              outgoingLinks={selectedNote ? outgoingLinks : []}
+              entityStats={selectedNote ? entityStats : []}
+              notes={state.notes}
+              getEntityMentions={getEntityMentions}
+              onNavigate={handleNavigateToNote}
+              isHubOpen={isHubOpen}
+              toggleHub={toggleHub}
+              isSaving={state.isSaving}
+              lastSaved={state.lastSaved}
+              notesCount={state.notes.length}
+            />
           </div>
 
           {/* Right Sidebar */}
           <RightSidebar />
         </div>
-
-        {/* Footer Links Panel */}
-        <FooterLinksPanel
-          backlinks={selectedNote ? backlinks : []}
-          outgoingLinks={selectedNote ? outgoingLinks : []}
-          entityStats={selectedNote ? entityStats : []}
-          notes={state.notes}
-          getEntityMentions={getEntityMentions}
-          onNavigate={handleNavigateToNote}
-          isHubOpen={isHubOpen}
-          toggleHub={toggleHub}
-          isSaving={state.isSaving}
-          lastSaved={state.lastSaved}
-          notesCount={state.notes.length}
-        />
 
       </SidebarProvider>
     </RightSidebarProvider>

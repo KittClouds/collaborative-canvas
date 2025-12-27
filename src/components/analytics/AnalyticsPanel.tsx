@@ -5,7 +5,9 @@ import {
   MessageSquare,
   BookOpen,
   TrendingUp,
-  Hash
+  Hash,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { analyzeText, parseContentToPlainText, TextAnalytics } from '@/lib/analytics/textAnalytics';
@@ -20,6 +22,7 @@ export function AnalyticsPanel() {
   const { state } = useJotaiNotes();
   const selectedNote = state.notes.find(n => n.id === state.selectedNoteId);
   const [minCount, setMinCount] = useState(1);
+  const [isKeywordsExpanded, setIsKeywordsExpanded] = useState(false);
 
   // Parse and analyze content
   const analytics = useMemo<TextAnalytics | null>(() => {
@@ -129,22 +132,43 @@ export function AnalyticsPanel() {
                   No keywords match the filter.
                 </p>
               ) : (
-                filteredKeywords.map((item, index) => (
-                  <div
-                    key={item.word}
-                    className="flex items-center justify-between py-1 text-sm"
-                  >
-                    <span className={cn(
-                      "truncate flex-1",
-                      index < 3 && "font-medium"
-                    )}>
-                      {item.word}
-                    </span>
-                    <Badge variant="outline" className="ml-2 text-xs font-normal">
-                      {item.count} ({item.percentage}%)
-                    </Badge>
-                  </div>
-                ))
+                <>
+                  {(isKeywordsExpanded ? filteredKeywords : filteredKeywords.slice(0, 5)).map((item, index) => (
+                    <div
+                      key={item.word}
+                      className="flex items-center justify-between py-1 text-sm"
+                    >
+                      <span className={cn(
+                        "truncate flex-1",
+                        index < 3 && "font-medium"
+                      )}>
+                        {item.word}
+                      </span>
+                      <Badge variant="outline" className="ml-2 text-xs font-normal">
+                        {item.count} ({item.percentage}%)
+                      </Badge>
+                    </div>
+                  ))}
+
+                  {filteredKeywords.length > 5 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full h-8 px-2 text-xs font-normal text-muted-foreground hover:text-foreground mt-2"
+                      onClick={() => setIsKeywordsExpanded(!isKeywordsExpanded)}
+                    >
+                      {isKeywordsExpanded ? (
+                        <>
+                          Show less <ChevronUp className="ml-2 h-3 w-3" />
+                        </>
+                      ) : (
+                        <>
+                          Show {filteredKeywords.length - 5} more <ChevronDown className="ml-2 h-3 w-3" />
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           </div>

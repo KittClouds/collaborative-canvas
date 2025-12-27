@@ -23,7 +23,7 @@ export function VirtualizedNoteList({ className }: { className?: string }) {
     return (
         <div
             ref={parentRef}
-            className={cn("h-full w-full overflow-auto", className)}
+            className={cn("h-full w-full overflow-auto custom-scrollbar", className)}
         >
             <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
                 {virtualizer.getVirtualItems().map((virtualItem) => {
