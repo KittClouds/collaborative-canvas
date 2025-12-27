@@ -462,12 +462,12 @@ const RichEditor = ({
 
   // Force editor update when NER entities change to refresh decorations
   useEffect(() => {
-    if (editor && entities.length > 0) {
+    if (editor && editor.view && entities.length > 0) {
       editor.view.dispatch(editor.state.tr.setMeta('nerUpdate', true));
     }
   }, [entities, editor]);
 
-  if (!editor) {
+  if (!editor || !editor.view) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="animate-pulse text-muted-foreground">Loading editor...</div>
