@@ -8,6 +8,7 @@ import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import { patternRegistry, type PatternDefinition, type RefKind } from '../refs';
 import { mentionEventQueue } from '../entities/mention-event-queue';
 import type { EntityMentionEvent, PositionType } from '../cozo/types';
+import { scannerEventBus, type PatternMatchEvent } from '@/lib/entities/scanner-v3';
 
 export interface UnifiedSyntaxOptions {
   onWikilinkClick?: (title: string) => void;
@@ -20,6 +21,7 @@ export interface UnifiedSyntaxOptions {
   useWidgetMode?: boolean;
   enableLinkTracking?: boolean;
   currentNoteId?: string;
+  enableScannerEvents?: boolean;
 }
 
 const syntaxPluginKey = new PluginKey('unified-syntax-highlighter');
@@ -301,6 +303,30 @@ function buildAllDecorations(
             }, { inclusiveStart: false, inclusiveEnd: false })
           );
         }
+
+        // Emit scanner event if enabled
+        if (options.enableScannerEvents !== false) {
+          const captures: Record<string, string> = {};
+          if (pattern.captures) {
+            for (const [key, mapping] of Object.entries(pattern.captures)) {
+              if (match[mapping.group]) {
+                captures[key] = match[mapping.group];
+              }
+            }
+          }
+
+          scannerEventBus.emit('pattern-matched', {
+            kind: pattern.kind,
+            fullMatch,
+            position: from,
+            length: fullMatch.length,
+            captures,
+            patternId: pattern.id,
+            noteId: options.currentNoteId || 'unknown',
+            timestamp: Date.now(),
+            context: text, // Pass full node text (paragraph) as context
+          } satisfies PatternMatchEvent);
+        }
       }
     }
 
@@ -413,7 +439,9 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
       onNEREntityClick: undefined,
       useWidgetMode: false,
       enableLinkTracking: true,
+
       currentNoteId: undefined,
+      enableScannerEvents: true,
     };
   },
 

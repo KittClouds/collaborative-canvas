@@ -75,6 +75,9 @@ export const BLUEPRINT_RELATIONSHIP_TYPE_SCHEMA = `
     is_symmetric: Bool default false,
     inverse_label: String? default null,
     description: String? default null,
+    verb_patterns: Json? default null,
+    confidence: Float default 0.75,
+    pattern_category: String? default null,
     created_at: Float default now()
 }
 `;
@@ -281,21 +284,35 @@ export const BLUEPRINT_QUERIES = {
   // Relationship Type queries
   upsertRelationshipType: `
     ?[relationship_type_id, version_id, relationship_name, display_label, source_entity_kind,
-      target_entity_kind, direction, cardinality, is_symmetric, inverse_label, description, created_at] <- 
+      target_entity_kind, direction, cardinality, is_symmetric, inverse_label, description,
+      verb_patterns, confidence, pattern_category, created_at] <- 
       [[$relationship_type_id, $version_id, $relationship_name, $display_label, $source_entity_kind,
-        $target_entity_kind, $direction, $cardinality, $is_symmetric, $inverse_label, $description, $created_at]]
+        $target_entity_kind, $direction, $cardinality, $is_symmetric, $inverse_label, $description,
+        $verb_patterns, $confidence, $pattern_category, $created_at]]
     :put blueprint_relationship_type {
       relationship_type_id, version_id, relationship_name, display_label, source_entity_kind,
-      target_entity_kind, direction, cardinality, is_symmetric, inverse_label, description, created_at
+      target_entity_kind, direction, cardinality, is_symmetric, inverse_label, description,
+      verb_patterns, confidence, pattern_category, created_at
     }
   `,
 
   getRelationshipTypesByVersion: `
     ?[relationship_type_id, version_id, relationship_name, display_label, source_entity_kind,
-      target_entity_kind, direction, cardinality, is_symmetric, inverse_label, description, created_at] := 
+      target_entity_kind, direction, cardinality, is_symmetric, inverse_label, description,
+      verb_patterns, confidence, pattern_category, created_at] := 
       *blueprint_relationship_type{relationship_type_id, version_id, relationship_name, display_label, source_entity_kind,
-        target_entity_kind, direction, cardinality, is_symmetric, inverse_label, description, created_at},
+        target_entity_kind, direction, cardinality, is_symmetric, inverse_label, description,
+        verb_patterns, confidence, pattern_category, created_at},
       version_id == $version_id
+  `,
+
+  // Get all relationship types with verb patterns (for Scanner)
+  getAllRelationshipTypesWithPatterns: `
+    ?[relationship_type_id, relationship_name, display_label, source_entity_kind, target_entity_kind,
+      direction, is_symmetric, verb_patterns, confidence, pattern_category] := 
+      *blueprint_relationship_type{relationship_type_id, relationship_name, display_label, source_entity_kind,
+        target_entity_kind, direction, is_symmetric, verb_patterns, confidence, pattern_category},
+      is_some(verb_patterns)
   `,
 
   deleteRelationshipType: `

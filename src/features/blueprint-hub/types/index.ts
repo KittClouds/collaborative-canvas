@@ -3,35 +3,35 @@
 
 // ==================== Core Data Types ====================
 
-export type FieldDataType = 
-  | 'string' 
-  | 'number' 
-  | 'boolean' 
-  | 'date' 
-  | 'datetime' 
-  | 'json' 
-  | 'uuid' 
-  | 'text' 
+export type FieldDataType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'datetime'
+  | 'json'
+  | 'uuid'
+  | 'text'
   | 'enum'
   | 'reference';
 
 export type RelationshipDirection = 'directed' | 'undirected' | 'bidirectional';
 
-export type RelationshipCardinality = 
-  | 'one_to_one' 
-  | 'one_to_many' 
-  | 'many_to_one' 
+export type RelationshipCardinality =
+  | 'one_to_one'
+  | 'one_to_many'
+  | 'many_to_one'
   | 'many_to_many';
 
 export type VersionStatus = 'draft' | 'published' | 'archived' | 'deprecated';
 
-export type ViewType = 
-  | 'card' 
-  | 'table' 
-  | 'form' 
-  | 'kanban' 
-  | 'timeline' 
-  | 'graph' 
+export type ViewType =
+  | 'card'
+  | 'table'
+  | 'form'
+  | 'kanban'
+  | 'timeline'
+  | 'graph'
   | 'custom';
 
 // ==================== Validation & UI Hints ====================
@@ -176,6 +176,9 @@ export interface RelationshipTypeDef {
   is_symmetric: boolean;
   inverse_label?: string;
   description?: string;
+  verb_patterns?: string[];
+  confidence?: number;
+  pattern_category?: string;
   created_at: number;
 }
 
@@ -190,6 +193,9 @@ export interface CreateRelationshipTypeInput {
   is_symmetric?: boolean;
   inverse_label?: string;
   description?: string;
+  verb_patterns?: string[];
+  confidence?: number;
+  pattern_category?: string;
 }
 
 // ==================== Relationship Attribute ====================
@@ -405,6 +411,9 @@ export interface RelationshipTypeRow {
   is_symmetric: boolean;
   inverse_label: string | null;
   description: string | null;
+  verb_patterns: unknown;
+  confidence: number;
+  pattern_category: string | null;
   created_at: number;
 }
 

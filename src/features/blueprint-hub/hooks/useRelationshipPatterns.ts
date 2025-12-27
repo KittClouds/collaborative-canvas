@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { generateId } from '@/lib/utils/ids';
+import { refreshPatternsFromStorage } from '@/lib/relationships';
 import type { RelationshipPattern, CreateRelationshipPatternInput } from '../types';
 
 const STORAGE_KEY = 'blueprint_relationship_patterns';
@@ -16,6 +17,7 @@ function loadPatterns(): RelationshipPattern[] {
 function savePatterns(patterns: RelationshipPattern[]): void {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(patterns));
+        refreshPatternsFromStorage();
     } catch (e) {
         console.error('Failed to save relationship patterns:', e);
     }
@@ -55,7 +57,7 @@ export function useRelationshipPatterns(profileId?: string): UseRelationshipPatt
         setIsLoading(true);
         try {
             let loaded = loadPatterns();
-            
+
             if (loaded.length === 0) {
                 loaded = DEFAULT_PATTERNS.map(p => ({
                     ...p,
@@ -96,6 +98,7 @@ export function useRelationshipPatterns(profileId?: string): UseRelationshipPatt
         const updated = [...patterns, newPattern];
         setPatterns(updated);
         savePatterns(updated);
+        refreshPatternsFromStorage();
     }, [patterns, profileId]);
 
     const updatePattern = useCallback(async (pattern_id: string, updates: Partial<CreateRelationshipPatternInput>) => {
@@ -134,6 +137,7 @@ export function useRelationshipPatterns(profileId?: string): UseRelationshipPatt
         }));
         setPatterns(defaultPatterns);
         savePatterns(defaultPatterns);
+        refreshPatternsFromStorage();
     }, [profileId]);
 
     return {

@@ -64,6 +64,9 @@ import { WikiLinkMark } from '@/lib/extensions/WikiLinkMark';
 import { UnifiedSyntaxHighlighter } from '@/lib/extensions/UnifiedSyntaxHighlighter';
 import { useNER } from '@/contexts/NERContext';
 
+// Scanner 3.0 - handles entity/triple extraction from pattern matches
+import { scannerOrchestrator } from '@/lib/entities/scanner-v3';
+
 // Import CSS
 import 'reactjs-tiptap-editor/style.css';
 import 'prism-code-editor-lightweight/layout.css';
@@ -271,6 +274,7 @@ function createExtensions(
       nerEntities: getNEREntities,
       useWidgetMode: true,
       enableLinkTracking: true,
+      enableScannerEvents: true, // Scanner 3.0: emit pattern-matched events
       currentNoteId: noteId,
     }),
   ];
@@ -322,6 +326,17 @@ const RichEditor = ({
   useEffect(() => {
     nerEntitiesRef.current = entities;
   }, [entities]);
+
+  // Initialize Scanner 3.0 orchestrator
+  useEffect(() => {
+    scannerOrchestrator.initialize();
+    console.log('[RichEditor] Scanner 3.0 initialized');
+
+    return () => {
+      scannerOrchestrator.shutdown();
+      console.log('[RichEditor] Scanner 3.0 shutdown');
+    };
+  }, []);
 
   // Initialize content when note is selected
   useEffect(() => {

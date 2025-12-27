@@ -99,7 +99,7 @@ export class BlueprintStoreImpl implements IBlueprintStore {
   async createVersion(input: CreateVersionInput): Promise<BlueprintVersion> {
     const now = Date.now();
     const version_id = generateId();
-    
+
     const currentCounter = this.versionCounter.get(input.blueprint_id) || 0;
     const version_number = currentCounter + 1;
     this.versionCounter.set(input.blueprint_id, version_number);
@@ -264,6 +264,9 @@ export class BlueprintStoreImpl implements IBlueprintStore {
       is_symmetric: input.is_symmetric ?? false,
       inverse_label: input.inverse_label,
       description: input.description,
+      verb_patterns: input.verb_patterns,
+      confidence: input.confidence ?? 0.75,
+      pattern_category: input.pattern_category,
       created_at: now,
     };
 

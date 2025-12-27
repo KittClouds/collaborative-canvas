@@ -1,6 +1,6 @@
 
 import { entityRegistry } from '@/lib/cozo/graph/adapters';
-import type { DocumentConnections, EntityReference, Triple } from './entityTypes';
+import type { DocumentConnections, EntityReference, Triple, EntityKind } from './entityTypes';
 import { parseEntityFromTitle, parseEntityWithRelation } from './titleParser';
 import { getWinkProcessor, type Sentence, type LinguisticAnalysis } from './nlp/WinkProcessor';
 
@@ -46,23 +46,49 @@ export interface DisambiguationContext {
 /**
  * Scan a document (TipTap JSON) for entities and register them
  */
+import { patternExtractor, tripleExtractor } from './scanner-v3';
+import type { PatternMatchEvent } from './scanner-v3';
+
+/**
+ * Scan a document (TipTap JSON) for entities and register them
+ */
 export function scanDocument(noteId: string, content: any): void {
     const text = extractText(content);
 
-    // 1. Parse entities from text [KIND|Label]
-    const entities = parseEntitiesFromText(text);
+    // 1. Extract entities using PatternExtractor (no hardcoded regex!)
+    const entityEvents = patternExtractor.extractEntities(text, noteId);
 
-    // 2. Register found entities
-    for (const entity of entities) {
-        entityRegistry.registerEntity(entity.label, entity.kind, noteId, {
-            subtype: entity.subtype
-        });
+    for (const event of entityEvents) {
+        const { captures } = event;
+        entityRegistry.registerEntity(
+            captures.label || event.fullMatch,
+            (captures.entityKind || 'CONCEPT') as EntityKind,
+            noteId,
+            { subtype: captures.subtype }
+        );
     }
 
-    // 3. Parse inline relationships [KIND|Label->REL->Target]
-    // (This might require more complex parsing if target is also an entity)
+    // 2. Extract and register triples
+    const tripleEvents = patternExtractor.extractTriples(text, noteId);
+    const parsedTriples = tripleExtractor.parseTriples(tripleEvents, text);
 
-    // For now, valid entities are registered.
+    for (const triple of parsedTriples) {
+        // Register subject entity
+        entityRegistry.registerEntity(
+            triple.subject.label,
+            triple.subject.kind as EntityKind,
+            noteId,
+            {}
+        );
+
+        // Register object entity  
+        entityRegistry.registerEntity(
+            triple.object.label,
+            triple.object.kind as EntityKind,
+            noteId,
+            {}
+        );
+    }
 }
 
 /**
@@ -70,34 +96,64 @@ export function scanDocument(noteId: string, content: any): void {
  */
 export function parseNoteConnectionsFromDocument(content: any): DocumentConnections {
     const text = extractText(content);
+    const noteId = 'temp'; // We just want the connections
 
-    const entities = parseEntitiesFromText(text).map(e => ({
-        ...e,
-        // Calculate position if needed, for now simplified
-    } as EntityReference));
+    // Extract all patterns
+    const allEvents = patternExtractor.extractFromText(text, noteId);
 
-    // Extract triples/relationships
+    const entities: EntityReference[] = [];
     const triples: Triple[] = [];
+    const wikilinks: string[] = [];
+    const tags: string[] = [];
+    const mentions: string[] = [];
 
-    // Simple inline relationship parsing
-    // [KIND|Label->REL->Target]
-    const relRegex = /\[([A-Z_]+)(?::([A-Z_]+))?\|(.+?)->([A-Z_]+)->(.+)\]/g;
-    let match;
-    while ((match = relRegex.exec(text)) !== null) {
-        const [, kind, subtype, label, relType, targetLabel] = match;
-        // This is a simplified Triple extraction
-        triples.push({
-            subject: { kind: kind as any, label, subtype },
-            predicate: relType,
-            object: { kind: 'CONCEPT' as any, label: targetLabel } // Target kind often unknown in simple syntax
-        });
+    for (const event of allEvents) {
+        switch (event.kind) {
+            case 'entity': {
+                entities.push({
+                    kind: event.captures.entityKind || 'CONCEPT',
+                    label: event.captures.label || event.fullMatch,
+                    subtype: event.captures.subtype
+                } as EntityReference);
+                break;
+            }
+            case 'triple': {
+                const parsed = tripleExtractor.parseTriple(event, text);
+                if (parsed) {
+                    triples.push({
+                        subject: {
+                            kind: parsed.subject.kind,
+                            label: parsed.subject.label,
+                        },
+                        predicate: parsed.predicate,
+                        object: {
+                            kind: parsed.object.kind,
+                            label: parsed.object.label,
+                        }
+                    } as Triple);
+                }
+                break;
+            }
+            case 'wikilink': {
+                wikilinks.push(event.captures.target || event.fullMatch);
+                break;
+            }
+            case 'tag': {
+                tags.push(event.captures.tagName || event.fullMatch);
+                break;
+            }
+            case 'mention': {
+                mentions.push(event.captures.username || event.fullMatch);
+                break;
+            }
+        }
     }
 
     return {
-        tags: [], // Todo: Implement hashtags
-        mentions: [], // Todo: Implement @mentions
-        links: [], // Todo: Implement [[WikiLinks]]
-        wikilinks: [],
+        tags,
+        mentions,
+        links: [],
+        wikilinks,
         entities,
         triples,
         backlinks: []
@@ -128,36 +184,13 @@ function extractText(node: any): string {
 
     return '';
 }
-
-function parseEntitiesFromText(text: string): Array<{ kind: any, label: string, subtype?: string }> {
-    const results: Array<{ kind: any, label: string, subtype?: string }> = [];
-
-    // Regex for [KIND|Label] or [KIND:SUBTYPE|Label]
-    const regex = /\[([A-Z_]+)(?::([A-Z_]+))?\|([^\]]+)\]/g;
-
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-        const [, kind, subtype, label] = match;
-        // Filter out if it contains -> (relationship syntax)
-        if (label.includes('->')) continue;
-
-        results.push({
-            kind: kind as any,
-            label: label.trim(),
-            subtype
-        });
-    }
-
-    return results;
-}
-
 export async function findEntityMentionsParallel(
     sentences: Sentence[],
     text: string
 ): Promise<EntityMention[]> {
     const mentions: EntityMention[] = [];
     const allEntities = entityRegistry.getAllEntities();
-    
+
     if (allEntities.length === 0) {
         return mentions;
     }
@@ -174,7 +207,7 @@ export async function findEntityMentionsParallel(
             let startIdx = 0;
             while ((startIdx = lowerText.indexOf(pattern, startIdx)) !== -1) {
                 const endIdx = startIdx + pattern.length;
-                
+
                 const sentenceIndex = sentences.findIndex(
                     s => startIdx >= s.start && endIdx <= s.end
                 );
@@ -203,7 +236,7 @@ export function scanDocumentWithLinguistics(
     const text = extractText(content);
     const wink = getWinkProcessor();
     const analysis = wink.analyze(text);
-    
+
     const allEntities = entityRegistry.getAllEntities();
     const disambiguatedEntities: DisambiguatedEntity[] = [];
     const extractedRelationships: Array<{ source: string; target: string; type: string }> = [];
@@ -212,13 +245,13 @@ export function scanDocumentWithLinguistics(
         const lowerLabel = entity.label.toLowerCase();
         const lowerText = text.toLowerCase();
         let idx = lowerText.indexOf(lowerLabel);
-        
+
         while (idx !== -1) {
             const posContext = wink.getContextualPOS(text, idx, 3);
             const sentenceIndex = analysis.sentences.findIndex(
                 s => idx >= s.start && idx + entity.label.length <= s.end
             );
-            
+
             const sentence = sentenceIndex >= 0 ? analysis.sentences[sentenceIndex] : null;
             const hasFollowingProperNoun = posContext.after.some(
                 p => p === 'PROPN' || p === 'NNP'
@@ -246,7 +279,7 @@ export function scanDocumentWithLinguistics(
         const entitiesInSentence = disambiguatedEntities.filter(
             de => de.mention.sentenceIndex === sentence.index
         );
-        
+
         for (let i = 0; i < entitiesInSentence.length; i++) {
             for (let j = i + 1; j < entitiesInSentence.length; j++) {
                 extractedRelationships.push({
@@ -277,7 +310,7 @@ export function detectCoOccurrencesEnhanced(
     const text = extractText(content);
     const wink = getWinkProcessor();
     const analysis = wink.analyze(text);
-    
+
     const allEntities = entityRegistry.getAllEntities();
     const coOccurrenceMap = new Map<string, CoOccurrenceResult>();
 
@@ -287,12 +320,12 @@ export function detectCoOccurrencesEnhanced(
         const lowerLabel = entity.label.toLowerCase();
         const lowerText = text.toLowerCase();
         let idx = lowerText.indexOf(lowerLabel);
-        
+
         while (idx !== -1) {
             const sentenceIndex = analysis.sentences.findIndex(
                 s => idx >= s.start && idx + entity.label.length <= s.end
             );
-            
+
             entityMentions.push({
                 label: entity.label,
                 start: idx,
@@ -308,17 +341,17 @@ export function detectCoOccurrencesEnhanced(
         const mentionsInSentence = entityMentions.filter(
             m => m.sentenceIndex === sentence.index
         );
-        
+
         for (let i = 0; i < mentionsInSentence.length; i++) {
             for (let j = i + 1; j < mentionsInSentence.length; j++) {
                 const e1 = mentionsInSentence[i].label;
                 const e2 = mentionsInSentence[j].label;
-                
+
                 if (e1 === e2) continue;
-                
+
                 const [first, second] = e1 < e2 ? [e1, e2] : [e2, e1];
                 const key = `${first}::${second}`;
-                
+
                 const existing = coOccurrenceMap.get(key);
                 if (existing) {
                     existing.frequency++;
@@ -348,17 +381,17 @@ export function getEntityDisambiguationContext(
     const wink = getWinkProcessor();
     const analysis = wink.analyze(text);
     const posContext = wink.getContextualPOS(text, offset, 3);
-    
+
     const sentence = analysis.sentences.find(
         s => offset >= s.start && offset <= s.end
     );
-    
-    const hasProperNounContext = 
+
+    const hasProperNounContext =
         posContext.after.some(p => p === 'PROPN' || p === 'NNP') ||
         posContext.before.some(p => p === 'PROPN' || p === 'NNP');
-    
+
     const hasDeterminer = posContext.before.some(p => p === 'DET' || p === 'DT');
-    
+
     let confidence: 'high' | 'medium' | 'low';
     if (hasProperNounContext) {
         confidence = 'high';

@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { EntityKindSelector } from './EntityKindSelector';
 import { RelationshipPreview } from '../previews/RelationshipPreview';
+import { TagInput } from '../TagInput';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
 import {
   Select,
   SelectContent,
@@ -50,6 +52,10 @@ export function AdvancedTab({ onCreate, onCancel, entityTypes }: AdvancedTabProp
     is_symmetric: false,
     inverse_label: '',
     description: '',
+    // Extraction pattern fields
+    verb_patterns: [] as string[],
+    confidence: 0.75,
+    pattern_category: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -106,6 +112,10 @@ export function AdvancedTab({ onCreate, onCancel, entityTypes }: AdvancedTabProp
         is_symmetric: formData.is_symmetric,
         inverse_label: formData.direction === 'bidirectional' ? formData.inverse_label || undefined : undefined,
         description: formData.description.trim() || undefined,
+        // Include extraction pattern fields
+        verb_patterns: formData.verb_patterns.length > 0 ? formData.verb_patterns : undefined,
+        confidence: formData.verb_patterns.length > 0 ? formData.confidence : undefined,
+        pattern_category: formData.pattern_category || undefined,
       });
     } catch (err) {
       console.error('Failed to create relationship type:', err);
@@ -264,6 +274,76 @@ export function AdvancedTab({ onCreate, onCancel, entityTypes }: AdvancedTabProp
             rows={3}
           />
         </div>
+      </div>
+
+      {/* Extraction Patterns Section */}
+      <div className="border rounded-lg p-4 space-y-4 border-dashed border-blue-500/30 bg-blue-500/5">
+        <h4 className="text-xs font-medium text-blue-400 uppercase tracking-wide flex items-center gap-2">
+          <span>⚡</span> Extraction Patterns (Optional)
+        </h4>
+
+        <p className="text-xs text-muted-foreground">
+          Define verb lemmas that will automatically extract this relationship from text.
+          <br />
+          Example: "Jon <strong className="text-blue-400">defeated</strong> the Orcs" → DEFEATED relationship
+        </p>
+
+        <div className="space-y-2">
+          <Label>Verb Lemmas</Label>
+          <TagInput
+            tags={formData.verb_patterns}
+            onTagsChange={(tags) => setFormData({ ...formData, verb_patterns: tags })}
+            placeholder="defeat, kill, slay (press Enter)"
+          />
+          <p className="text-xs text-muted-foreground">
+            Enter verb lemmas in lowercase (base form). Example: "defeat" not "defeated"
+          </p>
+        </div>
+
+        {formData.verb_patterns.length > 0 && (
+          <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="space-y-2">
+              <Label className="flex items-center justify-between">
+                Confidence Score
+                <span className="text-xs text-muted-foreground font-normal">
+                  {(formData.confidence * 100).toFixed(0)}%
+                </span>
+              </Label>
+              <Slider
+                value={[formData.confidence]}
+                onValueChange={([value]) => setFormData({ ...formData, confidence: value })}
+                min={0.1}
+                max={1.0}
+                step={0.05}
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select
+                value={formData.pattern_category}
+                onValueChange={(value) => setFormData({ ...formData, pattern_category: value })}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="combat">Combat</SelectItem>
+                  <SelectItem value="social">Social</SelectItem>
+                  <SelectItem value="possession">Possession</SelectItem>
+                  <SelectItem value="spatial">Spatial</SelectItem>
+                  <SelectItem value="familial">Familial</SelectItem>
+                  <SelectItem value="organizational">Organizational</SelectItem>
+                  <SelectItem value="emotional">Emotional</SelectItem>
+                  <SelectItem value="creation">Creation</SelectItem>
+                  <SelectItem value="hierarchy">Hierarchy</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
       </div>
 
       {formData.source_entity_kind && formData.target_entity_kind && (

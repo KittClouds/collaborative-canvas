@@ -172,15 +172,46 @@ export const TRIPLE_PATTERN: PatternDefinition = {
     description: 'Relationship triples like [PERSON|Jon] ->KNOWS-> [PERSON|Jane]',
     kind: 'triple',
     enabled: true,
-    priority: 95,
-    pattern: '\\[([A-Z_]+)\\|([^\\]]+)\\]\\s*->([A-Z_]+)->\\s*\\[([A-Z_]+)\\|([^\\]]+)\\]',
+    priority: 105, // Higher than ENTITY (100) to capture triples
+    pattern: '\\[([A-Z_]+)(?::([A-Z_]+))?\\|([^\\]]+)\\]\\s*->([A-Z_]+)->\\s*\\[([A-Z_]+)(?::([A-Z_]+))?\\|([^\\]]+)\\]',
     flags: 'g',
     captures: {
         subjectKind: { group: 1, transform: toUpperCase, required: true },
-        subjectLabel: { group: 2, transform: trim, required: true },
-        predicate: { group: 3, transform: toUpperCase, required: true },
-        objectKind: { group: 4, transform: toUpperCase, required: true },
+        subjectSubtype: { group: 2, transform: toUpperCase },
+        subjectLabel: { group: 3, transform: trim, required: true },
+        predicate: { group: 4, transform: toUpperCase, required: true },
+        objectKind: { group: 5, transform: toUpperCase, required: true },
+        objectSubtype: { group: 6, transform: toUpperCase },
+        objectLabel: { group: 7, transform: trim, required: true },
+    },
+    rendering: {
+        template: '{{subjectLabel}} →{{predicate}}→ {{objectLabel}}',
+        widgetMode: true,
+    },
+    isBuiltIn: true,
+    createdAt: Date.now(),
+};
+
+/**
+ * Inline/Compact Relationship Pattern
+ * Matches: [KIND|Label->REL->Target]
+ */
+export const INLINE_RELATIONSHIP_PATTERN: PatternDefinition = {
+    id: 'builtin:inline-relationship',
+    name: 'Inline Relationship',
+    description: 'Compact relationship syntax like [PERSON|Jon->LOVES->Jane]',
+    kind: 'triple', // Reuse triple kind, handled by parser
+    enabled: true,
+    priority: 106, // Higher than ENTITY (100) and TRIPLE (105)
+    pattern: '\\[([A-Z_]+)(?::([A-Z_]+))?\\|([^\\]]+)->([A-Z_]+)->([^\\]]+)\\]',
+    flags: 'g',
+    captures: {
+        subjectKind: { group: 1, transform: toUpperCase, required: true },
+        subjectSubtype: { group: 2, transform: toUpperCase },
+        subjectLabel: { group: 3, transform: trim, required: true },
+        predicate: { group: 4, transform: toUpperCase, required: true },
         objectLabel: { group: 5, transform: trim, required: true },
+        // objectKind is implicit or unknown
     },
     rendering: {
         template: '{{subjectLabel}} →{{predicate}}→ {{objectLabel}}',
@@ -289,7 +320,9 @@ export const DEFAULT_PATTERNS: PatternDefinition[] = [
     BACKLINK_PATTERN,
     TAG_PATTERN,
     MENTION_PATTERN,
+
     TRIPLE_PATTERN,
+    INLINE_RELATIONSHIP_PATTERN,
     ...TEMPORAL_PATTERNS,
 ];
 
