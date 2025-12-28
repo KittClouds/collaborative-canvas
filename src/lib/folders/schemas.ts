@@ -66,6 +66,24 @@ export interface AllowedSubfolderDefinition {
 
     /** Optional default color override */
     defaultColor?: string;
+
+    /** If true, auto-create a network when threshold is met */
+    autoCreateNetwork?: boolean;
+
+    /** ID of the NetworkSchema to use (from networks/schemas) */
+    networkSchemaId?: string;
+
+    /** Minimum children to trigger network creation (default: 2) */
+    networkCreationThreshold?: number;
+
+    /** 
+     * Network naming pattern. Supports placeholders:
+     * - {entityLabel} = name of the root entity (e.g., "Jon Snow")
+     * - {entityKind} = type of entity (e.g., "Character")
+     * - {subfolderLabel} = name of subfolder (e.g., "Allies")
+     * Default: "{entityLabel}'s {subfolderLabel}"
+     */
+    networkNamePattern?: string;
 }
 
 /**

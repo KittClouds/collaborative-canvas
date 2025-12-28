@@ -70,9 +70,9 @@ export function EntityMentionsPanel({
                         </div>
                     ) : (
                         <div className="space-y-2 pb-4">
-                            {entityStats.map((entity) => {
+                            {entityStats.map((entity, index) => {
                                 const color = ENTITY_COLORS[entity.entityKind] || '#6b7280';
-                                const entityKey = `${entity.entityKind}:${entity.entityLabel}`;
+                                const entityKey = `${entity.entityKind}:${entity.entityLabel}:${index}`;
                                 const isExpanded = expandedEntities.has(entityKey);
                                 const mentions = getEntityMentions(
                                     entity.entityLabel,

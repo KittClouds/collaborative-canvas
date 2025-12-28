@@ -31,6 +31,11 @@ export const CHARACTER_FOLDER_SCHEMA: FolderSchema = {
                 category: 'social',
                 defaultConfidence: 1.0,
             },
+            // Network auto-creation config
+            autoCreateNetwork: true,
+            networkSchemaId: 'family-tree-v1', // Social network using family schema for CHARACTER relations
+            networkCreationThreshold: 2,
+            networkNamePattern: "{entityLabel}'s {subfolderLabel}",
         },
 
         // Enemies subfolder - bidirectional ENEMY_OF relationship
@@ -66,6 +71,11 @@ export const CHARACTER_FOLDER_SCHEMA: FolderSchema = {
                 category: 'social',
                 defaultConfidence: 1.0,
             },
+            // Network auto-creation config - ideal for family tree networks
+            autoCreateNetwork: true,
+            networkSchemaId: 'family-tree-v1',
+            networkCreationThreshold: 2,
+            networkNamePattern: "{entityLabel}'s Family",
         },
 
         // Possessions subfolder - OWNS relationship (parent owns child)

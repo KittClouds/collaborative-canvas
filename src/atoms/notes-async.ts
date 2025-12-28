@@ -12,8 +12,11 @@ import {
     isSavingAtom,
     lastSavedAtom,
 } from './notes';
-import type { Note, Folder } from '@/contexts/NotesContext';
+import type { Note, Folder } from '@/types/noteTypes';
 import type { SQLiteNode, SQLiteNodeInput } from '@/lib/db/client/types';
+import type { EntityKind } from '@/lib/entities/entityTypes';
+import { checkAndCreateNetwork, type FolderContext, type ChildEntity } from '@/lib/folders/network-auto-creator';
+
 
 // ============================================
 // TRANSFORMATION UTILITIES
@@ -79,10 +82,9 @@ function transformFolderUpdates(updates: Partial<Folder>): Record<string, any> {
     const dbUpdates: Record<string, any> = { ...updates };
 
     if (updates.name !== undefined) dbUpdates.label = updates.name;
-    if (updates.parentId !== undefined) dbUpdates.parent_id = updates.parentId;
+    // parent_id is already the correct field name in Folder type
 
     delete dbUpdates.name;
-    delete dbUpdates.parentId;
 
     return dbUpdates;
 }
@@ -448,6 +450,111 @@ export const deleteFolderAtom = atom(
             set(foldersAtom, currentFolders);
             set(notesAtom, currentNotes);
             throw error;
+        }
+    }
+);
+
+// ============================================
+// NETWORK AUTO-CREATION INTEGRATION
+// ============================================
+
+/**
+ * Helper to build folder context for network auto-creation
+ */
+function buildFolderContext(
+    subfolder: Folder,
+    rootFolder: Folder
+): FolderContext | null {
+    if (!rootFolder.entityKind || !rootFolder.name) {
+        return null;
+    }
+
+    return {
+        rootFolderId: rootFolder.id,
+        rootEntityId: rootFolder.id, // Folder ID serves as entity ID for typed folders
+        rootEntityLabel: rootFolder.name,
+        rootEntityKind: rootFolder.entityKind as EntityKind,
+        subfolderLabel: subfolder.name || '',
+        subfolderId: subfolder.id,
+        namespace: 'default',
+    };
+}
+
+/**
+ * Check network auto-creation conditions for a subfolder
+ * Call this after adding children to a typed subfolder
+ */
+export const checkNetworkAutoCreationAtom = atom(
+    null,
+    async (get, set, params: { subfolderId: string }) => {
+        const { subfolderId } = params;
+        const folders = get(foldersAtom);
+        const notes = get(notesAtom);
+
+        // Find the subfolder
+        const subfolder = folders.find(f => f.id === subfolderId);
+        if (!subfolder) {
+            console.log('[NetworkAutoCreate] Subfolder not found:', subfolderId);
+            return null;
+        }
+
+        // Find the parent (root typed folder)
+        const parentId = subfolder.parent_id;
+        if (!parentId) {
+            return null;
+        }
+
+        const rootFolder = folders.find(f => f.id === parentId);
+        if (!rootFolder || !rootFolder.entityKind) {
+            // Parent is not a typed folder
+            return null;
+        }
+
+        // Build context
+        const context = buildFolderContext(subfolder, rootFolder);
+        if (!context) {
+            return null;
+        }
+
+        // Get children in the subfolder (notes that are entities or folders that are entities)
+        const childNotes = notes.filter(
+            n => n.parent_id === subfolderId && n.is_entity
+        );
+        const childFolders = folders.filter(
+            f => f.parent_id === subfolderId && f.entityKind
+        );
+
+        const childEntities: ChildEntity[] = [
+            ...childNotes.map(n => ({
+                id: n.id,
+                label: n.label || n.title || '',
+                kind: n.entity_kind as EntityKind | undefined,
+            })),
+            ...childFolders.map(f => ({
+                id: f.id,
+                label: f.name || '',
+                kind: f.entityKind as EntityKind | undefined,
+            })),
+        ];
+
+        if (childEntities.length === 0) {
+            return null;
+        }
+
+        // Trigger network auto-creation check
+        try {
+            const result = await checkAndCreateNetwork(context, childEntities);
+
+            if (result.created) {
+                console.log(`[NetworkAutoCreate] ✅ Created network: ${result.networkId}`);
+            } else if (result.membersAdded) {
+                console.log(`[NetworkAutoCreate] Added ${result.membersAdded} members to existing network`);
+            }
+
+            return result;
+        } catch (error) {
+            console.error('[NetworkAutoCreate] ❌ Error:', error);
+            return null;
         }
     }
 );

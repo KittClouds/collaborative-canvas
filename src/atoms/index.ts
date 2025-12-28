@@ -32,6 +32,7 @@ export {
     createFolderAtom,
     updateFolderAtom,
     deleteFolderAtom,
+    checkNetworkAutoCreationAtom,
 } from './notes-async';
 
 // Search atoms
