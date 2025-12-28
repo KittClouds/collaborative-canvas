@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
-import { D3GraphData, D3Node, D3Link } from '../../lib/graph/projections/types/base';
+import type { D3GraphData, D3Node, D3Link } from '@/lib/graph/types/graph-types';
 
 export interface D3GraphViewProps {
     data: D3GraphData;

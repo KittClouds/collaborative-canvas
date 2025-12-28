@@ -2,7 +2,6 @@ import React, { useRef, useCallback, useMemo, useEffect } from 'react';
 import { Tree, TreeApi, NodeApi } from 'react-arborist';
 import { ArboristNode } from '@/lib/arborist/types';
 import { ArboristTreeNode } from './ArboristTreeNode';
-import { useNotes } from '@/contexts/NotesContext';
 import { buildArboristTree } from '@/lib/arborist/adapter';
 import { TypedFolderMenu } from './TypedFolderMenu';
 import type { EntityKind } from '@/lib/entities/entityTypes';
@@ -93,7 +92,7 @@ export function ArboristTreeView({
     }, [updateFolder, updateNote]);
 
     // Handle node move (drag-and-drop)
-    const handleMove = useCallback(({ dragIds, parentId, index }: {
+    const handleMove = useCallback(async ({ dragIds, parentId, index }: {
         dragIds: string[];
         parentId: string | null;
         index: number;
@@ -102,10 +101,43 @@ export function ArboristTreeView({
         const node = treeRef.current?.get(dragId);
         if (!node) return;
 
+        // Get the target parent node to check for network auto-creation
+        const targetParent = parentId ? treeRef.current?.get(parentId) : null;
+
         if (node.data.type === 'folder') {
-            updateFolder(dragId, { parentId: parentId || undefined });
+            await updateFolder(dragId, { parent_id: parentId || null });
+
+            // Check for network auto-creation if moving an entity folder into a typed folder
+            if (targetParent?.data.entityKind && node.data.entityKind) {
+                try {
+                    const { onEntityAddedToFolder } = await import('@/lib/folders');
+                    await onEntityAddedToFolder(
+                        parentId!,
+                        dragId,
+                        node.data.entityKind,
+                        node.data.name
+                    );
+                } catch (error) {
+                    console.log('[ArboristTreeView] Network auto-creation check:', error);
+                }
+            }
         } else {
-            updateNote(dragId, { folderId: parentId || undefined });
+            await updateNote(dragId, { parent_id: parentId || null });
+
+            // Check for network auto-creation if moving an entity note into a typed folder
+            if (targetParent?.data.entityKind && node.data.entityKind) {
+                try {
+                    const { onEntityAddedToFolder } = await import('@/lib/folders');
+                    await onEntityAddedToFolder(
+                        parentId!,
+                        dragId,
+                        node.data.entityKind,
+                        node.data.name
+                    );
+                } catch (error) {
+                    console.log('[ArboristTreeView] Network auto-creation check:', error);
+                }
+            }
         }
     }, [updateFolder, updateNote]);
 

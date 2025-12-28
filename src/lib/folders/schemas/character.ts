@@ -31,6 +31,10 @@ export const CHARACTER_FOLDER_SCHEMA: FolderSchema = {
                 category: 'social',
                 defaultConfidence: 1.0,
             },
+            // Auto-create social network when allies are added
+            autoCreateNetwork: true,
+            networkSchemaId: 'SOCIAL_CIRCLE',
+            networkCreationThreshold: 2,
         },
 
         // Enemies subfolder - bidirectional ENEMY_OF relationship
@@ -49,6 +53,10 @@ export const CHARACTER_FOLDER_SCHEMA: FolderSchema = {
                 category: 'social',
                 defaultConfidence: 1.0,
             },
+            // Auto-create rivalry network when enemies are added
+            autoCreateNetwork: true,
+            networkSchemaId: 'RIVALRY',
+            networkCreationThreshold: 2,
         },
 
         // Family subfolder - bidirectional FAMILY_OF relationship
@@ -66,6 +74,10 @@ export const CHARACTER_FOLDER_SCHEMA: FolderSchema = {
                 category: 'social',
                 defaultConfidence: 1.0,
             },
+            // Auto-create family network
+            autoCreateNetwork: true,
+            networkSchemaId: 'FAMILY',
+            networkCreationThreshold: 2,
         },
 
         // Possessions subfolder - OWNS relationship (parent owns child)

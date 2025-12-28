@@ -1,5 +1,5 @@
 import { ArboristNode, ArboristTree } from './types';
-import type { Folder, Note, FolderWithChildren } from '@/contexts/NotesContext';
+import type { Folder, Note, FolderWithChildren } from '@/types/noteTypes';
 import { ENTITY_COLORS } from '@/lib/entities/entityTypes';
 
 const DEFAULT_COLORS = [
@@ -16,34 +16,48 @@ function transformFolderToNode(
     depth: number = 0,
     parentColor?: string
 ): ArboristNode {
+    // Map DB fields (snake_case) to UI fields (camelCase) if missing
+    const rawFolder = folder as any;
+    const entityKind = (folder.entityKind || rawFolder.entity_kind) as any;
+    const entitySubtype = folder.entitySubtype || rawFolder.entity_subtype;
+    const parentId = folder.parent_id || rawFolder.parent_id; // Handle all casings
+    const inheritedKind = (folder as any).inheritedKind || rawFolder.inherited_kind || entityKind; // Folders can inherit from themselves or explicit prop
+    const inheritedSubtype = (folder as any).inheritedSubtype || rawFolder.inherited_subtype || entitySubtype;
+
     // Color resolution: folder.color → parentColor → default by depth
     const effectiveColor = folder.color
         || parentColor
-        || (folder.entityKind ? ENTITY_COLORS[folder.entityKind] : undefined)
+        || (entityKind ? ENTITY_COLORS[entityKind] : undefined)
         || DEFAULT_COLORS[depth % DEFAULT_COLORS.length];
 
     // Transform child notes to leaf nodes
-    const noteNodes: ArboristNode[] = folder.notes.map(note => ({
-        id: note.id,
-        name: note.title,
-        type: 'note' as const,
-        isEntity: note.isEntity,
-        entityKind: note.entityKind,
-        entitySubtype: note.entitySubtype,
-        entityLabel: note.entityLabel,
-        favorite: note.favorite,
-        isPinned: note.isPinned,
-        folderId: note.folderId,
-        inheritedKind: folder.entityKind || folder.inheritedKind,
-        inheritedSubtype: folder.entitySubtype || folder.inheritedSubtype,
-        effectiveColor,
-        depth: depth + 1,
-        size: note.content.length,  // D3-style metric
-        noteData: note,
-    }));
+    const noteNodes: ArboristNode[] = (folder.notes || []).map(note => {
+        const rawNote = note as any;
+        const noteKind = (note.entityKind || rawNote.entity_kind) as any;
+        const noteSubtype = note.entitySubtype || rawNote.entity_subtype;
+
+        return {
+            id: note.id,
+            name: note.title,
+            type: 'note' as const,
+            isEntity: typeof note.isEntity === 'boolean' ? note.isEntity : (note.isEntity === 1 || !!note.isEntity),
+            entityKind: noteKind,
+            entitySubtype: noteSubtype,
+            entityLabel: note.entityLabel || rawNote.entity_label,
+            favorite: typeof note.favorite === 'number' ? note.favorite : (note.favorite ? 1 : 0),
+            isPinned: typeof note.isPinned === 'number' ? note.isPinned : (note.isPinned ? 1 : 0),
+            folderId: note.parent_id || rawNote.parent_id || undefined,
+            inheritedKind,
+            inheritedSubtype,
+            effectiveColor,
+            depth: depth + 1,
+            size: note.content.length,  // D3-style metric
+            noteData: note,
+        };
+    });
 
     // Transform child folders recursively
-    const folderNodes: ArboristNode[] = folder.subfolders.map(subfolder =>
+    const folderNodes: ArboristNode[] = (folder.children || []).map(subfolder =>
         transformFolderToNode(subfolder, depth + 1, effectiveColor)
     );
 
@@ -55,20 +69,25 @@ function transformFolderToNode(
         name: folder.name,
         type: 'folder' as const,
         children: children.length > 0 ? children : undefined,
-        parentId: folder.parentId,
-        color: folder.color,
-        entityKind: folder.entityKind,
-        entitySubtype: folder.entitySubtype,
-        entityLabel: folder.entityLabel,
-        isTypedRoot: folder.isTypedRoot,
-        isSubtypeRoot: folder.isSubtypeRoot,
-        inheritedKind: folder.inheritedKind,
-        inheritedSubtype: folder.inheritedSubtype,
-        networkId: folder.networkId,  // Network folder support
+        parentId: parentId || undefined,
+        color: folder.color || undefined,
+        entityKind,
+        entitySubtype,
+        entityLabel: (folder as any).entityLabel || rawFolder.entity_label,
+        isTypedRoot: !!folder.isTypedRoot || rawFolder.is_typed_root === 1,
+        isSubtypeRoot: (folder as any).isSubtypeRoot || rawFolder.is_subtype_root === 1,
+        inheritedKind,
+        inheritedSubtype,
+        networkId: (folder as any).networkId,
         effectiveColor,
         depth,
-        count: children.length,  // D3-style metric
-        folderData: folder,
+        count: children.length,
+        folderData: {
+            ...folder,
+            // Ensure folderData has correct props for TypedFolderMenu
+            entityKind,
+            entitySubtype,
+        },
     };
 }
 
@@ -82,22 +101,27 @@ export function buildArboristTree(
     const rootFolders = folderTree.map(folder => transformFolderToNode(folder, 0));
 
     // Add global notes (no folder) as root-level nodes
-    const rootNotes: ArboristNode[] = globalNotes.map(note => ({
-        id: note.id,
-        name: note.title,
-        type: 'note' as const,
-        isEntity: note.isEntity,
-        entityKind: note.entityKind,
-        entitySubtype: note.entitySubtype,
-        entityLabel: note.entityLabel,
-        favorite: note.favorite,
-        isPinned: note.isPinned,
-        folderId: undefined,
-        effectiveColor: note.entityKind ? ENTITY_COLORS[note.entityKind] : DEFAULT_COLORS[0],
-        depth: 0,
-        size: note.content.length,
-        noteData: note,
-    }));
+    const rootNotes: ArboristNode[] = globalNotes.map(note => {
+        const rawNote = note as any;
+        const noteKind = (note.entityKind || rawNote.entity_kind) as any;
+
+        return {
+            id: note.id,
+            name: note.title,
+            type: 'note' as const,
+            isEntity: typeof note.isEntity === 'boolean' ? note.isEntity : (note.isEntity === 1 || !!note.isEntity),
+            entityKind: noteKind,
+            entitySubtype: note.entitySubtype || rawNote.entity_subtype,
+            entityLabel: note.entityLabel || rawNote.entity_label,
+            favorite: typeof note.favorite === 'number' ? note.favorite : (note.favorite ? 1 : 0),
+            isPinned: typeof note.isPinned === 'number' ? note.isPinned : (note.isPinned ? 1 : 0),
+            folderId: undefined,
+            effectiveColor: noteKind ? ENTITY_COLORS[noteKind] : DEFAULT_COLORS[0],
+            depth: 0,
+            size: note.content.length,
+            noteData: note,
+        };
+    });
 
     return [...rootFolders, ...rootNotes];
 }

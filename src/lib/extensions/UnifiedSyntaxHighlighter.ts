@@ -9,6 +9,12 @@ import { patternRegistry, type PatternDefinition, type RefKind } from '../refs';
 import { mentionEventQueue } from '../entities/mention-event-queue';
 import type { EntityMentionEvent, PositionType } from '../cozo/types';
 import { scannerEventBus, type PatternMatchEvent } from '@/lib/entities/scanner-v3';
+import { computeContentHash } from '@/lib/entities/scanner-v3/core/ChangeDetector';
+
+// Cache for tracking last emitted content hash per note
+// Prevents redundant scanner events when returning to unchanged notes
+const lastEmittedContentHash = new Map<string, string>();
+
 
 export interface UnifiedSyntaxOptions {
   onWikilinkClick?: (title: string) => void;
@@ -146,6 +152,25 @@ function buildAllDecorations(
 ): DecorationSet {
   const decorations: Decoration[] = [];
   const useWidgets = options.useWidgetMode ?? false;
+  const noteId = options.currentNoteId || 'unknown';
+
+  // Extract full document text for content-hash comparison
+  let fullDocText = '';
+  doc.descendants((node) => {
+    if (node.isText && node.text) {
+      fullDocText += node.text;
+    }
+  });
+
+  // Check if content has changed since last emission
+  const contentHash = computeContentHash(fullDocText);
+  const lastHash = lastEmittedContentHash.get(noteId);
+  const shouldEmitEvents = options.enableScannerEvents !== false && lastHash !== contentHash;
+
+  // Update the hash cache if we're going to emit
+  if (shouldEmitEvents) {
+    lastEmittedContentHash.set(noteId, contentHash);
+  }
 
   // Get active patterns sorted by priority
   const patterns = patternRegistry.getActivePatterns();
@@ -304,8 +329,8 @@ function buildAllDecorations(
           );
         }
 
-        // Emit scanner event if enabled
-        if (options.enableScannerEvents !== false) {
+        // Emit scanner event only if content changed (prevents redundant scans on view navigation)
+        if (shouldEmitEvents) {
           const captures: Record<string, string> = {};
           if (pattern.captures) {
             for (const [key, mapping] of Object.entries(pattern.captures)) {
@@ -322,7 +347,7 @@ function buildAllDecorations(
             length: fullMatch.length,
             captures,
             patternId: pattern.id,
-            noteId: options.currentNoteId || 'unknown',
+            noteId,
             timestamp: Date.now(),
             context: text, // Pass full node text (paragraph) as context
           } satisfies PatternMatchEvent);

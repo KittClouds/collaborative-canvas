@@ -10,7 +10,7 @@ import {
     NodeInfoPanel,
     SearchBar
 } from '../components/graph';
-import { ProjectionScope } from '../lib/graph/projections/types';
+import type { GraphScope } from '@/lib/graph/types/graph-types';
 import { useGraphInteraction } from '../hooks/useGraphInteraction';
 import { FilterState, useGraphFilters } from '../hooks/useGraphFilters';
 import { Force3DGraphRef } from '../components/graph/Force3DGraphView';
@@ -20,14 +20,14 @@ export default function GraphExplorerPage() {
     const [searchParams, setSearchParams] = useSearchParams();
 
     // State from URL or defaults
-    const [scope, setScope] = useState<ProjectionScope>(() => {
-        const type = searchParams.get('scope') as any || 'entity';
-        const target = searchParams.get('target') as any || 'global';
+    const [scope, setScope] = useState<GraphScope>(() => {
+        const scopeType = searchParams.get('scope') || 'global';
         const contextId = searchParams.get('context') || undefined;
 
-        if (type === 'obsidian') return { type: 'obsidian', target, folderId: contextId };
-        if (type === 'entity') return { type: 'entity', target, contextId };
-        return { type: 'concept', target: 'note', contextId: contextId || 'temp' };
+        if (scopeType === 'note' && contextId) return { type: 'note', noteId: contextId };
+        if (scopeType === 'folder' && contextId) return { type: 'folder', folderId: contextId };
+        if (scopeType === 'entity' && contextId) return { type: 'entity', entityId: contextId };
+        return { type: 'global' };
     });
 
     const [renderMode, setRenderMode] = useState<'2d' | '3d'>('3d');
@@ -39,13 +39,13 @@ export default function GraphExplorerPage() {
     const graphRef = useRef<Force3DGraphRef>(null);
 
     // Update URL when scope changes
-    const updateScope = useCallback((newScope: ProjectionScope) => {
+    const updateScope = useCallback((newScope: GraphScope) => {
         setScope(newScope);
         const params = new URLSearchParams();
         params.set('scope', newScope.type);
-        params.set('target', newScope.target);
-        if ('contextId' in newScope && newScope.contextId) params.set('context', newScope.contextId);
-        if ('folderId' in newScope && newScope.folderId) params.set('context', newScope.folderId);
+        if ('noteId' in newScope) params.set('context', newScope.noteId);
+        if ('folderId' in newScope) params.set('context', newScope.folderId);
+        if ('entityId' in newScope) params.set('context', newScope.entityId);
         setSearchParams(params);
     }, [setSearchParams]);
 
@@ -100,7 +100,6 @@ export default function GraphExplorerPage() {
                     renderMode={renderMode}
                     onNodeClick={onNodeClick}
                     onNodeHover={onNodeHover}
-                    filterState={filters}
                     className="absolute inset-0"
                 />
 

@@ -220,6 +220,42 @@ export class FolderSchemaRegistry {
         const schema = this.getSchema(entityKind, subtype);
         return schema?.containerOnly ?? false;
     }
+
+    /**
+     * Get network auto-creation configuration for a subfolder type.
+     * Returns undefined if the subfolder doesn't trigger network creation.
+     */
+    getNetworkCreationConfig(
+        parentKind: EntityKind,
+        parentSubtype: string | undefined,
+        childKind: EntityKind,
+        childSubtype?: string
+    ): { autoCreate: boolean; schemaId: string; threshold: number } | undefined {
+        const subfolder = this.getSubfolderRelationship(
+            parentKind,
+            parentSubtype,
+            childKind,
+            childSubtype
+        );
+
+        if (!subfolder?.autoCreateNetwork || !subfolder.networkSchemaId) {
+            return undefined;
+        }
+
+        return {
+            autoCreate: true,
+            schemaId: subfolder.networkSchemaId,
+            threshold: subfolder.networkCreationThreshold ?? 2,
+        };
+    }
+
+    /**
+     * Get all subfolder definitions that trigger network auto-creation
+     */
+    getNetworkTriggerSubfolders(entityKind: EntityKind, subtype?: string): AllowedSubfolderDefinition[] {
+        const subfolders = this.getAllowedSubfolders(entityKind, subtype);
+        return subfolders.filter(sf => sf.autoCreateNetwork && sf.networkSchemaId);
+    }
 }
 
 // Singleton instance

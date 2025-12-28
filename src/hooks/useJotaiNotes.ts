@@ -102,6 +102,9 @@ export function useJotaiNotes() {
 
     /**
      * Create folder
+     * Note: We return a constructed folder object instead of looking it up
+     * because the Jotai store update is synchronous but React's useAtomValue
+     * won't reflect the change until the next render cycle.
      */
     const handleCreateFolder = async (
         name: string,
@@ -116,13 +119,34 @@ export function useJotaiNotes() {
         }
     ): Promise<Folder> => {
         const folderId = await createFolder({ name, parentId, ...options });
+        const timestamp = Date.now();
 
-        const createdFolder = folders.find(f => f.id === folderId);
-        if (!createdFolder) {
-            throw new Error('Created folder not found in store');
-        }
-
-        return createdFolder;
+        // Return a folder object matching what createFolderAtom created
+        // This avoids a race condition where folders.find() uses stale state
+        return {
+            id: folderId,
+            type: 'FOLDER',
+            label: name,
+            name,
+            parent_id: parentId || null,
+            parentId: parentId || null,
+            content: null,
+            entity_kind: options?.entityKind,
+            entityKind: options?.entityKind,
+            entity_subtype: options?.entitySubtype,
+            entitySubtype: options?.entitySubtype,
+            is_typed_root: options?.isTypedRoot,
+            isTypedRoot: options?.isTypedRoot,
+            is_subtype_root: options?.isSubtypeRoot,
+            isSubtypeRoot: options?.isSubtypeRoot,
+            color: options?.color,
+            is_entity: false,
+            isEntity: false,
+            created_at: timestamp,
+            createdAt: timestamp,
+            updated_at: timestamp,
+            updatedAt: timestamp,
+        } as unknown as Folder;
     };
 
     /**

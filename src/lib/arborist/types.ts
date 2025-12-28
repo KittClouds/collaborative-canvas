@@ -1,5 +1,5 @@
 import type { EntityKind } from '@/lib/entities/entityTypes';
-import type { Note, Folder } from '@/contexts/NotesContext';
+import type { Note, Folder } from '@/types/noteTypes';
 
 /**
  * Unified tree node for React Arborist

@@ -66,6 +66,17 @@ export interface AllowedSubfolderDefinition {
 
     /** Optional default color override */
     defaultColor?: string;
+
+    // ===== Network Auto-Creation Configuration =====
+
+    /** If true, automatically create a network when children reach threshold */
+    autoCreateNetwork?: boolean;
+
+    /** Network schema ID to use (e.g., 'SOCIAL_CIRCLE', 'FACTION_TREE') */
+    networkSchemaId?: string;
+
+    /** Minimum children count to trigger network creation (default: 2) */
+    networkCreationThreshold?: number;
 }
 
 /**

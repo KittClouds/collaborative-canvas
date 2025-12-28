@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { RichTextProvider } from 'reactjs-tiptap-editor';
 
@@ -467,6 +467,20 @@ const RichEditor = ({
     }
   }, [entities, editor]);
 
+  // Delay bubble menu rendering until editor is fully ready
+  const [editorReady, setEditorReady] = useState(false);
+  useEffect(() => {
+    if (editor?.view) {
+      // Delay bubble menu mount by one frame to avoid accessing view before ready
+      const timer = requestAnimationFrame(() => setEditorReady(true));
+      return () => {
+        cancelAnimationFrame(timer);
+        setEditorReady(false);
+      };
+    }
+    setEditorReady(false);
+  }, [editor?.view]);
+
   if (!editor || !editor.view) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -496,8 +510,8 @@ const RichEditor = ({
           <EditorContent editor={editor} className="min-h-full" />
         </div>
 
-        {/* Bubble Menus */}
-        <EditorBubbleMenus />
+        {/* Bubble Menus - delay mount until editor is fully ready */}
+        {editorReady && <EditorBubbleMenus />}
       </RichTextProvider>
     </div>
   );

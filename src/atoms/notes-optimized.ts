@@ -58,6 +58,12 @@ export const optimizedFolderTreeAtom = atom((get) => {
     for (const [id] of lastFoldersSnapshot) {
         if (!currentFoldersSnapshot.has(id)) {
             changedFolderIds.add(id);
+
+            // Also invalidate the deleted folder's parent so its children array updates
+            const deletedFolder = lastFoldersSnapshot.get(id);
+            if (deletedFolder?.parent_id) {
+                changedFolderIds.add(deletedFolder.parent_id);
+            }
         }
     }
 

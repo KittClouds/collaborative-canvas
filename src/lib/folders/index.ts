@@ -33,5 +33,11 @@ export {
 // Registry
 export { FolderSchemaRegistry, folderSchemaRegistry } from './schema-registry';
 
-// Relationship Creator
-export { FolderRelationshipCreator, folderRelationshipCreator } from './relationship-creator';
+// Network Auto-Creation API
+export {
+    checkAndCreateNetworkForFolder,
+    onEntityAddedToFolder,
+    updateNetworkStats,
+    type NetworkCreationResult,
+    type NetworkAutoCreateConfig,
+} from './api/network-auto-creator';

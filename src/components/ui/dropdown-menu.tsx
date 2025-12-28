@@ -79,7 +79,9 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground",
+      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-all duration-200 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground",
+      // Entity highlight: orange glow on hover for typed folder menu items
+      "data-[entity-highlight]:hover:bg-orange-500/10 data-[entity-highlight]:hover:shadow-[inset_0_0_0_1px_rgba(249,115,22,0.4)] data-[entity-highlight]:focus:bg-orange-500/15 data-[entity-highlight]:focus:shadow-[inset_0_0_0_1px_rgba(249,115,22,0.5)]",
       inset && "pl-8",
       className,
     )}

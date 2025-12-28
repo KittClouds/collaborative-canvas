@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { folderSchemaRegistry } from '@/lib/folders/schema-registry';
 import { ENTITY_COLORS, type EntityKind } from '@/lib/entities/entityTypes';
-import type { Folder } from '@/contexts/NotesContext';
+import type { Folder } from '@/types/noteTypes';
 import {
     User,
     Users,
@@ -152,20 +152,20 @@ export function TypedFolderMenu({
 
     // Get allowed subfolders from schema
     const allowedSubfolders = folderSchemaRegistry.getAllowedSubfolders(
-        parentFolder.entityKind,
-        parentFolder.entitySubtype
+        parentFolder.entityKind as EntityKind,
+        parentFolder.entitySubtype ?? undefined
     );
 
     // Get allowed note types from schema
     const allowedNoteTypes = folderSchemaRegistry.getAllowedNoteTypes(
-        parentFolder.entityKind,
-        parentFolder.entitySubtype
+        parentFolder.entityKind as EntityKind,
+        parentFolder.entitySubtype ?? undefined
     );
 
     // If no allowed subfolders defined, show default option
     if (allowedSubfolders.length === 0 && allowedNoteTypes.length === 0) {
         return (
-            <DropdownMenuItem onClick={() => onCreateSubfolder(parentFolder.entityKind!)}>
+            <DropdownMenuItem onClick={() => onCreateSubfolder(parentFolder.entityKind as EntityKind)}>
                 <FolderPlus className="mr-2 h-4 w-4" />
                 Add Subfolder
             </DropdownMenuItem>
@@ -190,6 +190,7 @@ export function TypedFolderMenu({
                                     subfolderDef.label
                                 )}
                                 title={subfolderDef.description}
+                                data-entity-highlight
                             >
                                 <Icon
                                     className="mr-2 h-4 w-4"
@@ -221,6 +222,7 @@ export function TypedFolderMenu({
                                     noteTypeDef.entityKind,
                                     noteTypeDef.subtype
                                 )}
+                                data-entity-highlight
                             >
                                 <Icon
                                     className="mr-2 h-4 w-4"
@@ -264,8 +266,8 @@ export function TypedFolderQuickMenu({
     if (!parentFolder.entityKind) return null;
 
     const allowedSubfolders = folderSchemaRegistry.getAllowedSubfolders(
-        parentFolder.entityKind,
-        parentFolder.entitySubtype
+        parentFolder.entityKind as EntityKind,
+        parentFolder.entitySubtype ?? undefined
     );
 
     if (allowedSubfolders.length === 0) return null;
@@ -308,7 +310,7 @@ export function useTypedFolderOptions(folder: Folder | null) {
         };
     }
 
-    const schema = folderSchemaRegistry.getSchema(folder.entityKind, folder.entitySubtype);
+    const schema = folderSchemaRegistry.getSchema(folder.entityKind as EntityKind, folder.entitySubtype ?? undefined);
 
     return {
         allowedSubfolders: schema?.allowedSubfolders || [],

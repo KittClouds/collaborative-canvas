@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useMemo, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
 import * as THREE from 'three';
-import { Force3DGraphData, Force3DNode, Force3DLink } from '../../lib/graph/projections/types/base';
+import type { Force3DGraphData, Force3DNode, Force3DLink } from '@/lib/graph/types/graph-types';
 
 // Lazy load to avoid SSR/Initial load issues
 const ForceGraph3D = lazy(() => import('react-force-graph-3d'));
