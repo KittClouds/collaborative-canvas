@@ -143,9 +143,27 @@ export class RelationshipExtractor {
     private cozoPatterns: VerbPatternRule[] = [];
     private cozoPatternsLoaded = false;
 
+    // OPTIMIZATION: Cache compiled regexes to avoid repeated new RegExp() calls
+    private entityRegexCache = new Map<string, RegExp>();
+
     constructor() {
         this.buildLookupMaps();
         this.loadCustomPatterns();
+    }
+
+    /**
+     * Get or create a cached regex for entity term matching
+     * Avoids expensive regex compilation in hot loops
+     */
+    private getEntityRegex(term: string): RegExp {
+        let regex = this.entityRegexCache.get(term);
+        if (!regex) {
+            const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            regex = new RegExp(`\\b${escaped}\\b`, 'gi');
+            this.entityRegexCache.set(term, regex);
+        }
+        regex.lastIndex = 0; // Reset for reuse
+        return regex;
     }
 
     /**
@@ -334,13 +352,23 @@ export class RelationshipExtractor {
 
     /**
      * Extract all relationships from text
+     * @param text - The full text to analyze
+     * @param noteId - The note ID for metadata
+     * @param cachedEntities - Optional pre-fetched entities to avoid redundant getAllEntities() calls
      */
-    extractFromText(text: string, noteId: string): ExtractedRelationship[] {
+    extractFromText(
+        text: string,
+        noteId: string,
+        cachedEntities?: RegisteredEntity[]
+    ): ExtractedRelationship[] {
         const analysis = this.wink.analyze(text);
         const allRelationships: ExtractedRelationship[] = [];
 
+        // OPTIMIZATION: Use cached entities or fetch once for entire extraction
+        const entities = cachedEntities ?? entityRegistry.getAllEntities();
+
         for (const sentence of analysis.sentences) {
-            const mentions = this.findEntityMentionsInSentence(sentence, text);
+            const mentions = this.findEntityMentionsInSentence(sentence, text, entities);
             if (mentions.length < 2) continue;
 
             // Extract using all patterns
@@ -477,20 +505,27 @@ export class RelationshipExtractor {
 
     /**
      * Find entity mentions in sentence
+     * @param sentence - The sentence to search
+     * @param fullText - The full document text 
+     * @param entities - Pre-fetched entities (passed from extractFromText to avoid redundant fetches)
      */
     private findEntityMentionsInSentence(
         sentence: Sentence,
-        fullText: string
+        fullText: string,
+        entities: RegisteredEntity[]
     ): EntityMention[] {
         const mentions: EntityMention[] = [];
-        const allEntities = entityRegistry.getAllEntities();
+        // OPTIMIZATION: Compute lowercase sentence once, outside the entity loop
+        const lowerSentence = sentence.text.toLowerCase();
 
-        for (const entity of allEntities) {
+        for (const entity of entities) {
             const searchTerms = [entity.label, ...(entity.aliases || [])];
 
             for (const term of searchTerms) {
-                const lowerSentence = sentence.text.toLowerCase();
                 const lowerTerm = term.toLowerCase();
+
+                // Pre-filter: skip if term is not in sentence at all (fast indexOf check)
+                if (lowerSentence.indexOf(lowerTerm) === -1) continue;
 
                 let searchStart = 0;
                 let idx: number;

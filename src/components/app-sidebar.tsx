@@ -48,6 +48,7 @@ import { EntitiesPanel } from "@/components/EntitiesPanel";
 import { SettingsPanel } from "@/components/settings";
 import { ArboristTreeView } from '@/components/tree/ArboristTreeView';
 import { NetworkFolderCreationMenu } from '@/components/network/NetworkFolderCreation';
+import { GraphLogo } from "@/components/ui/GraphLogo";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -74,10 +75,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useNotes, FolderWithChildren, Note } from "@/contexts/NotesContext";
+import type { FolderWithChildren, Note } from "@/types/noteTypes";
 import { ENTITY_COLORS, ENTITY_SUBTYPES, EntityKind, ENTITY_ICONS, getSubtypesForKind } from "@/lib/entities/entityTypes";
 import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName, formatSubtypeFolderName } from "@/lib/entities/titleParser";
 import { useBlueprintHub } from "@/features/blueprint-hub/hooks/useBlueprintHub";
+// useJotaiNotes is already imported below or we should keep one
 import { useJotaiNotes } from "@/hooks/useJotaiNotes";
 
 
@@ -431,7 +433,7 @@ function NoteItem({ note, depth = 0, folderColor, autoRename, onRenameComplete }
               onSave={handleRename}
               onCancel={handleCancelRename}
               placeholder="Enter entity name..."
-              showEntityHint={note.isEntity || isAutoCreatedEntity}
+              showEntityHint={!!note.isEntity || isAutoCreatedEntity}
               cursorAfterPipe={isAutoCreatedEntity}
               deleteOnEmpty={isAutoCreatedEntity}
               onDelete={handleDeleteNewNote}
@@ -574,10 +576,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar className="border-r border-sidebar-border" {...props}>
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
-            <FileText className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-serif font-semibold text-lg text-sidebar-foreground">Inklings</span>
+          <GraphLogo className="w-10 h-10" />
+          <span className="font-serif font-semibold text-lg text-sidebar-foreground tracking-tight">GraphAIte</span>
         </div>
 
         <Select value={activeTab} onValueChange={handleTabChange}>

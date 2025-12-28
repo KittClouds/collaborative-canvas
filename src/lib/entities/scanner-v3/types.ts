@@ -2,6 +2,15 @@
  * Shared types for Scanner V3
  */
 import type { RefKind } from '@/lib/refs';
+import type { RegisteredEntity } from '@/lib/cozo/graph/adapters/EntityRegistryAdapter';
+
+/**
+ * Cache for a single scan cycle - avoids redundant getAllEntities() calls
+ */
+export interface ScanCycleCache {
+    entities: RegisteredEntity[];
+    entityLabelIndex: Map<string, RegisteredEntity>;
+}
 
 /**
  * Match event emitted by UnifiedSyntaxHighlighter
@@ -27,4 +36,5 @@ export interface ScannerConfig {
     enableRelationshipInference: boolean; // Phase 7C: linguistic relationship extraction
     relationshipConfidenceThreshold: number; // Minimum confidence to persist
     batchSize: number;          // CoZo batch insert size
+    useAhoCorasickExtractor: boolean; // Use O(n) Aho-Corasick extractor vs regex
 }

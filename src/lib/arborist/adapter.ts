@@ -24,10 +24,19 @@ function transformFolderToNode(
     const inheritedKind = (folder as any).inheritedKind || rawFolder.inherited_kind || entityKind; // Folders can inherit from themselves or explicit prop
     const inheritedSubtype = (folder as any).inheritedSubtype || rawFolder.inherited_subtype || entitySubtype;
 
+    // Helper to get CSS var string
+    const getEntityColor = (kind: string) => {
+        if (kind && ENTITY_COLORS[kind as any]) {
+            const varName = `--entity-${kind.toLowerCase().replace('_', '-')}`;
+            return `hsl(var(${varName}))`;
+        }
+        return undefined;
+    };
+
     // Color resolution: folder.color → parentColor → default by depth
     const effectiveColor = folder.color
         || parentColor
-        || (entityKind ? ENTITY_COLORS[entityKind] : undefined)
+        || getEntityColor(entityKind)
         || DEFAULT_COLORS[depth % DEFAULT_COLORS.length];
 
     // Transform child notes to leaf nodes
@@ -116,7 +125,9 @@ export function buildArboristTree(
             favorite: typeof note.favorite === 'number' ? note.favorite : (note.favorite ? 1 : 0),
             isPinned: typeof note.isPinned === 'number' ? note.isPinned : (note.isPinned ? 1 : 0),
             folderId: undefined,
-            effectiveColor: noteKind ? ENTITY_COLORS[noteKind] : DEFAULT_COLORS[0],
+            effectiveColor: noteKind && ENTITY_COLORS[noteKind]
+                ? `hsl(var(--entity-${noteKind.toLowerCase().replace('_', '-')}))`
+                : DEFAULT_COLORS[0],
             depth: 0,
             size: note.content.length,
             noteData: note,

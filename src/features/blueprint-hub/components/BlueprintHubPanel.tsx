@@ -4,8 +4,9 @@ import { useBlueprintHubContext } from '../context/BlueprintHubContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, Sparkles, Box, Network, Database, FileCode, Tag, Eye, Play, HelpCircle, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, Sparkles, Box, Network, Database, FileCode, Tag, Eye, Play, HelpCircle, Users, Palette } from 'lucide-react';
 import { EntityTypesTab } from './tabs/EntityTypesTab';
+import { EntityThemeTab } from './tabs/EntityThemeTab';
 import { FieldsTab } from './tabs/FieldsTab';
 import { RelationshipTypesTab } from './tabs/RelationshipTypesTab';
 import { AttributeBlueprintsTab } from './tabs/AttributeBlueprintsTab';
@@ -201,6 +202,10 @@ export function BlueprintHubPanel() {
                                     <Box className="w-4 h-4 mr-2" />
                                     Entity Types
                                 </TabsTrigger>
+                                <TabsTrigger value="theme" className="data-[state=active]:bg-muted data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-4">
+                                    <Palette className="w-4 h-4 mr-2" />
+                                    Theme
+                                </TabsTrigger>
                                 <TabsTrigger value="patterns" className="data-[state=active]:bg-muted data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-4">
                                     <FileCode className="w-4 h-4 mr-2" />
                                     Patterns
@@ -242,6 +247,10 @@ export function BlueprintHubPanel() {
                         <div className="flex-1 overflow-auto bg-muted/10 p-4">
                             <TabsContent value="entity-types" className="mt-0 h-full">
                                 <EntityTypesTab isLoading={isLoading} />
+                            </TabsContent>
+
+                            <TabsContent value="theme" className="mt-0 h-full">
+                                <EntityThemeTab />
                             </TabsContent>
 
                             <TabsContent value="patterns" className="mt-0 h-full">

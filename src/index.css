@@ -8,105 +8,121 @@
 
 @layer base {
   :root {
-    /* Light Mode - Elegant warm cream */
-    --background: 45 30% 97%;
-    --foreground: 240 10% 12%;
+    /* GraphAIte Light Mode - Clean, crisp, professional */
+    --background: 0 0% 98%;
+    /* #FAFAFA */
+    --foreground: 240 5% 4%;
+    /* #0A0A0B (Dark text for contrast) */
 
-    --card: 45 25% 95%;
-    --card-foreground: 240 10% 12%;
+    --card: 0 0% 100%;
+    /* #FFFFFF */
+    --card-foreground: 240 5% 4%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 12%;
+    --popover-foreground: 240 5% 4%;
 
-    /* Rich amber accent */
-    --primary: 32 95% 48%;
+    /* GraphAIte Teal - Primary Brand Color */
+    --primary: 175 84% 32%;
+    /* #0D9488 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 45 20% 90%;
-    --secondary-foreground: 240 10% 20%;
+    --secondary: 240 4% 96%;
+    --secondary-foreground: 240 5.9% 10%;
 
-    --muted: 45 15% 92%;
-    --muted-foreground: 240 5% 46%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
 
-    --accent: 32 60% 94%;
-    --accent-foreground: 32 90% 30%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 45 20% 87%;
-    --input: 45 20% 87%;
-    --ring: 32 95% 48%;
+    --border: 240 4% 90%;
+    /* Subtle borders for light mode */
+    --input: 240 4% 90%;
+    --ring: 175 84% 32%;
+    /* Teal ring */
 
-    --radius: 0.625rem;
+    --radius: 0.5rem;
 
-    /* Sidebar - Soft cream contrast */
-    --sidebar-background: 45 25% 94%;
-    --sidebar-foreground: 240 10% 20%;
-    --sidebar-primary: 32 95% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 32 50% 92%;
-    --sidebar-accent-foreground: 32 90% 30%;
-    --sidebar-border: 45 20% 88%;
-    --sidebar-ring: 32 95% 48%;
+    /* Sidebar - Light */
+    --sidebar-background: 0 0% 96%;
+    --sidebar-foreground: 240 5% 26%;
+    --sidebar-primary: 175 84% 32%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 240 4% 90%;
+    --sidebar-ring: 175 84% 32%;
 
     /* Custom tokens */
-    --editor-bg: 45 35% 98%;
-    --editor-border: 45 20% 90%;
-    --toolbar-bg: 45 25% 96%;
-    --note-hover: 32 50% 95%;
-    --note-active: 32 60% 90%;
+    --editor-bg: 0 0% 100%;
+    --editor-border: 240 4% 90%;
+    --toolbar-bg: 0 0% 99%;
+    --note-hover: 240 4% 96%;
+    --note-active: 175 84% 95%;
+    /* Very light teal */
     --success: 142 70% 45%;
     --warning: 38 92% 50%;
   }
 
   .dark {
-    /* Dark Mode - Deep rich charcoal with amber glow */
-    --background: 240 15% 6%;
-    --foreground: 45 20% 92%;
+    /* GraphAIte Dark Mode - Deep Charcoal & Neon Teal */
+    --background: 240 5% 4%;
+    /* #0A0A0B */
+    --foreground: 0 0% 98%;
+    /* #FAFAFA */
 
-    --card: 240 12% 9%;
-    --card-foreground: 45 20% 92%;
+    --card: 240 6% 8%;
+    /* #141417 (Surface) */
+    --card-foreground: 0 0% 98%;
 
-    --popover: 240 15% 8%;
-    --popover-foreground: 45 20% 92%;
+    --popover: 240 6% 8%;
+    /* #141417 */
+    --popover-foreground: 0 0% 98%;
 
-    /* Warm amber accent - glowing in dark */
-    --primary: 38 100% 55%;
-    --primary-foreground: 240 15% 6%;
+    /* Vibrant Teal for Dark Mode */
+    --primary: 175 84% 32%;
+    /* #0D9488 */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 10% 14%;
-    --secondary-foreground: 45 15% 85%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 240 10% 12%;
-    --muted-foreground: 240 5% 50%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
 
-    --accent: 240 10% 15%;
-    --accent-foreground: 38 95% 65%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 240 10% 14%;
-    --input: 240 10% 16%;
-    --ring: 38 100% 55%;
+    --border: 240 4% 16%;
+    /* #27272A */
+    --input: 240 4% 16%;
+    --ring: 175 84% 32%;
 
-    /* Sidebar - Deeper dark */
-    --sidebar-background: 240 18% 4%;
-    --sidebar-foreground: 45 15% 80%;
-    --sidebar-primary: 38 100% 55%;
-    --sidebar-primary-foreground: 240 15% 6%;
-    --sidebar-accent: 240 10% 10%;
-    --sidebar-accent-foreground: 38 95% 70%;
-    --sidebar-border: 240 10% 10%;
-    --sidebar-ring: 38 100% 55%;
+    /* Sidebar - Deep Dark */
+    --sidebar-background: 240 5% 4%;
+    --sidebar-foreground: 240 5% 64%;
+    --sidebar-primary: 175 84% 32%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4% 16%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 4% 16%;
+    --sidebar-ring: 175 84% 32%;
 
     /* Custom tokens */
-    --editor-bg: 240 15% 7%;
-    --editor-border: 240 10% 12%;
-    --toolbar-bg: 240 12% 9%;
-    --note-hover: 240 10% 12%;
-    --note-active: 38 40% 12%;
+    --editor-bg: 240 5% 4%;
+    /* Match background */
+    --editor-border: 240 4% 16%;
+    --toolbar-bg: 240 6% 8%;
+    /* Match surface */
+    --note-hover: 240 4% 16%;
+    --note-active: 175 84% 10%;
+    /* Dark teal tint */
     --success: 142 60% 40%;
     --warning: 38 85% 50%;
   }

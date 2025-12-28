@@ -18,12 +18,19 @@ export interface ImplicitMatch {
 export class ImplicitEntityMatcher {
     /**
      * Find all implicit mentions in text
+     * @param text - The text to search for entity mentions
+     * @param noteId - The note ID (for context)
+     * @param cachedEntities - Optional pre-fetched entities to avoid redundant getAllEntities() calls
      */
-    findImplicitMentions(text: string, noteId: string): ImplicitMatch[] {
+    findImplicitMentions(
+        text: string,
+        noteId: string,
+        cachedEntities?: RegisteredEntity[]
+    ): ImplicitMatch[] {
         const matches: ImplicitMatch[] = [];
 
-        // Get all registered entities from the registry
-        const allEntities = entityRegistry.getAllEntities();
+        // OPTIMIZATION: Use cached entities or fetch once
+        const allEntities = cachedEntities ?? entityRegistry.getAllEntities();
 
         if (allEntities.length === 0) return matches;
 

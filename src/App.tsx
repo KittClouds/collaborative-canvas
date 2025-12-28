@@ -4,7 +4,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-// ✅ ADD THESE IMPORTS
 import { Provider as JotaiProvider } from "jotai";
 import { jotaiStore, initializeJotaiStore } from "@/lib/store";
 
@@ -15,6 +14,7 @@ import { initializeStorage, getBlueprintStore } from "@/lib/storage/index";
 import { BlueprintHubProvider } from "@/features/blueprint-hub/context/BlueprintHubContext";
 import { BlueprintHubPanel } from "@/features/blueprint-hub/components/BlueprintHubPanel";
 import { NERProvider } from "@/contexts/NERContext";
+import { EntityThemeProvider } from "@/contexts/EntityThemeContext";
 import { initializeSQLiteAndHydrate } from "@/lib/db";
 import { initCozoGraphSchema } from '@/lib/cozo/schema/init';
 
@@ -22,7 +22,6 @@ const queryClient = new QueryClient();
 
 const App = () => {
     const [storageReady, setStorageReady] = useState(false);
-    // ✅ ADD JOTAI READY STATE
     const [jotaiReady, setJotaiReady] = useState(false);
     const [initStatus, setInitStatus] = useState("Initializing...");
 
@@ -81,23 +80,24 @@ const App = () => {
     }
 
     return (
-        // ✅ WRAP WITH JOTAI PROVIDER
         <JotaiProvider store={jotaiStore}>
             <QueryClientProvider client={queryClient}>
                 <TooltipProvider>
                     <NERProvider>
-                        <BlueprintHubProvider>
-                            <Toaster />
-                            <Sonner />
-                            <BlueprintHubPanel />
-                            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                                <Routes>
-                                    <Route path="/" element={<Index />} />
-                                    <Route path="/graph" element={<GraphExplorerPage />} />
-                                    <Route path="*" element={<NotFound />} />
-                                </Routes>
-                            </BrowserRouter>
-                        </BlueprintHubProvider>
+                        <EntityThemeProvider>
+                            <BlueprintHubProvider>
+                                <Toaster />
+                                <Sonner />
+                                <BlueprintHubPanel />
+                                <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                                    <Routes>
+                                        <Route path="/" element={<Index />} />
+                                        <Route path="/graph" element={<GraphExplorerPage />} />
+                                        <Route path="*" element={<NotFound />} />
+                                    </Routes>
+                                </BrowserRouter>
+                            </BlueprintHubProvider>
+                        </EntityThemeProvider>
                     </NERProvider>
                 </TooltipProvider>
             </QueryClientProvider>
@@ -106,4 +106,3 @@ const App = () => {
 };
 
 export default App;
-

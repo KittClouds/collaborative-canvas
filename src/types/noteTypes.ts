@@ -33,6 +33,7 @@ export interface Folder {
     // Entity/Network fields
     isTypedRoot?: boolean | number;
     entityKind?: string | null;
+    inherited_kind?: string | null;
     entitySubtype?: string | null;
     color?: string | null;
 }

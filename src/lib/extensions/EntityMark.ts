@@ -67,14 +67,19 @@ export const EntityMark = Mark.create<EntityMarkOptions>({
 
   renderHTML({ HTMLAttributes }) {
     const kind = HTMLAttributes['data-kind'] as EntityKind;
-    const color = ENTITY_COLORS[kind] || '#6b7280';
+
+    let styleParams = 'background-color: #6b728020; color: #6b7280;';
+    if (kind && ENTITY_COLORS[kind]) {
+      const varName = `--entity-${kind.toLowerCase().replace('_', '-')}`;
+      styleParams = `background-color: hsl(var(${varName}) / 0.2); color: hsl(var(${varName}));`;
+    }
 
     return [
       'span',
       mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
         'data-entity': 'true',
         class: 'entity-mark',
-        style: `background-color: ${color}20; color: ${color}; padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em;`,
+        style: `${styleParams} padding: 2px 6px; border-radius: 4px; font-weight: 500; font-size: 0.875em;`,
       }),
       0,
     ];
@@ -84,14 +89,14 @@ export const EntityMark = Mark.create<EntityMarkOptions>({
     return {
       setEntity:
         (kind, label, attributes) =>
-        ({ commands }) => {
-          return commands.setMark(this.name, { kind, label, attributes });
-        },
+          ({ commands }) => {
+            return commands.setMark(this.name, { kind, label, attributes });
+          },
       unsetEntity:
         () =>
-        ({ commands }) => {
-          return commands.unsetMark(this.name);
-        },
+          ({ commands }) => {
+            return commands.unsetMark(this.name);
+          },
     };
   },
 

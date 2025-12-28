@@ -1,6 +1,7 @@
 import { scannerEventBus } from './ScannerEventBus';
 import { ChangeDetector, type DocumentChange } from './ChangeDetector';
 import { patternExtractor } from '../extractors/PatternExtractor';
+import { ahoCorasickExtractor } from '../extractors/AhoCorasickExtractor';
 import { tripleExtractor, type ExtractedTriple } from '../extractors/TripleExtractor';
 import { implicitEntityMatcher } from '../extractors/ImplicitEntityMatcher';
 import { getRelationshipExtractor, type EntitySpan } from '../extractors/RelationshipExtractor';
@@ -38,6 +39,7 @@ export class ScannerOrchestrator {
             enableRelationshipInference: true, // Phase 7C: enabled
             relationshipConfidenceThreshold: 0.65,
             batchSize: 50,
+            useAhoCorasickExtractor: true, // O(n) Aho-Corasick enabled by default
             ...config,
         };
         this.changeDetector = new ChangeDetector();
@@ -46,6 +48,15 @@ export class ScannerOrchestrator {
         this.setTriplePersistence((triples, noteId) =>
             triplePersistence.persistTriples(triples, noteId)
         );
+    }
+
+    /**
+     * Get the active pattern extractor based on config
+     */
+    private get extractor() {
+        return this.config.useAhoCorasickExtractor
+            ? ahoCorasickExtractor
+            : patternExtractor;
     }
 
     /**
@@ -140,6 +151,11 @@ export class ScannerOrchestrator {
 
         console.log(`[Scanner 3.0] Processing ${changes.length} changes for ${noteId}`);
 
+        // OPTIMIZATION: Single entity fetch for entire scan cycle
+        // This prevents O(n) lookups in every downstream extractor
+        const cachedEntities = entityRegistry.getAllEntities();
+
+
         // 1. Extract and register entities
         try {
             const entityStart = performance.now();
@@ -153,7 +169,7 @@ export class ScannerOrchestrator {
 
             for (const change of entityEvents) {
                 try {
-                    let events = patternExtractor.extractEntities(change.text, noteId);
+                    let events = this.extractor.extractEntities(change.text, noteId);
 
                     // NLP Enrichment
                     if (this.config.enableNLP && change.context) {
@@ -223,7 +239,7 @@ export class ScannerOrchestrator {
 
                 for (const change of tripleChanges) {
                     try {
-                        const events = patternExtractor.extractTriples(change.text, noteId);
+                        const events = this.extractor.extractTriples(change.text, noteId);
                         for (const event of events) {
                             const triple = tripleExtractor.parseTriple(event, change.text);
                             if (triple && tripleExtractor.validateTriple(triple)) {
@@ -266,7 +282,8 @@ export class ScannerOrchestrator {
 
                 let implicitMatches = implicitEntityMatcher.findImplicitMentions(
                     fullText,
-                    noteId
+                    noteId,
+                    cachedEntities // Pass cached entities
                 );
 
                 // Apply limits
@@ -309,15 +326,31 @@ export class ScannerOrchestrator {
             try {
                 const relStart = performance.now();
                 const relExtractor = getRelationshipExtractor();
-                const fullText = changes.map(c => c.context || c.text).join(' ');
+                const uniqueContexts = new Set<string>();
+                const fragments: string[] = [];
+
+                for (const change of changes) {
+                    const text = change.context || change.text;
+                    if (text && !uniqueContexts.has(text)) {
+                        uniqueContexts.add(text);
+                        fragments.push(text);
+                    }
+                }
+
+                const fullText = fragments.join(' ');
 
                 // Build entity spans from registered entities in the text
-                const allEntities = entityRegistry.getAllEntities();
+                // OPTIMIZATION: Use cached entities and fast indexOf pre-filter
                 const entitySpans: EntitySpan[] = [];
+                const lowerFullText = fullText.toLowerCase();
 
-                for (const entity of allEntities) {
+                for (const entity of cachedEntities) {
                     const searchTerms = [entity.label, ...(entity.aliases || [])];
                     for (const term of searchTerms) {
+                        // Pre-filter: skip if term is not in text at all (fast indexOf check)
+                        if (lowerFullText.indexOf(term.toLowerCase()) === -1) continue;
+
+                        // Only create regex if term exists in text
                         const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
                         let match;
                         while ((match = regex.exec(fullText)) !== null) {
@@ -333,7 +366,7 @@ export class ScannerOrchestrator {
 
                 if (entitySpans.length >= 2) {
                     // Extract relationships using linguistic patterns
-                    const relationships = relExtractor.extractFromText(fullText, noteId);
+                    const relationships = relExtractor.extractFromText(fullText, noteId, cachedEntities);
 
                     // Filter by confidence and deduplicate
                     const deduplicated = relExtractor.deduplicateRelationships(relationships);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Plus, Trash2 } from 'lucide-react';
+import { Database, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -48,13 +48,13 @@ export function SchemaManager() {
           className="h-8 w-8"
           title="Schema Manager"
         >
-          <Settings className="h-4 w-4" />
+          <Database className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
           <DialogTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
+            <Database className="h-5 w-5" />
             Schema Manager
           </DialogTitle>
         </DialogHeader>
@@ -65,7 +65,7 @@ export function SchemaManager() {
             <TabsTrigger value="blueprints">Blueprints</TabsTrigger>
             <TabsTrigger value="how-to-use">How to Use</TabsTrigger>
           </TabsList>
-          
+
           <ScrollArea className="flex-1 px-6 py-4">
             <TabsContent value="entity-types" className="mt-0">
               <EntityTypesTab />

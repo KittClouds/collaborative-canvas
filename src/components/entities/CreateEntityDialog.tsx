@@ -97,7 +97,11 @@ export function CreateEntityDialog({ onEntityCreated, currentNoteId }: CreateEnt
                                         <div className="flex items-center gap-2">
                                             <div
                                                 className="w-3 h-3 rounded-full"
-                                                style={{ backgroundColor: ENTITY_COLORS[k] || '#6b7280' }}
+                                                style={{
+                                                    backgroundColor: ENTITY_COLORS[k]
+                                                        ? `hsl(var(--entity-${k.toLowerCase().replace('_', '-')}))`
+                                                        : '#6b7280'
+                                                }}
                                             />
                                             {k}
                                         </div>

@@ -128,7 +128,11 @@ function getIcon(iconName?: string): LucideIcon {
  * Get a color for the icon based on entity kind
  */
 function getIconColor(kind: EntityKind): string {
-    return ENTITY_COLORS[kind] || '#8b5cf6';
+    if (ENTITY_COLORS[kind]) {
+        const varName = `--entity-${kind.toLowerCase().replace('_', '-')}`;
+        return `hsl(var(${varName}))`;
+    }
+    return '#8b5cf6';
 }
 
 /**

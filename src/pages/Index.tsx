@@ -1,7 +1,7 @@
 
 import { AppSidebar } from '@/components/app-sidebar';
-import { AppHeader } from '@/components/AppHeader';
 import { FooterLinksPanel } from '@/components/FooterLinksPanel';
+import { SettingsDropdown } from '@/components/header/SettingsDropdown';
 import { useBlueprintHub } from '@/features/blueprint-hub/hooks/useBlueprintHub';
 import {
   Breadcrumb,
@@ -14,7 +14,8 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Menu, FileText, Trash2 } from 'lucide-react';
+import { FileText, Trash2 } from 'lucide-react';
+import { GraphLogo } from '@/components/ui/GraphLogo';
 import RichEditor from '@/components/editor/RichEditor';
 import { useTheme } from '@/hooks/useTheme';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
@@ -204,8 +205,6 @@ function NotesApp() {
 
               {/* Header Actions */}
               <div className="flex items-center gap-1">
-                <AppHeader />
-                <SchemaManager />
                 {selectedNote && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -238,15 +237,15 @@ function NotesApp() {
                     </AlertDialogContent>
                   </AlertDialog>
                 )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleToolbarVisibilityChange(!toolbarVisible)}
-                  title={toolbarVisible ? 'Hide toolbar (Ctrl+\\)' : 'Show toolbar (Ctrl+\\)'}
-                  className="h-8 w-8"
-                >
-                  <Menu className="h-4 w-4" />
-                </Button>
+
+                <SchemaManager />
+
+                <SettingsDropdown
+                  toolbarVisible={toolbarVisible}
+                  onToolbarToggle={handleToolbarVisibilityChange}
+                  schemaManagerTrigger={null}
+                />
+
                 <RightSidebarTrigger />
                 <ThemeToggle />
               </div>
@@ -270,8 +269,8 @@ function NotesApp() {
               ) : (
                 <div className="flex flex-col items-center justify-center h-full bg-background">
                   <div className="text-center space-y-6 max-w-md mx-auto px-6 animate-fade-in">
-                    <div className="w-20 h-20 rounded-2xl bg-accent flex items-center justify-center mx-auto">
-                      <FileText className="h-10 w-10 text-accent-foreground" />
+                    <div className="flex justify-center">
+                      <GraphLogo className="w-24 h-24 opacity-80" />
                     </div>
                     <div className="space-y-3">
                       <h2 className="text-2xl font-semibold text-foreground">No note selected</h2>

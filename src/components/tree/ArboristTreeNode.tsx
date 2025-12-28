@@ -124,12 +124,12 @@ export function ArboristTreeNode({
             </span>
 
             {/* Entity badge */}
-            {data.entityKind && (
+            {data.entityKind && ENTITY_COLORS[data.entityKind] && (
                 <span
                     className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 z-10"
                     style={{
-                        backgroundColor: `${ENTITY_COLORS[data.entityKind]}20`,
-                        color: ENTITY_COLORS[data.entityKind],
+                        backgroundColor: `hsl(var(--entity-${data.entityKind.toLowerCase().replace('_', '-')}) / 0.2)`,
+                        color: `hsl(var(--entity-${data.entityKind.toLowerCase().replace('_', '-')}))`,
                     }}
                 >
                     {data.entitySubtype

@@ -1,4 +1,7 @@
 export { PatternExtractor, patternExtractor } from './PatternExtractor';
+export { AhoCorasickExtractor, ahoCorasickExtractor } from './AhoCorasickExtractor';
+export { AhoCorasickMatcher, ahoCorasickMatcher, type DiscriminatorHit } from './AhoCorasickMatcher';
+export { ExplicitParser, explicitParser, type ParseResult } from './ExplicitParser';
 export { TripleExtractor, tripleExtractor, type ExtractedTriple } from './TripleExtractor';
 export { ImplicitEntityMatcher, implicitEntityMatcher, type ImplicitMatch } from './ImplicitEntityMatcher';
 export {

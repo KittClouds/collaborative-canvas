@@ -261,9 +261,12 @@ function buildAllDecorations(
         if (pattern.kind === 'entity') {
           // Try to extract kind from regex if possible, or use generic
           // Default entity pattern has Kind in group 1
-          if (match[1] && ENTITY_COLORS[match[1] as EntityKind]) {
-            color = ENTITY_COLORS[match[1] as EntityKind];
-            bgColor = `${color}20`;
+          const entityKind = match[1] as EntityKind;
+          // Check if it's a known kind that would have a CSS var
+          if (entityKind && ENTITY_COLORS[entityKind]) {
+            const varName = `--entity-${entityKind.toLowerCase().replace('_', '-')}`;
+            color = `hsl(var(${varName}))`;
+            bgColor = `hsl(var(${varName}) / 0.15)`;
           }
         }
 
@@ -430,11 +433,14 @@ function buildAllDecorations(
               processed.add(i);
             }
 
-            const color = ENTITY_COLORS[entity.kind] || '#6b7280';
+            const varName = `--entity-${entity.kind.toLowerCase().replace('_', '-')}`;
+            const color = `hsl(var(${varName}))`;
+            const bgColor = `hsl(var(${varName}) / 0.1)`;
+
             decorations.push(
               Decoration.inline(from, to, {
                 class: 'entity-implicit-highlight',
-                style: `background-color: ${color}10; color: ${color}; padding: 0px 2px; border-bottom: 2px dotted ${color}; cursor: help;`,
+                style: `background-color: ${bgColor}; color: ${color}; padding: 0px 2px; border-bottom: 2px dotted ${color}; cursor: help;`,
                 'data-entity-id': entity.id,
                 'data-entity-kind': entity.kind,
                 'data-entity-label': entity.label,
