@@ -27,6 +27,15 @@ export interface PatternMatchEvent {
     context?: string;           // Surrounding text (e.g. paragraph)
 }
 
+/**
+ * AllProfanity matcher configuration
+ */
+export interface AllProfanityMatcherConfig {
+    enableCaching: boolean;     // LRU cache for repeated scans (default: true)
+    cacheSize: number;          // Max cache entries (default: 1000)
+    enableLeetSpeak: boolean;   // Detect obfuscated mentions like Fr0d0 (default: true)
+}
+
 export interface ScannerConfig {
     debounceMs: number;         // Default: 500ms
     enableNLP: boolean;         // WinkNLP enrichment
@@ -37,4 +46,7 @@ export interface ScannerConfig {
     relationshipConfidenceThreshold: number; // Minimum confidence to persist
     batchSize: number;          // CoZo batch insert size
     useAhoCorasickExtractor: boolean; // Use O(n) Aho-Corasick extractor vs regex
+    useAllProfanityMatcher: boolean; // Scanner 3.5: AllProfanity for implicit matching
+    allProfanityConfig?: AllProfanityMatcherConfig; // AllProfanity options
+    useRelationshipWorker: boolean; // Scanner 3.5: Web Worker for relationship extraction
 }

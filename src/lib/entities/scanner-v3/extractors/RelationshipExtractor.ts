@@ -145,6 +145,7 @@ export class RelationshipExtractor {
 
     // OPTIMIZATION: Cache compiled regexes to avoid repeated new RegExp() calls
     private entityRegexCache = new Map<string, RegExp>();
+    private verbRegexCache = new Map<string, RegExp>();
 
     constructor() {
         this.buildLookupMaps();
@@ -163,6 +164,19 @@ export class RelationshipExtractor {
             this.entityRegexCache.set(term, regex);
         }
         regex.lastIndex = 0; // Reset for reuse
+        return regex;
+    }
+
+    /**
+     * Get or create a cached regex for verb pattern matching
+     * Avoids expensive regex compilation in extractFromEntitySpans
+     */
+    private getVerbRegex(verb: string): RegExp {
+        let regex = this.verbRegexCache.get(verb);
+        if (!regex) {
+            regex = new RegExp(`\\b${verb}\\w*\\b`, 'i');
+            this.verbRegexCache.set(verb, regex);
+        }
         return regex;
     }
 
@@ -406,7 +420,7 @@ export class RelationshipExtractor {
 
                 // Check verb patterns
                 for (const [verb, rules] of this.verbLookup.entries()) {
-                    const regex = new RegExp(`\\b${verb}\\w*\\b`, 'i');
+                    const regex = this.getVerbRegex(verb);  // Use cached regex
                     const match = textBetween.match(regex);
 
                     if (match) {
@@ -810,6 +824,20 @@ export class RelationshipExtractor {
             categories.add(pattern.category);
         }
         return Array.from(categories).sort();
+    }
+
+    /**
+     * Get all verb pattern rules (for Web Worker serialization)
+     */
+    getVerbPatternRules(): VerbPatternRule[] {
+        return [...VERB_PATTERN_RULES, ...this.customVerbPatterns, ...this.cozoPatterns];
+    }
+
+    /**
+     * Get all prep pattern rules (for Web Worker serialization)
+     */
+    getPrepPatternRules(): PrepPatternRule[] {
+        return [...PREP_PATTERN_RULES];
     }
 }
 

@@ -1,5 +1,6 @@
 import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import type { RegisteredEntity } from '@/lib/cozo/graph/adapters/EntityRegistryAdapter';
+import { allProfanityEntityMatcher } from './AllProfanityEntityMatcher';
 
 export interface ImplicitMatch {
     entity: RegisteredEntity;
@@ -7,6 +8,7 @@ export interface ImplicitMatch {
     length: number;
     matchedText: string;
     confidence: 'high' | 'medium' | 'low';
+    matchType?: 'exact' | 'alias' | 'leet'; // Scanner 3.5: match type for debugging
 }
 
 /**
@@ -14,8 +16,20 @@ export interface ImplicitMatch {
  * 
  * This detects when a registered entity's label or alias appears
  * in prose text (not using [KIND|Label] syntax).
+ * 
+ * Scanner 3.5: Uses AllProfanity for O(n) matching with leet-speak detection
  */
 export class ImplicitEntityMatcher {
+    // Feature flag - defaults to true for Scanner 3.5
+    private useAllProfanity = true;
+
+    /**
+     * Enable or disable AllProfanity matcher
+     */
+    setUseAllProfanity(enabled: boolean): void {
+        this.useAllProfanity = enabled;
+    }
+
     /**
      * Find all implicit mentions in text
      * @param text - The text to search for entity mentions
@@ -27,6 +41,21 @@ export class ImplicitEntityMatcher {
         noteId: string,
         cachedEntities?: RegisteredEntity[]
     ): ImplicitMatch[] {
+        // Fast path: AllProfanity with caching and leet-speak detection
+        if (this.useAllProfanity && allProfanityEntityMatcher.isInitialized()) {
+            return allProfanityEntityMatcher.findMentions(text).map(m => ({
+                entity: m.entity,
+                position: m.position,
+                length: m.length,
+                matchedText: m.matchedText,
+                confidence: m.matchType === 'exact' ? 'high' as const
+                    : m.matchType === 'alias' ? 'medium' as const
+                        : 'low' as const,  // leet-speak
+                matchType: m.matchType,
+            }));
+        }
+
+        // Fallback: Original indexOf implementation
         const matches: ImplicitMatch[] = [];
 
         // OPTIMIZATION: Use cached entities or fetch once

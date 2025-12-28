@@ -89,6 +89,7 @@ describe('ScannerOrchestrator Performance', () => {
             debounceMs: 10,
             enableRelationshipInference: true,
             enableNLP: false,
+            useRelationshipWorker: false, // Disable worker for testing sync path
         });
     });
 
@@ -170,4 +171,27 @@ describe('ScannerOrchestrator Performance', () => {
         const thirdArg = extractSpy.mock.calls[0][2]; // 0th call, 2nd index (3rd arg)
         expect(thirdArg).toBe(mockEntities); // Should be strictly equal to the mock return
     });
+
+    it('should initialize AllProfanity matcher during startup when configured', async () => {
+        // Create orchestrator with AllProfanity enabled (default)
+        const testOrchestrator = new ScannerOrchestrator({
+            debounceMs: 10,
+            useAllProfanityMatcher: true,
+        });
+
+        // Mock getAllEntities to return some entities
+        (entityRegistry.getAllEntities as any).mockReturnValue([
+            { id: '1', label: 'Alice', kind: 'CHARACTER' },
+            { id: '2', label: 'Bob', kind: 'CHARACTER' },
+        ]);
+
+        // Initialize should call getAllEntities for AllProfanity setup
+        await testOrchestrator.initialize();
+
+        // Verify initialization happened
+        expect(entityRegistry.getAllEntities).toHaveBeenCalled();
+
+        testOrchestrator.shutdown();
+    });
 });
+

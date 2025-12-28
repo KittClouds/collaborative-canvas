@@ -4,6 +4,7 @@ import { patternExtractor } from '../extractors/PatternExtractor';
 import { ahoCorasickExtractor } from '../extractors/AhoCorasickExtractor';
 import { tripleExtractor, type ExtractedTriple } from '../extractors/TripleExtractor';
 import { implicitEntityMatcher } from '../extractors/ImplicitEntityMatcher';
+import { allProfanityEntityMatcher } from '../extractors/AllProfanityEntityMatcher';
 import { getRelationshipExtractor, type EntitySpan } from '../extractors/RelationshipExtractor';
 import { nlpEnricher } from '../enrichers/NLPEnricher';
 import { entityDisambiguator } from '../enrichers/EntityDisambiguator';
@@ -20,7 +21,7 @@ const MAX_IMPLICIT_MATCHES = 200;
 const SLOW_OPERATION_THRESHOLD_MS = 100;
 
 /**
- * Main Scanner 3.0 coordinator
+ * Main Scanner 3.5 coordinator
  * Listens to pattern-matched events and orchestrates extraction
  */
 export class ScannerOrchestrator {
@@ -28,6 +29,7 @@ export class ScannerOrchestrator {
     private changeDetector: ChangeDetector;
     private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
     private isInitialized = false;
+    private relationshipWorker: Worker | null = null;
 
     constructor(config: Partial<ScannerConfig> = {}) {
         this.config = {
@@ -40,6 +42,8 @@ export class ScannerOrchestrator {
             relationshipConfidenceThreshold: 0.65,
             batchSize: 50,
             useAhoCorasickExtractor: true, // O(n) Aho-Corasick enabled by default
+            useAllProfanityMatcher: true, // Scanner 3.5: AllProfanity for implicit matching
+            useRelationshipWorker: true, // Scanner 3.5: Web Worker for relationship extraction
             ...config,
         };
         this.changeDetector = new ChangeDetector();
@@ -48,6 +52,19 @@ export class ScannerOrchestrator {
         this.setTriplePersistence((triples, noteId) =>
             triplePersistence.persistTriples(triples, noteId)
         );
+    }
+
+    /**
+     * Get or create the relationship extraction Web Worker
+     */
+    private getRelationshipWorker(): Worker {
+        if (!this.relationshipWorker) {
+            this.relationshipWorker = new Worker(
+                new URL('../workers/RelationshipWorker.ts', import.meta.url),
+                { type: 'module' }
+            );
+        }
+        return this.relationshipWorker;
     }
 
     /**
@@ -67,19 +84,35 @@ export class ScannerOrchestrator {
 
         scannerEventBus.on('pattern-matched', this.handlePatternMatch.bind(this));
 
+        // Scanner 3.5: Initialize AllProfanity matcher with registered entities
+        if (this.config.useAllProfanityMatcher) {
+            try {
+                const entities = entityRegistry.getAllEntities();
+                allProfanityEntityMatcher.initialize(entities, this.config.allProfanityConfig);
+                console.log('[Scanner 3.5] AllProfanity matcher initialized with', entities.length, 'entities');
+            } catch (error) {
+                console.warn('[Scanner 3.5] Failed to initialize AllProfanity matcher:', error);
+                // Fallback: disable AllProfanity path in ImplicitEntityMatcher
+                implicitEntityMatcher.setUseAllProfanity(false);
+            }
+        } else {
+            // Explicitly disable if not configured
+            implicitEntityMatcher.setUseAllProfanity(false);
+        }
+
         // Load relationship patterns from CoZo/Blueprint Hub
         if (this.config.enableRelationshipInference) {
             try {
                 const relExtractor = getRelationshipExtractor();
                 await relExtractor.loadPatternsFromCoZo();
-                console.log('[Scanner 3.0] Relationship patterns loaded from CoZo');
+                console.log('[Scanner 3.5] Relationship patterns loaded from CoZo');
             } catch (error) {
-                console.warn('[Scanner 3.0] Failed to load CoZo patterns:', error);
+                console.warn('[Scanner 3.5] Failed to load CoZo patterns:', error);
             }
         }
 
         this.isInitialized = true;
-        console.log('[Scanner 3.0] Initialized');
+        console.log('[Scanner 3.5] Initialized');
     }
 
     /**
@@ -92,9 +125,9 @@ export class ScannerOrchestrator {
         try {
             const relExtractor = getRelationshipExtractor();
             await relExtractor.loadPatternsFromCoZo();
-            console.log('[Scanner 3.0] Relationship patterns reloaded');
+            console.log('[Scanner 3.5] Relationship patterns reloaded');
         } catch (error) {
-            console.error('[Scanner 3.0] Failed to reload patterns:', error);
+            console.error('[Scanner 3.5] Failed to reload patterns:', error);
         }
     }
 
@@ -137,7 +170,7 @@ export class ScannerOrchestrator {
     private logPerformance(operation: string, startTime: number): void {
         const duration = performance.now() - startTime;
         if (duration > SLOW_OPERATION_THRESHOLD_MS) {
-            console.warn(`[Scanner 3.0] Slow operation: ${operation} took ${duration.toFixed(1)}ms`);
+            console.warn(`[Scanner 3.5] Slow operation: ${operation} took ${duration.toFixed(1)}ms`);
         }
     }
 
@@ -149,7 +182,7 @@ export class ScannerOrchestrator {
         const changes = this.changeDetector.getPendingChanges(noteId);
         if (changes.length === 0) return;
 
-        console.log(`[Scanner 3.0] Processing ${changes.length} changes for ${noteId}`);
+        console.log(`[Scanner 3.5] Processing ${changes.length} changes for ${noteId}`);
 
         // OPTIMIZATION: Single entity fetch for entire scan cycle
         // This prevents O(n) lookups in every downstream extractor
@@ -163,7 +196,7 @@ export class ScannerOrchestrator {
 
             // Apply limit to prevent memory issues
             if (entityEvents.length > MAX_ENTITIES_PER_SCAN) {
-                console.warn(`[Scanner 3.0] Too many entities (${entityEvents.length}), truncating to ${MAX_ENTITIES_PER_SCAN}`);
+                console.warn(`[Scanner 3.5] Too many entities (${entityEvents.length}), truncating to ${MAX_ENTITIES_PER_SCAN}`);
                 entityEvents = entityEvents.slice(0, MAX_ENTITIES_PER_SCAN);
             }
 
@@ -221,13 +254,13 @@ export class ScannerOrchestrator {
                         }
                     }
                 } catch (entityError) {
-                    console.error('[Scanner 3.0] Error extracting entity from:', change.text, entityError);
+                    console.error('[Scanner 3.5] Error extracting entity from:', change.text, entityError);
                 }
             }
 
             this.logPerformance('Entity extraction', entityStart);
         } catch (error) {
-            console.error('[Scanner 3.0] Entity extraction phase failed:', error);
+            console.error('[Scanner 3.5] Entity extraction phase failed:', error);
         }
 
         // 2. Extract triples if enabled
@@ -247,19 +280,19 @@ export class ScannerOrchestrator {
                             }
                         }
                     } catch (tripleError) {
-                        console.error('[Scanner 3.0] Error extracting triple from:', change.text, tripleError);
+                        console.error('[Scanner 3.5] Error extracting triple from:', change.text, tripleError);
                     }
                 }
 
                 // Apply limit
                 if (extractedTriples.length > MAX_TRIPLES_PER_SCAN) {
-                    console.warn(`[Scanner 3.0] Too many triples (${extractedTriples.length}), truncating to ${MAX_TRIPLES_PER_SCAN}`);
+                    console.warn(`[Scanner 3.5] Too many triples (${extractedTriples.length}), truncating to ${MAX_TRIPLES_PER_SCAN}`);
                     extractedTriples = extractedTriples.slice(0, MAX_TRIPLES_PER_SCAN);
                 }
 
                 this.logPerformance('Triple extraction', tripleStart);
             } catch (error) {
-                console.error('[Scanner 3.0] Triple extraction phase failed:', error);
+                console.error('[Scanner 3.5] Triple extraction phase failed:', error);
             }
         }
 
@@ -270,7 +303,7 @@ export class ScannerOrchestrator {
                 await this.persistTriplesHook(extractedTriples, noteId);
                 this.logPerformance('Triple persistence', persistStart);
             } catch (error) {
-                console.error('[Scanner 3.0] Triple persistence failed:', error);
+                console.error('[Scanner 3.5] Triple persistence failed:', error);
             }
         }
 
@@ -288,7 +321,7 @@ export class ScannerOrchestrator {
 
                 // Apply limits
                 if (implicitMatches.length > MAX_IMPLICIT_MATCHES) {
-                    console.warn(`[Scanner 3.0] Too many implicit matches (${implicitMatches.length}), truncating`);
+                    console.warn(`[Scanner 3.5] Too many implicit matches (${implicitMatches.length}), truncating`);
                     implicitMatches = implicitMatches.slice(0, MAX_IMPLICIT_MATCHES);
                 }
 
@@ -296,7 +329,7 @@ export class ScannerOrchestrator {
 
                 if (filtered.length > 0) {
                     console.log(
-                        `[Scanner 3.0] Found ${filtered.length} implicit entity mentions:`,
+                        `[Scanner 3.5] Found ${filtered.length} implicit entity mentions:`,
                         filtered.slice(0, 5).map(m => m.matchedText), // Only log first 5
                         filtered.length > 5 ? `... and ${filtered.length - 5} more` : ''
                     );
@@ -317,7 +350,7 @@ export class ScannerOrchestrator {
 
                 this.logPerformance('Implicit matching', implicitStart);
             } catch (error) {
-                console.error('[Scanner 3.0] Implicit matching phase failed:', error);
+                console.error('[Scanner 3.5] Implicit matching phase failed:', error);
             }
         }
 
@@ -339,61 +372,148 @@ export class ScannerOrchestrator {
 
                 const fullText = fragments.join(' ');
 
-                // Build entity spans from registered entities in the text
-                // OPTIMIZATION: Use cached entities and fast indexOf pre-filter
-                const entitySpans: EntitySpan[] = [];
-                const lowerFullText = fullText.toLowerCase();
+                // Build entity spans using AllProfanity's O(n) matching
+                let entitySpans: EntitySpan[] = [];
 
-                for (const entity of cachedEntities) {
-                    const searchTerms = [entity.label, ...(entity.aliases || [])];
-                    for (const term of searchTerms) {
-                        // Pre-filter: skip if term is not in text at all (fast indexOf check)
-                        if (lowerFullText.indexOf(term.toLowerCase()) === -1) continue;
-
-                        // Only create regex if term exists in text
-                        const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-                        let match;
-                        while ((match = regex.exec(fullText)) !== null) {
-                            entitySpans.push({
-                                label: entity.label,
-                                start: match.index,
-                                end: match.index + match[0].length,
-                                kind: entity.kind,
-                            });
+                if (allProfanityEntityMatcher.isInitialized()) {
+                    const matches = allProfanityEntityMatcher.findMentions(fullText);
+                    entitySpans = matches.map(m => ({
+                        label: m.entity.label,
+                        start: m.position,
+                        end: m.position + m.length,
+                        kind: m.entity.kind,
+                    }));
+                } else {
+                    const lowerFullText = fullText.toLowerCase();
+                    for (const entity of cachedEntities) {
+                        const searchTerms = [entity.label, ...(entity.aliases || [])];
+                        for (const term of searchTerms) {
+                            const lowerTerm = term.toLowerCase();
+                            let idx = 0;
+                            while ((idx = lowerFullText.indexOf(lowerTerm, idx)) !== -1) {
+                                entitySpans.push({
+                                    label: entity.label,
+                                    start: idx,
+                                    end: idx + term.length,
+                                    kind: entity.kind,
+                                });
+                                idx += term.length;
+                            }
                         }
                     }
                 }
 
                 if (entitySpans.length >= 2) {
-                    // Extract relationships using linguistic patterns
-                    const relationships = relExtractor.extractFromText(fullText, noteId, cachedEntities);
+                    // Check if Web Worker is enabled
+                    if (this.config.useRelationshipWorker) {
+                        // Web Worker path: Non-blocking extraction
+                        const worker = this.getRelationshipWorker();
 
-                    // Filter by confidence and deduplicate
-                    const deduplicated = relExtractor.deduplicateRelationships(relationships);
-                    const filtered = deduplicated.filter(
-                        r => r.confidence >= this.config.relationshipConfidenceThreshold
-                    );
+                        // Serialize entities for worker
+                        const serializedEntities = cachedEntities.map(e => ({
+                            id: e.id,
+                            label: e.label,
+                            aliases: e.aliases || [],
+                            kind: e.kind,
+                        }));
 
-                    if (filtered.length > 0) {
-                        console.log(
-                            `[Scanner 3.0] Inferred ${filtered.length} relationships:`,
-                            filtered.slice(0, 3).map(r =>
-                                `${r.source.text} -[${r.predicate}]-> ${r.target.text}`
-                            ),
-                            filtered.length > 3 ? `... and ${filtered.length - 3} more` : ''
+                        // Get pattern rules for worker
+                        const verbRules = relExtractor.getVerbPatternRules();
+                        const prepRules = relExtractor.getPrepPatternRules();
+
+                        // Send to worker
+                        worker.postMessage({
+                            type: 'EXTRACT_RELATIONSHIPS',
+                            payload: {
+                                text: fullText,
+                                noteId,
+                                entities: serializedEntities,
+                                verbRules,
+                                prepRules,
+                            }
+                        });
+
+                        // Handle worker response
+                        worker.onmessage = async (event) => {
+                            if (event.data.type === 'RELATIONSHIPS_EXTRACTED') {
+                                const { relationships, stats } = event.data.payload;
+
+                                // Filter by confidence threshold
+                                const filtered = relationships.filter(
+                                    (r: any) => r.confidence >= this.config.relationshipConfidenceThreshold
+                                );
+
+                                if (filtered.length > 0) {
+                                    console.log(
+                                        `[Scanner 3.5] Worker extracted ${filtered.length} relationships in ${stats.processingTimeMs.toFixed(1)}ms:`,
+                                        `SVO=${stats.svoCount}, PREP=${stats.prepCount}, POSS=${stats.possessionCount}`
+                                    );
+
+                                    // Convert worker output to ExtractedRelationship format and persist
+                                    const forPersistence = filtered.map((r: any) => ({
+                                        source: {
+                                            entity: cachedEntities.find(e => e.id === r.sourceEntityId)!,
+                                            text: r.sourceText,
+                                            position: r.sourcePosition,
+                                        },
+                                        target: {
+                                            entity: cachedEntities.find(e => e.id === r.targetEntityId)!,
+                                            text: r.targetText,
+                                            position: r.targetPosition,
+                                        },
+                                        predicate: r.predicate,
+                                        pattern: r.pattern,
+                                        confidence: r.confidence,
+                                        context: {
+                                            sentence: r.sentenceText,
+                                            sentenceIndex: r.sentenceIndex,
+                                            verbLemma: r.verbLemma,
+                                            preposition: r.preposition,
+                                        },
+                                        metadata: {
+                                            extractedAt: new Date(r.extractedAt),
+                                            noteId: r.noteId,
+                                        },
+                                    }));
+
+                                    const deduplicated = relExtractor.deduplicateRelationships(forPersistence);
+                                    const result = await relExtractor.persistRelationships(deduplicated);
+                                    console.log(
+                                        `[Scanner 3.5] Relationships: ${result.added} added, ${result.failed} failed`
+                                    );
+                                }
+                            } else if (event.data.type === 'RELATIONSHIP_ERROR') {
+                                console.error('[Scanner 3.5] Worker error:', event.data.payload.error);
+                            }
+                        };
+                    } else {
+                        // Fallback: Sync extraction (blocks main thread)
+                        const relationships = relExtractor.extractFromText(fullText, noteId, cachedEntities);
+                        const deduplicated = relExtractor.deduplicateRelationships(relationships);
+                        const filtered = deduplicated.filter(
+                            r => r.confidence >= this.config.relationshipConfidenceThreshold
                         );
 
-                        // Persist relationships
-                        const result = await relExtractor.persistRelationships(filtered);
-                        console.log(
-                            `[Scanner 3.0] Relationships: ${result.added} added, ${result.failed} failed`
-                        );
+                        if (filtered.length > 0) {
+                            console.log(
+                                `[Scanner 3.5] Inferred ${filtered.length} relationships:`,
+                                filtered.slice(0, 3).map(r =>
+                                    `${r.source.text} -[${r.predicate}]-> ${r.target.text}`
+                                ),
+                                filtered.length > 3 ? `... and ${filtered.length - 3} more` : ''
+                            );
+
+                            const result = await relExtractor.persistRelationships(filtered);
+                            console.log(
+                                `[Scanner 3.5] Relationships: ${result.added} added, ${result.failed} failed`
+                            );
+                        }
                     }
                 }
 
                 this.logPerformance('Relationship inference', relStart);
             } catch (error) {
-                console.error('[Scanner 3.0] Relationship inference failed:', error);
+                console.error('[Scanner 3.5] Relationship inference failed:', error);
             }
         }
 
@@ -401,7 +521,7 @@ export class ScannerOrchestrator {
         this.changeDetector.clearChanges(noteId);
 
         const totalDuration = performance.now() - overallStart;
-        console.log(`[Scanner 3.0] Completed processing for ${noteId} in ${totalDuration.toFixed(1)}ms`);
+        console.log(`[Scanner 3.5] Completed processing for ${noteId} in ${totalDuration.toFixed(1)}ms`);
     }
 
     /**
@@ -422,8 +542,15 @@ export class ScannerOrchestrator {
         }
         this.debounceTimers.clear();
         scannerEventBus.clear();
+
+        // Terminate relationship worker
+        if (this.relationshipWorker) {
+            this.relationshipWorker.terminate();
+            this.relationshipWorker = null;
+        }
+
         this.isInitialized = false;
-        console.log('[Scanner 3.0] Shutdown');
+        console.log('[Scanner 3.5] Shutdown');
     }
 }
 

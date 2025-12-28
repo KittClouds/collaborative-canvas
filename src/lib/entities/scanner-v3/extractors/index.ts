@@ -4,6 +4,7 @@ export { AhoCorasickMatcher, ahoCorasickMatcher, type DiscriminatorHit } from '.
 export { ExplicitParser, explicitParser, type ParseResult } from './ExplicitParser';
 export { TripleExtractor, tripleExtractor, type ExtractedTriple } from './TripleExtractor';
 export { ImplicitEntityMatcher, implicitEntityMatcher, type ImplicitMatch } from './ImplicitEntityMatcher';
+export { AllProfanityEntityMatcher, allProfanityEntityMatcher, type EntityMatch, type AllProfanityConfig } from './AllProfanityEntityMatcher';
 export {
     RelationshipExtractor,
     getRelationshipExtractor,
