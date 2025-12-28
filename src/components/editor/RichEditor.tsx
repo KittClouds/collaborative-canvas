@@ -113,7 +113,7 @@ function createExtensions(
   onTemporalClick?: (temporal: string) => void,
   onBacklinkClick?: (title: string) => void,
   getNEREntities?: () => any[],
-  noteId?: string
+  getNoteId?: () => string | undefined  // Dynamic getter instead of static
 ) {
   return [
     // Base Extensions
@@ -275,7 +275,7 @@ function createExtensions(
       useWidgetMode: true,
       enableLinkTracking: true,
       enableScannerEvents: true, // Scanner 3.0: emit pattern-matched events
-      currentNoteId: noteId,
+      currentNoteId: getNoteId,  // Pass getter for dynamic noteId resolution
     }),
   ];
 }
@@ -376,7 +376,15 @@ const RichEditor = ({
     optionsRef.current = { onWikilinkClick, checkWikilinkExists, onTemporalClick, onBacklinkClick };
   });
 
-  // Create extensions ONCE - using noteId from atom
+  // Use ref for noteId to avoid re-creating extensions on every note switch
+  const noteIdRef = useRef(noteId);
+  useEffect(() => {
+    noteIdRef.current = noteId;
+  }, [noteId]);
+
+  // Create extensions ONCE - stable across note switches
+  // CRITICAL: Extensions are expensive to recreate (~150ms TipTap remount)
+  // Using refs for dynamic values that need to update without recreation
   const extensions = useMemo(
     () => createExtensions(
       (title) => optionsRef.current.onWikilinkClick?.(title),
@@ -384,9 +392,9 @@ const RichEditor = ({
       (temporal) => optionsRef.current.onTemporalClick?.(temporal),
       (title) => optionsRef.current.onBacklinkClick?.(title),
       () => nerEntitiesRef.current,
-      noteId
+      () => noteIdRef.current  // Dynamic getter instead of static value
     ),
-    [noteId]
+    []  // ← STABLE - never re-creates extensions
   );
 
   // Parse content to JSON if needed
@@ -500,10 +508,10 @@ const RichEditor = ({
       )}
 
       <RichTextProvider editor={editor} dark={isDarkMode}>
-        {/* Toolbar */}
-        {toolbarVisible && <EditorToolbar />}
+        {/* Toolbar - delay until editor view is ready to prevent isActive() error */}
+        {editorReady && toolbarVisible && <EditorToolbar />}
 
-        {/* Editor Content Area */}
+        {/* Editor Content Area - safe to render immediately */}
         <div
           className="flex-1 overflow-auto custom-scrollbar bg-background relative"
         >

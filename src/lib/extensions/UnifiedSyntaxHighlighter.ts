@@ -10,6 +10,7 @@ import { mentionEventQueue } from '../entities/mention-event-queue';
 import type { EntityMentionEvent, PositionType } from '../cozo/types';
 import { scannerEventBus, type PatternMatchEvent } from '@/lib/entities/scanner-v3';
 import { computeContentHash } from '@/lib/entities/scanner-v3/core/ChangeDetector';
+import { allProfanityEntityMatcher } from '@/lib/entities/scanner-v3/extractors/AllProfanityEntityMatcher';
 
 // Cache for tracking last emitted content hash per note
 // Prevents redundant scanner events when returning to unchanged notes
@@ -26,8 +27,18 @@ export interface UnifiedSyntaxOptions {
   onNEREntityClick?: (entity: NEREntity) => void;
   useWidgetMode?: boolean;
   enableLinkTracking?: boolean;
-  currentNoteId?: string;
+  currentNoteId?: string | (() => string | undefined); // Support dynamic getter
   enableScannerEvents?: boolean;
+}
+
+/**
+ * Helper to resolve noteId from static value or getter
+ */
+function resolveNoteId(noteId: string | (() => string | undefined) | undefined): string {
+  if (typeof noteId === 'function') {
+    return noteId() || 'unknown';
+  }
+  return noteId || 'unknown';
 }
 
 const syntaxPluginKey = new PluginKey('unified-syntax-highlighter');
@@ -152,7 +163,7 @@ function buildAllDecorations(
 ): DecorationSet {
   const decorations: Decoration[] = [];
   const useWidgets = options.useWidgetMode ?? false;
-  const noteId = options.currentNoteId || 'unknown';
+  const noteId = resolveNoteId(options.currentNoteId);
 
   // Extract full document text for content-hash comparison
   let fullDocText = '';
@@ -405,50 +416,44 @@ function buildAllDecorations(
       }
     }
 
-    // 3. Registered Implicit Entities (Keep existing logic)
-    const allRegistered = entityRegistry.getAllEntities();
-    if (allRegistered.length > 0) {
-      for (const entity of allRegistered) {
-        const patterns = [entity.label, ...(entity.aliases || [])];
-        for (const pattern of patterns) {
-          const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
-          let match;
-          while ((match = regex.exec(text)) !== null) {
-            const from = pos + match.index;
-            const to = from + match[0].length;
+    // 3. Registered Implicit Entities - Using AllProfanity's O(n) Aho-Corasick
+    // Scanner 3.5 alignment: Same matcher, same Trie, no per-entity regex
+    if (allProfanityEntityMatcher.isInitialized()) {
+      const implicitMatches = allProfanityEntityMatcher.findMentions(text);
 
-            // Check overlap
-            let hasOverlap = false;
-            for (let i = match.index; i < match.index + match[0].length; i++) {
-              if (processed.has(i)) {
-                hasOverlap = true;
-                break;
-              }
-            }
-            if (hasOverlap) continue;
+      for (const match of implicitMatches) {
+        const from = pos + match.position;
+        const to = from + match.length;
 
-            // Mark processed
-            for (let i = match.index; i < match.index + match[0].length; i++) {
-              processed.add(i);
-            }
-
-            const varName = `--entity-${entity.kind.toLowerCase().replace('_', '-')}`;
-            const color = `hsl(var(${varName}))`;
-            const bgColor = `hsl(var(${varName}) / 0.1)`;
-
-            decorations.push(
-              Decoration.inline(from, to, {
-                class: 'entity-implicit-highlight',
-                style: `background-color: ${bgColor}; color: ${color}; padding: 0px 2px; border-bottom: 2px dotted ${color}; cursor: help;`,
-                'data-entity-id': entity.id,
-                'data-entity-kind': entity.kind,
-                'data-entity-label': entity.label,
-                'title': `${entity.kind}: ${entity.label}`
-              }, { inclusiveStart: false, inclusiveEnd: false })
-            );
+        // Check overlap
+        let hasOverlap = false;
+        for (let i = match.position; i < match.position + match.length; i++) {
+          if (processed.has(i)) {
+            hasOverlap = true;
+            break;
           }
         }
+        if (hasOverlap) continue;
+
+        // Mark processed
+        for (let i = match.position; i < match.position + match.length; i++) {
+          processed.add(i);
+        }
+
+        const varName = `--entity-${match.entity.kind.toLowerCase().replace('_', '-')}`;
+        const color = `hsl(var(${varName}))`;
+        const bgColor = `hsl(var(${varName}) / 0.1)`;
+
+        decorations.push(
+          Decoration.inline(from, to, {
+            class: 'entity-implicit-highlight',
+            style: `background-color: ${bgColor}; color: ${color}; padding: 0px 2px; border-bottom: 2px dotted ${color}; cursor: help;`,
+            'data-entity-id': match.entity.id,
+            'data-entity-kind': match.entity.kind,
+            'data-entity-label': match.entity.label,
+            'title': `${match.entity.kind}: ${match.entity.label}`
+          }, { inclusiveStart: false, inclusiveEnd: false })
+        );
       }
     }
   });
@@ -585,7 +590,8 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
       new Plugin({
         key: new PluginKey('bidirectional-link-tracker'),
         appendTransaction(transactions, oldState, newState) {
-          if (options.enableLinkTracking === false || !options.currentNoteId) {
+          const noteId = resolveNoteId(options.currentNoteId);
+          if (options.enableLinkTracking === false || noteId === 'unknown') {
             return null;
           }
 
@@ -593,7 +599,7 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
             return null;
           }
 
-          const mentions = extractEntityMentionsFromDoc(newState.doc, options.currentNoteId);
+          const mentions = extractEntityMentionsFromDoc(newState.doc, noteId);
 
           if (mentions.length > 0) {
             mentions.forEach(mention => mentionEventQueue.enqueue(mention));

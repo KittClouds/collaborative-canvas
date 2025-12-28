@@ -137,3 +137,31 @@ useRelationshipWorker: boolean;  // Default: true
 | UI Blocking | 200-225ms | 0ms |
 | Extraction Time | ~200ms | ~75ms |
 | Relationship Accuracy | 18/18 | 18/18 |
+
+### UnifiedSyntaxHighlighter Optimization (v3.5.3)
+
+Aligns the editor's syntax highlighter with Scanner 3.5's optimizations.
+
+**Problem**: Implicit entity decoration was using per-entity regex compilation:
+```typescript
+// OLD: O(nodes × entities) - 5000+ regex compilations per rebuild
+for (const entity of allRegistered) {
+    const regex = new RegExp(...);  // Compiled per entity per node!
+}
+```
+
+**Solution**: Reuse AllProfanity's cached Aho-Corasick matcher:
+```typescript
+// NEW: O(n) - Single Trie traversal per node
+if (allProfanityEntityMatcher.isInitialized()) {
+    const implicitMatches = allProfanityEntityMatcher.findMentions(text);
+}
+```
+
+**Performance**:
+| Metric | Before | After |
+|--------|--------|-------|
+| Implicit entity matching | O(nodes × entities) | O(n) |
+| Regex compilations | 5000+ per rebuild | 0 |
+| Shared with Scanner | No | ✅ Same Trie |
+
