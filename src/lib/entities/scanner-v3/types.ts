@@ -43,6 +43,7 @@ export interface ScannerConfig {
     enableTriples: boolean;     // Triple extraction
     enableImplicitMatching: boolean; // Phase 5: plain-text entity detection
     enableRelationshipInference: boolean; // Phase 7C: linguistic relationship extraction
+    enableTemporalExtraction: boolean; // Temporal pattern detection via Aho-Corasick
     relationshipConfidenceThreshold: number; // Minimum confidence to persist
     batchSize: number;          // CoZo batch insert size
     useAhoCorasickExtractor: boolean; // Use O(n) Aho-Corasick extractor vs regex
@@ -50,3 +51,4 @@ export interface ScannerConfig {
     allProfanityConfig?: AllProfanityMatcherConfig; // AllProfanity options
     useRelationshipWorker: boolean; // Scanner 3.5: Web Worker for relationship extraction
 }
+

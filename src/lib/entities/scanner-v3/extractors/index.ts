@@ -5,6 +5,7 @@ export { ExplicitParser, explicitParser, type ParseResult } from './ExplicitPars
 export { TripleExtractor, tripleExtractor, type ExtractedTriple } from './TripleExtractor';
 export { ImplicitEntityMatcher, implicitEntityMatcher, type ImplicitMatch } from './ImplicitEntityMatcher';
 export { AllProfanityEntityMatcher, allProfanityEntityMatcher, type EntityMatch, type AllProfanityConfig } from './AllProfanityEntityMatcher';
+export { temporalAhoMatcher, type TemporalMention, type TemporalKind, type TemporalScanResult } from './TemporalAhoMatcher';
 export {
     RelationshipExtractor,
     getRelationshipExtractor,
@@ -16,3 +17,4 @@ export {
     type EntitySpan,
     type RelationshipPattern,
 } from './RelationshipExtractor';
+

@@ -3,9 +3,11 @@
  * Temporal entity system for storytelling
  */
 
+/** @deprecated Use temporalAhoMatcher from scanner-v3 instead */
 export { TimeParser, timeParser } from './timeParser';
-export { 
-  StoryTimelineBuilder, 
+export {
+  StoryTimelineBuilder,
   buildStoryTimeline,
-  type TimelineBuilderOptions 
+  type TimelineBuilderOptions
 } from './timelineBuilder';
+

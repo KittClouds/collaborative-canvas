@@ -28,6 +28,11 @@ export {
   TIME_SOURCE_VALUES,
 } from './layer2-temporal';
 export {
+  TEMPORAL_MENTION_SCHEMA,
+  TEMPORAL_MENTION_QUERIES,
+  type TemporalMentionRow,
+} from './layer2-temporal-mentions';
+export {
   COMMUNITY_SCHEMA,
   COMMUNITY_MEMBER_SCHEMA,
   GRAPH_STATS_SCHEMA,

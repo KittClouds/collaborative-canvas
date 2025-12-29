@@ -3,15 +3,43 @@
  * Supports nested timelines for scenes with events
  */
 
-import { 
-  SceneEntity, 
-  EventEntity, 
-  EntityReference, 
-  TimelineItemModel 
+import {
+  SceneEntity,
+  EventEntity,
+  EntityReference,
+  TimelineItemModel
 } from '@/types/storyEntities';
 import { TemporalPoint, TemporalSpan } from '@/types/temporal';
-import { TimeParser } from './timeParser';
 import { ENTITY_COLORS } from '@/lib/entities/entityTypes';
+
+/**
+ * Format a TemporalPoint for display (moved from TimeParser to avoid dependency)
+ */
+function formatTemporalPointDisplay(point: TemporalPoint, format: 'full' | 'short' = 'full'): string {
+  switch (point.granularity) {
+    case 'precise':
+      return format === 'full'
+        ? point.timestamp?.toLocaleString() || point.displayText
+        : point.timestamp?.toLocaleDateString() || point.displayText;
+
+    case 'datetime':
+      return point.displayText;
+
+    case 'sequential':
+      const parts: string[] = [];
+      if (point.chapter) parts.push(`Ch. ${point.chapter}`);
+      if (point.act) parts.push(`Act ${point.act}`);
+      if (format === 'full' && point.sequence && point.sequence < 100) {
+        parts.push(`#${point.sequence}`);
+      }
+      return parts.length > 0 ? parts.join(', ') : point.displayText;
+
+    case 'relative':
+    case 'abstract':
+    default:
+      return point.displayText;
+  }
+}
 
 export interface TimelineBuilderOptions {
   showParticipants?: boolean;
@@ -65,7 +93,7 @@ export class StoryTimelineBuilder {
   buildEventsOnly(): TimelineItemModel[] {
     // Filter events that don't have a parent scene
     const standaloneEvents = this.events.filter(e => !e.parentSceneId);
-    
+
     // Apply importance filter if set
     const filtered = this.options.filterByImportance
       ? standaloneEvents.filter(e => this.options.filterByImportance!.includes(e.importance))
@@ -114,7 +142,7 @@ export class StoryTimelineBuilder {
    * Build a scene timeline item with nested events
    */
   private buildSceneItem(scene: SceneEntity): TimelineItemModel {
-    const sceneEvents = scene.events || 
+    const sceneEvents = scene.events ||
       this.events.filter(e => e.parentSceneId === scene.id);
 
     return {
@@ -195,8 +223,8 @@ export class StoryTimelineBuilder {
     const sorted = [...items].sort((a, b) => {
       const timeA = this.getComparableTime(a.temporal.start);
       const timeB = this.getComparableTime(b.temporal.start);
-      return this.options.sortOrder === 'reverse' 
-        ? timeB - timeA 
+      return this.options.sortOrder === 'reverse'
+        ? timeB - timeA
         : timeA - timeB;
     });
 
@@ -224,9 +252,9 @@ export class StoryTimelineBuilder {
 
     // Sequential ordering (Chapter 1 Scene 2 = 1000002)
     if (point.granularity === 'sequential') {
-      return (point.chapter || 0) * 1000000 + 
-             (point.act || 0) * 1000 + 
-             (point.sequence || 0);
+      return (point.chapter || 0) * 1000000 +
+        (point.act || 0) * 1000 +
+        (point.sequence || 0);
     }
 
     // Relative times - resolve against reference points
@@ -276,7 +304,7 @@ export class StoryTimelineBuilder {
    * Format temporal point for display
    */
   private formatTimeDisplay(point: TemporalPoint, format: 'full' | 'short' = 'full'): string {
-    return TimeParser.formatDisplay(point, format);
+    return formatTemporalPointDisplay(point, format);
   }
 
   /**
@@ -296,7 +324,7 @@ export class StoryTimelineBuilder {
         .slice(0, this.options.maxParticipantsDisplay)
         .map(p => this.entities.get(p.id)?.label || p.label || 'Unknown')
         .join(', ');
-      
+
       const remaining = scene.participants.length - this.options.maxParticipantsDisplay!;
       parts.push(participants + (remaining > 0 ? ` +${remaining}` : ''));
     }

@@ -32,6 +32,8 @@ interface FooterLinksPanelProps {
   isSaving: boolean;
   lastSaved: Date | null | boolean;
   notesCount: number;
+  wordCount?: number;
+  characterCount?: number;
 }
 
 export const FooterLinksPanel = ({
@@ -45,7 +47,9 @@ export const FooterLinksPanel = ({
   toggleHub,
   isSaving,
   lastSaved,
-  notesCount
+  notesCount,
+  wordCount,
+  characterCount
 }: FooterLinksPanelProps) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -97,6 +101,13 @@ export const FooterLinksPanel = ({
 
           {/* Status Indicators (Restored Old UI) */}
           <div className="flex items-center gap-3 text-xs text-muted-foreground px-2 min-w-fit">
+            {(wordCount !== undefined || characterCount !== undefined) && (
+              <>
+                <span className="hidden sm:inline opacity-80">{wordCount ?? 0} words</span>
+                <span className="hidden sm:inline opacity-80">{characterCount ?? 0} chars</span>
+                <div className="w-px h-3 bg-border hidden sm:block" />
+              </>
+            )}
             <span>{notesCount} notes</span>
             {isSaving ? (
               <span className="flex items-center gap-1.5 animate-pulse text-primary">

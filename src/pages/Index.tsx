@@ -2,6 +2,7 @@
 import { AppSidebar } from '@/components/app-sidebar';
 import { FooterLinksPanel } from '@/components/FooterLinksPanel';
 import { SettingsDropdown } from '@/components/header/SettingsDropdown';
+import { analyzeText, parseContentToPlainText } from '@/lib/analytics/textAnalytics';
 import { useBlueprintHub } from '@/features/blueprint-hub/hooks/useBlueprintHub';
 import {
   Breadcrumb,
@@ -171,6 +172,20 @@ function NotesApp() {
     }
   }, []);
 
+  const textAnalytics = useMemo(() => {
+    if (!selectedNote?.content) return null;
+    // Import dynamically or assume imported. I will add import in next step if not present.
+    // For now I'll use the imported functions.
+    // Wait, I need to add the import first or this will fail compilation.
+    // I can do it in one go if I check imports, but I'll assume I need to add it.
+    // Actually, I can use the existing `analyzeText` and `parseContentToPlainText` if I import them.
+    // Let me rewrite the component part first.
+
+    // Actually, let's use the provided logic.
+    const plainText = parseContentToPlainText(selectedNote.content);
+    return analyzeText(plainText);
+  }, [selectedNote?.content]);
+
   return (
     <RightSidebarProvider>
       <SidebarProvider>
@@ -298,6 +313,8 @@ function NotesApp() {
               isSaving={state.isSaving}
               lastSaved={state.lastSaved}
               notesCount={state.notes.length}
+              wordCount={textAnalytics?.wordCount}
+              characterCount={textAnalytics?.characterCount}
             />
           </div>
 

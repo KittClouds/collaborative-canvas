@@ -6,6 +6,8 @@ import { tripleExtractor, type ExtractedTriple } from '../extractors/TripleExtra
 import { implicitEntityMatcher } from '../extractors/ImplicitEntityMatcher';
 import { allProfanityEntityMatcher } from '../extractors/AllProfanityEntityMatcher';
 import { getRelationshipExtractor, type EntitySpan } from '../extractors/RelationshipExtractor';
+import { temporalAhoMatcher, type TemporalMention } from '../extractors/TemporalAhoMatcher';
+import { initializeTemporalPersistence } from '../persistence/TemporalMentionPersistence';
 import { nlpEnricher } from '../enrichers/NLPEnricher';
 import { entityDisambiguator } from '../enrichers/EntityDisambiguator';
 import type { EnrichedMatch } from '../enrichers/types';
@@ -39,6 +41,7 @@ export class ScannerOrchestrator {
             enableTriples: true,
             enableImplicitMatching: true,
             enableRelationshipInference: true, // Phase 7C: enabled
+            enableTemporalExtraction: true, // Temporal Aho-Corasick extraction
             relationshipConfidenceThreshold: 0.65,
             batchSize: 50,
             useAhoCorasickExtractor: true, // O(n) Aho-Corasick enabled by default
@@ -109,6 +112,11 @@ export class ScannerOrchestrator {
             } catch (error) {
                 console.warn('[Scanner 3.5] Failed to load CoZo patterns:', error);
             }
+        }
+
+        // Initialize temporal mention persistence
+        if (this.config.enableTemporalExtraction) {
+            initializeTemporalPersistence();
         }
 
         this.isInitialized = true;
@@ -514,6 +522,40 @@ export class ScannerOrchestrator {
                 this.logPerformance('Relationship inference', relStart);
             } catch (error) {
                 console.error('[Scanner 3.5] Relationship inference failed:', error);
+            }
+        }
+
+        // 5. Temporal extraction (pure Aho-Corasick, no NLP)
+        if (this.config.enableTemporalExtraction) {
+            try {
+                const temporalStart = performance.now();
+
+                // Gather all text for temporal scanning
+                const fullText = changes.map(c => c.text).join(' ');
+
+                if (fullText.length > 0) {
+                    const temporalResult = temporalAhoMatcher.scan(fullText);
+
+                    if (temporalResult.mentions.length > 0) {
+                        console.log(
+                            `[Scanner 3.5] Detected ${temporalResult.mentions.length} temporal mentions in ${temporalResult.stats.scanTimeMs.toFixed(1)}ms:`,
+                            temporalResult.mentions.slice(0, 5).map(m => `${m.kind}:${m.text}`),
+                            temporalResult.mentions.length > 5 ? `... and ${temporalResult.mentions.length - 5} more` : ''
+                        );
+
+                        // Emit temporal mentions for downstream consumers (timeline-extractor, graph builder)
+                        scannerEventBus.emit('temporal:detected', {
+                            noteId,
+                            mentions: temporalResult.mentions,
+                            timestamp: Date.now(),
+                            fullText  // Include fullText for context extraction
+                        });
+                    }
+                }
+
+                this.logPerformance('Temporal extraction', temporalStart);
+            } catch (error) {
+                console.error('[Scanner 3.5] Temporal extraction failed:', error);
             }
         }
 

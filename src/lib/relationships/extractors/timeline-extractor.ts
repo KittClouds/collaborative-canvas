@@ -2,7 +2,7 @@
  * Timeline Relationship Extractor
  * 
  * Extracts temporal relationships (PRECEDES/FOLLOWS/CONCURRENT) from:
- * - Parsed timestamps via chrono-node
+ * - Aho-Corasick temporal pattern detection (replaces chrono-node)
  * - Sequential markers (Chapter/Act/Scene)
  * - Relative time expressions
  * - Timeline folder sibling ordering
@@ -10,7 +10,7 @@
  * Supports custom temporal relationship types via Blueprint Hub integration.
  */
 
-import { TimeParser } from '@/lib/timeline/timeParser';
+import { temporalAhoMatcher, type TemporalMention, type TemporalKind } from '@/lib/entities/scanner-v3/extractors/TemporalAhoMatcher';
 import { relationshipRegistry, RelationshipSource, type RelationshipInput, type RelationshipProvenance } from '@/lib/relationships';
 import type { TemporalPoint, TimeGranularity, TemporalSpan } from '@/types/temporal';
 import type { Folder, Note } from '../../../contexts/NotesContext';
@@ -93,12 +93,10 @@ const CONCURRENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 const STORAGE_KEY = 'temporal_relationship_types';
 
 export class TimelineRelationshipExtractor {
-    private timeParser: TimeParser;
     private customTypes: CustomTemporalRelationType[] = [];
     private customTypePairs: Map<string, string> = new Map();
 
     constructor() {
-        this.timeParser = new TimeParser();
         this.loadCustomTypesFromStorage();
     }
 
@@ -538,45 +536,42 @@ export class TimelineRelationshipExtractor {
         }
     }
 
+    /**
+     * Find temporal expressions using Aho-Corasick matcher (O(n) vs O(patterns*n) regex)
+     */
     private findTemporalExpressions(content: string): Array<{
         text: string;
         position: number;
         confidence: number;
         granularity: TimeGranularity;
     }> {
-        const expressions: Array<{
-            text: string;
-            position: number;
-            confidence: number;
-            granularity: TimeGranularity;
-        }> = [];
+        const mentions = temporalAhoMatcher.findMentions(content);
 
-        const patterns: Array<{
-            pattern: RegExp;
-            granularity: TimeGranularity;
-            confidence: number;
-        }> = [
-                { pattern: /\b(before|after|following|prior to|preceding)\s+/gi, granularity: 'relative', confidence: 0.75 },
-                { pattern: /\b(during|while|throughout)\s+/gi, granularity: 'relative', confidence: 0.70 },
-                { pattern: /\b(at the same time|simultaneously|meanwhile|concurrently)\b/gi, granularity: 'abstract', confidence: 0.65 },
-                { pattern: /\b(\d+)\s+(days?|weeks?|months?|years?)\s+(before|after|later|earlier)\b/gi, granularity: 'relative', confidence: 0.80 },
-                { pattern: /\b(chapter|act|scene)\s+(\d+)/gi, granularity: 'sequential', confidence: 0.90 },
-            ];
+        return mentions.map(m => ({
+            text: m.text,
+            position: m.start,
+            confidence: m.confidence,
+            granularity: this.kindToGranularity(m.kind),
+        })).sort((a, b) => a.position - b.position);
+    }
 
-        for (const { pattern, granularity, confidence } of patterns) {
-            let match;
-            const regex = new RegExp(pattern.source, pattern.flags);
-            while ((match = regex.exec(content)) !== null) {
-                expressions.push({
-                    text: match[0],
-                    position: match.index,
-                    confidence,
-                    granularity,
-                });
-            }
+    /**
+     * Convert TemporalKind to TimeGranularity
+     */
+    private kindToGranularity(kind: TemporalKind): TimeGranularity {
+        switch (kind) {
+            case 'NARRATIVE_MARKER':
+                return 'sequential';
+            case 'RELATIVE':
+            case 'CONNECTOR':
+                return 'relative';
+            case 'WEEKDAY':
+            case 'MONTH':
+            case 'TIME_OF_DAY':
+                return 'datetime';
+            default:
+                return 'abstract';
         }
-
-        return expressions.sort((a, b) => a.position - b.position);
     }
 
     private inferRelationshipFromExpression(text: string): TemporalRelationshipType | null {

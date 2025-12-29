@@ -7,6 +7,7 @@ import { MENTIONS_SCHEMA } from './layer2-mentions';
 import { ENTITY_EDGE_SCHEMA } from './layer2-edges';
 import { NARRATIVE_HIERARCHY_SCHEMA, CAUSAL_LINK_SCHEMA } from './layer2-narrative';
 import { TEMPORAL_POINT_SCHEMA } from './layer2-temporal';
+import { TEMPORAL_MENTION_SCHEMA } from './layer2-temporal-mentions';
 import {
   COMMUNITY_SCHEMA,
   COMMUNITY_MEMBER_SCHEMA,
@@ -70,6 +71,7 @@ const ALL_SCHEMAS = [
   { name: 'mutation_log', schema: MUTATION_LOG_SCHEMA },
   { name: 'note_entity_links', schema: NOTE_ENTITY_LINKS_SCHEMA },
   { name: 'entity_backlinks', schema: ENTITY_BACKLINKS_SCHEMA },
+  { name: 'temporal_mention', schema: TEMPORAL_MENTION_SCHEMA },
 ];
 
 export interface SchemaInitResult {
