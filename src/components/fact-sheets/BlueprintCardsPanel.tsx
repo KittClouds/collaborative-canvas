@@ -524,7 +524,7 @@ export function BlueprintCardsPanel({ entity, onUpdate }: BlueprintCardsPanelPro
       </div>
 
       {/* Cards */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3 pb-20">
         {effectiveLayout.map((section, sectionIndex) => {
           const sectionOverride = overrides.sections?.[section.id];
 

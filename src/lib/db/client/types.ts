@@ -114,7 +114,12 @@ export interface SQLiteNode {
   // Type flags
   is_typed_root: number;
   is_subtype_root: number;
+
+  // Entity ownership (narrative focus context)
+  owner_entity_id: string | null;
+  fantasy_date_created: string | null; // JSON-serialized FantasyDate
 }
+
 
 export interface SQLiteNodeInput {
   id?: string;
@@ -157,7 +162,12 @@ export interface SQLiteNodeInput {
   // Type flags
   is_typed_root?: boolean;
   is_subtype_root?: boolean;
+
+  // Entity ownership (narrative focus context)
+  owner_entity_id?: string | null;
+  fantasy_date_created?: Record<string, unknown> | null; // FantasyDate object
 }
+
 
 // ============================================
 // EDGE TYPES

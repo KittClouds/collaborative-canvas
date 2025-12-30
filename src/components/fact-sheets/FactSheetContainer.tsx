@@ -1,10 +1,11 @@
 import React, { useMemo, useEffect, useCallback, useState } from 'react';
 import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { useEntitySelection, EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
+import { useUnifiedEntityAttributes } from '@/hooks/useUnifiedEntityAttributes';
 import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentScanner';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
-import { FileQuestion, Sparkles, BrainCircuit, LayoutGrid, List } from 'lucide-react';
+import { FileQuestion, Sparkles, BrainCircuit, LayoutGrid, List, Plus } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -26,6 +27,7 @@ import { ConceptFactSheet } from './ConceptFactSheet';
 import { NPCFactSheet } from './NPCFactSheet';
 import { SceneFactSheet } from './SceneFactSheet';
 import { BlueprintCardsPanel } from './BlueprintCardsPanel';
+import { CreateCardDialog } from './MetaCardEditor';
 
 // Map entity kinds to their fact sheet components
 const factSheetComponents: Partial<Record<EntityKind, React.ComponentType<{ entity: ParsedEntity; onUpdate: (attributes: EntityAttributes) => void }>>> = {
@@ -165,29 +167,24 @@ export function FactSheetContainer({ externalEntities, onEntityUpdate }: FactShe
     }
   }, [allEntities, selectedEntity, setSelectedEntity, setEntitiesInCurrentNote, entitiesInCurrentNote]);
 
-  // Handle attribute updates
+  // Use unified entity attributes hook for bi-directional sync
+  const unifiedAttrs = useUnifiedEntityAttributes(selectedEntity);
+
+  // Handle attribute updates - now uses unified hook for bi-directional sync
   const handleAttributeUpdate = useCallback(
-    (attributes: EntityAttributes) => {
+    async (attributes: EntityAttributes) => {
       if (!selectedEntity) return;
 
+      // If external handler provided (e.g., from CalendarEntitySidebar), use it
       if (onEntityUpdate) {
         onEntityUpdate(selectedEntity, attributes);
-      } else if (selectedNote) {
-        // Default behavior: update current note
-        try {
-          const content = JSON.parse(selectedNote.content);
-          if (!content.entityAttributes) {
-            content.entityAttributes = {};
-          }
-          const entityKey = `${selectedEntity.kind}|${selectedEntity.label}`;
-          content.entityAttributes[entityKey] = attributes;
-          updateNoteContent(selectedNote.id, JSON.stringify(content));
-        } catch {
-          // Handle parse error
-        }
       }
+
+      // Always update via unified hook for bi-directional sync
+      // This syncs to both SQLite entity_attributes AND legacy note content
+      await unifiedAttrs.setFields(attributes);
     },
-    [selectedNote, selectedEntity, updateNoteContent, onEntityUpdate]
+    [selectedEntity, onEntityUpdate, unifiedAttrs.setFields]
   );
 
   // Render Loading/Empty states
@@ -315,25 +312,44 @@ export function FactSheetContainer({ externalEntities, onEntityUpdate }: FactShe
 
       {/* Fact sheet content */}
       <div className="flex-1 overflow-auto custom-scrollbar">
-        {selectedEntity && panelMode === 'standard' && FactSheetComponent && (
-          <FactSheetComponent
-            entity={selectedEntity}
-            onUpdate={handleAttributeUpdate}
-          />
-        )}
-        {selectedEntity && panelMode === 'blueprint' && (
-          <BlueprintCardsPanel
-            entity={selectedEntity}
-            onUpdate={handleAttributeUpdate}
-          />
-        )}
-        {/* Fallback if no entity selected but we have them (shouldn't happen with auto-select) */}
-        {!selectedEntity && allEntities.length > 0 && (
-          <div className="p-6 text-center text-muted-foreground text-sm">
-            Select an entity to view details
-          </div>
-        )}
+        <div className="pb-20">
+          {selectedEntity && panelMode === 'standard' && FactSheetComponent && (
+            <FactSheetComponent
+              entity={selectedEntity}
+              onUpdate={handleAttributeUpdate}
+            />
+          )}
+          {selectedEntity && panelMode === 'blueprint' && (
+            <BlueprintCardsPanel
+              entity={selectedEntity}
+              onUpdate={handleAttributeUpdate}
+            />
+          )}
+          {/* Fallback if no entity selected but we have them (shouldn't happen with auto-select) */}
+          {!selectedEntity && allEntities.length > 0 && (
+            <div className="p-6 text-center text-muted-foreground text-sm">
+              Select an entity to view details
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Add Card Footer */}
+      {selectedEntity && (
+        <div className="sticky bottom-0 p-3 border-t border-border/50 bg-background/95 backdrop-blur-sm">
+          <CreateCardDialog
+            onCreateCard={async (data) => {
+              await unifiedAttrs.createCard(data.name, `gradient:${data.gradientId}`, data.iconId);
+            }}
+            trigger={
+              <Button variant="outline" className="w-full gap-2">
+                <Plus className="h-4 w-4" />
+                Add Custom Card
+              </Button>
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }

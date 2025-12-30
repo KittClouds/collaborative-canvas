@@ -50,7 +50,17 @@ import {
     updatePeriodAtom,
     deletePeriodAtom,
     updateViewStateAtom,
+    // Entity-scoped atoms
+    eventsForFocusedEntityAtom,
+    periodsForFocusedEntityAtom,
 } from '@/atoms/calendar';
+
+// Narrative Focus Atoms
+import {
+    hasEntityFocusAtom,
+    focusedEntityLabelAtom,
+} from '@/atoms/narrative-focus';
+
 
 // Configuration passed from the wizard
 export interface CalendarConfig {
@@ -183,6 +193,14 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
     const viewState = useAtomValue(calendarViewStateAtom);
     const isHydrated = useAtomValue(isCalendarHydratedAtom);
 
+    // Entity-filtered events (respects global narrative focus)
+    const filteredEvents = useAtomValue(eventsForFocusedEntityAtom);
+    const filteredPeriods = useAtomValue(periodsForFocusedEntityAtom);
+
+    // Narrative focus state
+    const hasEntityFocus = useAtomValue(hasEntityFocusAtom);
+    const focusedEntityLabel = useAtomValue(focusedEntityLabelAtom);
+
     // Write atoms
     const hydrateCalendar = useSetAtom(hydrateCalendarAtom);
     const saveCalendar = useSetAtom(saveCalendarAtom);
@@ -229,13 +247,15 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
         [calendar, viewDate.year]
     );
 
+    // Use filtered events when entity focus is active
     const eventsForCurrentMonth = useMemo(() =>
-        events.filter(e =>
+        (hasEntityFocus ? filteredEvents : events).filter(e =>
             e.date.year === viewDate.year &&
             e.date.monthIndex === viewDate.monthIndex
         ),
-        [events, viewDate.year, viewDate.monthIndex]
+        [events, filteredEvents, hasEntityFocus, viewDate.year, viewDate.monthIndex]
     );
+
 
     // Helper to update view date
     const setViewDate = useCallback((newDate: FantasyDate | ((prev: FantasyDate) => FantasyDate)) => {

@@ -8,7 +8,9 @@ import {
   EditableDropdown,
   EditableArray,
   ProgressBar,
+  BindableFieldWrapper,
 } from './cards';
+import { MetaCardsSection } from './MetaCardsSection';
 
 interface ItemFactSheetProps {
   entity: ParsedEntity;
@@ -29,62 +31,68 @@ export function ItemFactSheet({ entity, onUpdate }: ItemFactSheetProps) {
 
   const renderField = (field: FactSheetField) => {
     const value = attributes[field.name];
+    const entityId = entity.noteId || entity.label;
 
     switch (field.type) {
       case 'text':
         return (
-          <EditableField
-            key={field.name}
-            label={field.label}
-            value={value || ''}
-            onChange={(v) => updateAttribute(field.name, v)}
-            placeholder={field.placeholder}
-            multiline={field.multiline}
-          />
+          <BindableFieldWrapper key={field.name} entityId={entityId} fieldName={field.name} fieldType="text">
+            <EditableField
+              label={field.label}
+              value={value || ''}
+              onChange={(v) => updateAttribute(field.name, v)}
+              placeholder={field.placeholder}
+              multiline={field.multiline}
+            />
+          </BindableFieldWrapper>
         );
       case 'number':
         return (
-          <EditableNumber
-            key={field.name}
-            label={field.label}
-            value={value ?? field.defaultValue ?? 0}
-            onChange={(v) => updateAttribute(field.name, v)}
-            min={field.min}
-            max={field.max}
-            unit={field.unit}
-          />
+          <BindableFieldWrapper key={field.name} entityId={entityId} fieldName={field.name} fieldType="number">
+            <EditableNumber
+              label={field.label}
+              value={value ?? field.defaultValue ?? 0}
+              onChange={(v) => updateAttribute(field.name, v)}
+              min={field.min}
+              max={field.max}
+              unit={field.unit}
+            />
+          </BindableFieldWrapper>
         );
       case 'dropdown':
         return (
-          <EditableDropdown
-            key={field.name}
-            label={field.label}
-            value={value || ''}
-            onChange={(v) => updateAttribute(field.name, v)}
-            options={field.options}
-          />
+          <BindableFieldWrapper key={field.name} entityId={entityId} fieldName={field.name} fieldType="dropdown">
+            <EditableDropdown
+              label={field.label}
+              value={value || ''}
+              onChange={(v) => updateAttribute(field.name, v)}
+              options={field.options}
+            />
+          </BindableFieldWrapper>
         );
       case 'array':
         return (
-          <EditableArray
-            key={field.name}
-            label={field.label}
-            value={value || []}
-            onChange={(v) => updateAttribute(field.name, v)}
-            addButtonText={field.addButtonText}
-          />
+          <BindableFieldWrapper key={field.name} entityId={entityId} fieldName={field.name} fieldType="array">
+            <EditableArray
+              label={field.label}
+              value={value || []}
+              onChange={(v) => updateAttribute(field.name, v)}
+              addButtonText={field.addButtonText}
+            />
+          </BindableFieldWrapper>
         );
       case 'progress':
         return (
-          <ProgressBar
-            key={field.name}
-            label={field.label}
-            current={attributes[field.currentField] ?? 0}
-            max={attributes[field.maxField] ?? 100}
-            onCurrentChange={(v) => updateAttribute(field.currentField, v)}
-            onMaxChange={(v) => updateAttribute(field.maxField, v)}
-            color={field.color}
-          />
+          <BindableFieldWrapper key={field.name} entityId={entityId} fieldName={field.currentField} fieldType="progress">
+            <ProgressBar
+              label={field.label}
+              current={attributes[field.currentField] ?? 0}
+              max={attributes[field.maxField] ?? 100}
+              onCurrentChange={(v) => updateAttribute(field.currentField, v)}
+              onMaxChange={(v) => updateAttribute(field.maxField, v)}
+              color={field.color}
+            />
+          </BindableFieldWrapper>
         );
       default:
         return null;
@@ -92,7 +100,7 @@ export function ItemFactSheet({ entity, onUpdate }: ItemFactSheetProps) {
   };
 
   return (
-    <div className="p-3 space-y-3">
+    <div className="p-3 space-y-3 pb-20">
       <div className="text-center pb-2 border-b border-border/50">
         <span className="text-xs font-mono text-muted-foreground">ITEM</span>
         <h3 className="text-lg font-semibold text-foreground">{entity.label}</h3>
@@ -111,6 +119,9 @@ export function ItemFactSheet({ entity, onUpdate }: ItemFactSheetProps) {
           {card.fields.map(renderField)}
         </FactSheetCard>
       ))}
+
+      {/* User's Custom Meta Cards */}
+      <MetaCardsSection entity={entity} />
     </div>
   );
 }

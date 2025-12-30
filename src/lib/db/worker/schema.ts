@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_STATEMENTS: string[] = [
   // ============================================
@@ -397,10 +397,134 @@ export const COZO_SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_cozo_rels_namespace ON cozo_relationships(namespace)`,
 ];
 
+// ============================================
+// ENTITY ATTRIBUTES TABLES (First-Class Fact Sheet)
+// ============================================
+
+export const ENTITY_ATTRIBUTES_SCHEMA: string[] = [
+  // Entity Attributes - entity-owned field storage
+  `CREATE TABLE IF NOT EXISTS entity_attributes (
+    -- Primary identity
+    id TEXT PRIMARY KEY,
+    entity_id TEXT NOT NULL,
+    field_name TEXT NOT NULL,
+    
+    -- Field type and value
+    field_type TEXT NOT NULL CHECK(field_type IN (
+      'text', 'number', 'array', 'object', 'boolean',
+      'slider', 'counter', 'toggle', 'date', 'color',
+      'rating', 'tags', 'entity-link', 'rich-text', 'progress'
+    )),
+    value TEXT, -- JSON-serialized value
+    
+    -- Schema reference (for typed fields)
+    schema_id TEXT,
+    
+    -- Meta card grouping
+    card_id TEXT,
+    
+    -- Timestamps
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    
+    -- Unique constraint: one field per entity
+    UNIQUE(entity_id, field_name)
+  )`,
+
+  // Meta Cards - user-created field groupings
+  `CREATE TABLE IF NOT EXISTS meta_cards (
+    -- Primary identity
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL, -- entity_id that owns this card
+    
+    -- Display properties
+    name TEXT NOT NULL,
+    color TEXT,
+    icon TEXT, -- Lucide icon name
+    
+    -- Ordering
+    display_order INTEGER DEFAULT 0,
+    is_collapsed INTEGER DEFAULT 0,
+    
+    -- Timestamps
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+
+  // Meta Card Fields - field definitions within cards
+  `CREATE TABLE IF NOT EXISTS meta_card_fields (
+    -- Primary identity
+    id TEXT PRIMARY KEY,
+    card_id TEXT NOT NULL,
+    
+    -- Field definition
+    field_name TEXT NOT NULL,
+    schema_id TEXT, -- Reference to system field schema
+    custom_schema TEXT, -- JSON for inline custom schema
+    
+    -- Layout hints
+    layout_hint TEXT CHECK(layout_hint IN ('full', 'half', 'third', 'quarter')),
+    
+    -- Ordering
+    display_order INTEGER DEFAULT 0,
+    
+    -- Foreign key
+    FOREIGN KEY (card_id) REFERENCES meta_cards(id) ON DELETE CASCADE
+  )`,
+
+  // Field Schemas - reusable field type definitions
+  `CREATE TABLE IF NOT EXISTS field_schemas (
+    -- Primary identity
+    id TEXT PRIMARY KEY,
+    
+    -- Schema definition
+    name TEXT NOT NULL,
+    field_type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    description TEXT,
+    
+    -- Type-specific metadata (JSON)
+    metadata TEXT, -- { min, max, options, step, etc. }
+    
+    -- Validation rules (JSON array)
+    validation TEXT,
+    
+    -- Default value (JSON)
+    default_value TEXT,
+    
+    -- System or user-created
+    is_system INTEGER DEFAULT 0,
+    
+    -- Timestamps
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+
+  // Indexes for entity attributes
+  `CREATE INDEX IF NOT EXISTS idx_entity_attrs_entity ON entity_attributes(entity_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_entity_attrs_field ON entity_attributes(field_name)`,
+  `CREATE INDEX IF NOT EXISTS idx_entity_attrs_card ON entity_attributes(card_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_entity_attrs_schema ON entity_attributes(schema_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_entity_attrs_type ON entity_attributes(field_type)`,
+
+  // Indexes for meta cards
+  `CREATE INDEX IF NOT EXISTS idx_meta_cards_owner ON meta_cards(owner_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_meta_cards_order ON meta_cards(owner_id, display_order)`,
+
+  // Indexes for meta card fields
+  `CREATE INDEX IF NOT EXISTS idx_meta_fields_card ON meta_card_fields(card_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_meta_fields_order ON meta_card_fields(card_id, display_order)`,
+
+  // Indexes for field schemas
+  `CREATE INDEX IF NOT EXISTS idx_field_schemas_type ON field_schemas(field_type)`,
+  `CREATE INDEX IF NOT EXISTS idx_field_schemas_system ON field_schemas(is_system)`,
+];
+
 // All statements in order
 export const ALL_SCHEMA_STATEMENTS: string[] = [
   ...SCHEMA_STATEMENTS,
   ...FTS_TRIGGERS,
   ...VALIDATION_TRIGGERS,
   ...COZO_SCHEMA_STATEMENTS,
+  ...ENTITY_ATTRIBUTES_SCHEMA,
 ];

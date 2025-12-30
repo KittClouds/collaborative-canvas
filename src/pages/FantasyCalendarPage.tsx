@@ -1,6 +1,7 @@
 
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { CalendarProvider, useCalendarContext, CalendarConfig } from '@/contexts/CalendarContext';
 import { FantasyDate } from '@/lib/fantasy-calendar/types';
 import { CalendarSetupWizard } from '@/components/fantasy-calendar/CalendarSetupWizard';
@@ -11,8 +12,14 @@ import { DualTimeline, TimeScale } from '@/components/fantasy-calendar/DualTimel
 import { NarrativeEventEditor } from '@/components/fantasy-calendar/NarrativeEventEditor';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, PlusCircle, CalendarClock, Clock, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
+import { ArrowLeft, PlusCircle, CalendarClock, Clock, ZoomIn, ZoomOut, Sparkles, Focus, X } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+    hasEntityFocusAtom,
+    focusedEntityLabelAtom,
+    clearNarrativeFocusAtom,
+} from '@/atoms';
+
 
 // Inner component that consumes the context
 function CalendarPageContent() {
@@ -39,6 +46,11 @@ function CalendarPageContent() {
     const [showTimeline, setShowTimeline] = React.useState(true);
     const [showEntities, setShowEntities] = React.useState(true);
     const [scale, setScale] = React.useState<TimeScale>('decade');
+
+    // Entity focus state
+    const hasEntityFocus = useAtomValue(hasEntityFocusAtom);
+    const focusedEntityLabel = useAtomValue(focusedEntityLabelAtom);
+    const clearNarrativeFocus = useSetAtom(clearNarrativeFocusAtom);
 
 
     const handleBackToEditor = useCallback(() => {
@@ -135,8 +147,26 @@ function CalendarPageContent() {
                         {/* Divider */}
                         <div className="h-4 w-px bg-border shrink-0" />
 
+                        {/* Entity Focus Indicator */}
+                        {hasEntityFocus && (
+                            <div className="flex items-center gap-2 animate-in fade-in duration-300">
+                                <Badge variant="default" className="h-6 gap-1.5 px-2 bg-primary/90 hover:bg-primary">
+                                    <Focus className="h-3 w-3" />
+                                    <span className="font-medium">{focusedEntityLabel}</span>
+                                    <button
+                                        onClick={() => clearNarrativeFocus()}
+                                        className="ml-1 hover:bg-white/20 rounded p-0.5"
+                                        title="Clear focus"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            </div>
+                        )}
+
                         {/* Integrated Timeline Controls */}
                         {showTimeline && (
+
                             <div className="flex items-center gap-3 animate-in fade-in duration-300 overflow-hidden">
                                 <Badge variant="outline" className="h-6 gap-1 px-2 font-mono">
                                     {viewYearFormatted}

@@ -20,5 +20,9 @@ export type {
     WeekdayInfo,
     EraInfo,
     DateValidation,
-    CalendarDictionary
+    CalendarDictionary,
+    // Entity timeline types
+    EntityTimelineEntry,
+    EntityTimelineQuery,
+    EntityRelationship,
 } from './TimeRegistry';

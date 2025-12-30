@@ -10,7 +10,9 @@ import {
   ProgressBar,
   StatGrid,
   RelationshipRow,
+  BindableFieldWrapper,
 } from './cards';
+import { MetaCardsSection } from './MetaCardsSection';
 
 interface CharacterFactSheetProps {
   entity: ParsedEntity;
@@ -44,64 +46,94 @@ export function CharacterFactSheet({ entity, onUpdate }: CharacterFactSheetProps
     switch (field.type) {
       case 'text':
         return (
-          <EditableField
+          <BindableFieldWrapper
             key={field.name}
-            label={field.label}
-            value={value || ''}
-            onChange={(v) => updateAttribute(field.name, v)}
-            placeholder={field.placeholder}
-            multiline={field.multiline}
-          />
+            entityId={entity.noteId || entity.label}
+            fieldName={field.name}
+            fieldType="text"
+          >
+            <EditableField
+              label={field.label}
+              value={value || ''}
+              onChange={(v) => updateAttribute(field.name, v)}
+              placeholder={field.placeholder}
+              multiline={field.multiline}
+            />
+          </BindableFieldWrapper>
         );
 
       case 'number':
         return (
-          <EditableNumber
+          <BindableFieldWrapper
             key={field.name}
-            label={field.label}
-            value={value ?? field.defaultValue ?? 0}
-            onChange={(v) => updateAttribute(field.name, v)}
-            min={field.min}
-            max={field.max}
-            step={field.step}
-            unit={field.unit}
-          />
+            entityId={entity.noteId || entity.label}
+            fieldName={field.name}
+            fieldType="number"
+          >
+            <EditableNumber
+              label={field.label}
+              value={value ?? field.defaultValue ?? 0}
+              onChange={(v) => updateAttribute(field.name, v)}
+              min={field.min}
+              max={field.max}
+              step={field.step}
+              unit={field.unit}
+            />
+          </BindableFieldWrapper>
         );
 
       case 'dropdown':
         return (
-          <EditableDropdown
+          <BindableFieldWrapper
             key={field.name}
-            label={field.label}
-            value={value || ''}
-            onChange={(v) => updateAttribute(field.name, v)}
-            options={field.options}
-            placeholder={field.placeholder}
-          />
+            entityId={entity.noteId || entity.label}
+            fieldName={field.name}
+            fieldType="dropdown"
+          >
+            <EditableDropdown
+              label={field.label}
+              value={value || ''}
+              onChange={(v) => updateAttribute(field.name, v)}
+              options={field.options}
+              placeholder={field.placeholder}
+            />
+          </BindableFieldWrapper>
         );
 
       case 'array':
         return (
-          <EditableArray
+          <BindableFieldWrapper
             key={field.name}
-            label={field.label}
-            value={value || []}
-            onChange={(v) => updateAttribute(field.name, v)}
-            addButtonText={field.addButtonText}
-          />
+            entityId={entity.noteId || entity.label}
+            fieldName={field.name}
+            fieldType="array"
+          >
+            <EditableArray
+              label={field.label}
+              value={value || []}
+              onChange={(v) => updateAttribute(field.name, v)}
+              addButtonText={field.addButtonText}
+            />
+          </BindableFieldWrapper>
         );
 
       case 'progress':
         return (
-          <ProgressBar
+          <BindableFieldWrapper
             key={field.name}
-            label={field.label}
-            current={attributes[field.currentField] ?? 0}
-            max={attributes[field.maxField] ?? 100}
-            onCurrentChange={(v) => updateAttribute(field.currentField, v)}
-            onMaxChange={(v) => updateAttribute(field.maxField, v)}
-            color={field.color}
-          />
+            entityId={entity.noteId || entity.label}
+            fieldName={field.currentField}
+            fieldType="progress"
+          >
+            <ProgressBar
+              label={field.label}
+              current={attributes[field.currentField] ?? 0}
+              max={attributes[field.maxField] ?? 100}
+              onCurrentChange={(v) => updateAttribute(field.currentField, v)}
+              onMaxChange={(v) => updateAttribute(field.maxField, v)}
+              color={field.color}
+            />
+          </BindableFieldWrapper>
         );
 
       case 'stat-grid':
@@ -112,38 +144,51 @@ export function CharacterFactSheet({ entity, onUpdate }: CharacterFactSheetProps
           modifier: 0,
         }));
         return (
-          <StatGrid
+          <BindableFieldWrapper
             key={field.name}
-            label={field.label}
-            stats={stats}
-            onChange={updateStat}
-          />
+            entityId={entity.noteId || entity.label}
+            fieldName={field.name}
+            fieldType="stat-grid"
+          >
+            <StatGrid
+              label={field.label}
+              stats={stats}
+              onChange={updateStat}
+            />
+          </BindableFieldWrapper>
         );
 
       case 'relationship':
         const relationships = attributes.relationships || [];
         return (
-          <div key={field.name} className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">{field.label}</label>
-            {relationships.length === 0 ? (
-              <p className="text-xs text-muted-foreground/60 italic">No relationships yet</p>
-            ) : (
-              relationships.map((rel: any, index: number) => (
-                <RelationshipRow
-                  key={index}
-                  name={rel.name}
-                  type={rel.type}
-                  standing={rel.standing}
-                  faction={rel.faction}
-                  onStandingChange={(v) => {
-                    const updated = [...relationships];
-                    updated[index] = { ...updated[index], standing: v };
-                    updateAttribute('relationships', updated);
-                  }}
-                />
-              ))
-            )}
-          </div>
+          <BindableFieldWrapper
+            key={field.name}
+            entityId={entity.noteId || entity.label}
+            fieldName={field.name}
+            fieldType="relationship"
+          >
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">{field.label}</label>
+              {relationships.length === 0 ? (
+                <p className="text-xs text-muted-foreground/60 italic">No relationships yet</p>
+              ) : (
+                relationships.map((rel: any, index: number) => (
+                  <RelationshipRow
+                    key={index}
+                    name={rel.name}
+                    type={rel.type}
+                    standing={rel.standing}
+                    faction={rel.faction}
+                    onStandingChange={(v) => {
+                      const updated = [...relationships];
+                      updated[index] = { ...updated[index], standing: v };
+                      updateAttribute('relationships', updated);
+                    }}
+                  />
+                ))
+              )}
+            </div>
+          </BindableFieldWrapper>
         );
 
       default:
@@ -152,7 +197,7 @@ export function CharacterFactSheet({ entity, onUpdate }: CharacterFactSheetProps
   };
 
   return (
-    <div className="p-3 space-y-3">
+    <div className="p-3 space-y-3 pb-20">
       {/* Entity header */}
       <div className="text-center pb-2 border-b border-border/50">
         <span className="text-xs font-mono text-muted-foreground">CHARACTER</span>
@@ -173,6 +218,9 @@ export function CharacterFactSheet({ entity, onUpdate }: CharacterFactSheetProps
           {card.fields.map(renderField)}
         </FactSheetCard>
       ))}
+
+      {/* User's Custom Meta Cards */}
+      <MetaCardsSection entity={entity} />
     </div>
   );
 }

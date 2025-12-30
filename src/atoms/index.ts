@@ -90,4 +90,49 @@ export {
     deletePeriodAtom,
     updateViewStateAtom,
     setSetupModeAtom,
+    // Entity-scoped atoms
+    eventsForFocusedEntityAtom,
+    periodsForFocusedEntityAtom,
 } from './calendar';
+
+
+// Narrative Focus atoms
+export {
+    narrativeFocusAtom,
+    focusModeAtom,
+    focusedEntityIdAtom,
+    focusedEntityKindAtom,
+    focusedEntityLabelAtom,
+    hasEntityFocusAtom,
+    setNarrativeFocusAtom,
+    clearNarrativeFocusAtom,
+    setFocusModeAtom,
+} from './narrative-focus';
+
+export type { NarrativeFocus, FocusMode } from './narrative-focus';
+
+// Entity Attributes atoms (First-Class Fact Sheet)
+export {
+    entityAttributesFamily,
+    entityAttributesRecordFamily,
+    metaCardsFamily,
+    setAttributeAtom,
+    setMultipleAttributesAtom,
+    deleteAttributeAtom,
+    createMetaCardAtom,
+    updateMetaCardAtom,
+    deleteMetaCardAtom,
+    invalidateEntityCacheAtom,
+    clearAllCachesAtom,
+    isLoadingAttributesAtom,
+    getAttributeAtom,
+} from './entity-attributes';
+
+export type {
+    FieldType,
+    EntityAttribute,
+    MetaCard,
+    MetaCardField,
+    FieldSchema,
+    ValidationRule,
+} from './entity-attributes';

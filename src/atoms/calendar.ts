@@ -85,6 +85,78 @@ export const calendarViewStateAtom = atom((get) => get(_viewStateAtom));
 export const isCalendarHydratedAtom = atom((get) => get(_isHydratedAtom));
 export const isCalendarLoadingAtom = atom((get) => get(_isLoadingAtom));
 
+// ============================================
+// ENTITY-SCOPED DERIVED ATOMS
+// ============================================
+
+// Import the narrative focus atom (lazy import to avoid circular deps)
+import { focusedEntityIdAtom, focusModeAtom } from './narrative-focus';
+
+/**
+ * Events filtered by the currently focused entity
+ * When focusMode is 'entity' and an entity is focused, only shows events
+ * where the focused entity is a participant.
+ * When focusMode is 'all', shows all events.
+ */
+export const eventsForFocusedEntityAtom = atom((get) => {
+    const events = get(_eventsAtom);
+    const focusMode = get(focusModeAtom);
+    const focusedEntityId = get(focusedEntityIdAtom);
+
+    // No focus or 'all' mode - return all events
+    if (focusMode === 'all' || !focusedEntityId) {
+        return events;
+    }
+
+    // Filter to events where focused entity is a participant
+    return events.filter(event => {
+        // Check if entity is a direct participant
+        if (event.participants?.some(p => p.id === focusedEntityId)) {
+            return true;
+        }
+        // Check if entity is in locations
+        if (event.locations?.some(l => l.id === focusedEntityId)) {
+            return true;
+        }
+        // Check if entity is in artifacts
+        if (event.artifacts?.some(a => a.id === focusedEntityId)) {
+            return true;
+        }
+        // Check legacy entityId field
+        if (event.entityId === focusedEntityId) {
+            return true;
+        }
+        return false;
+    });
+});
+
+/**
+ * Periods filtered by the currently focused entity
+ */
+export const periodsForFocusedEntityAtom = atom((get) => {
+    const periods = get(_periodsAtom);
+    const focusMode = get(focusModeAtom);
+    const focusedEntityId = get(focusedEntityIdAtom);
+
+    // No focus or 'all' mode - return all periods
+    if (focusMode === 'all' || !focusedEntityId) {
+        return periods;
+    }
+
+    // Filter periods linked to this entity
+    return periods.filter(period => {
+        // Check protagonist
+        if (period.protagonist?.id === focusedEntityId) {
+            return true;
+        }
+        // Check antagonist
+        if (period.antagonist?.id === focusedEntityId) {
+            return true;
+        }
+        return false;
+    });
+});
+
 
 // ============================================
 // TRANSFORMATION UTILITIES

@@ -1,21 +1,35 @@
 import React, { useMemo, useCallback } from 'react';
 import { useJotaiNotes } from '@/hooks/useJotaiNotes';
+import { useUnifiedEntityAttributes } from '@/hooks/useUnifiedEntityAttributes';
 import { FactSheetContainer } from '@/components/fact-sheets/FactSheetContainer';
-import { EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
+import { EntitySelectionProvider, useEntitySelection } from '@/contexts/EntitySelectionContext';
 import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentScanner';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 import { toast } from 'sonner';
+import { Focus, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-export function CalendarEntitySidebar() {
+/**
+ * Inner component that has access to EntitySelectionContext
+ */
+function CalendarEntitySidebarInner() {
     const { state: { notes }, updateNoteContent } = useJotaiNotes();
+    const {
+        isGlobalFocusActive,
+        globalFocusEntityLabel,
+        setGlobalEntityFocus,
+        clearGlobalFocus,
+        selectedEntity,
+    } = useEntitySelection();
 
-    // Gather ALL entities from the store:
-    // 1. Entity Notes (notes with isEntity flag)
-    // 2. Inline entities from note content (for full parity with Notes sidebar)
+    // Use unified entity attributes hook for bi-directional sync
+    const unifiedAttrs = useUnifiedEntityAttributes(selectedEntity);
+
+    // Gather ALL entities from the store
     const entityNotes = useMemo(() => {
         const allEntities: ParsedEntity[] = [];
-        const seen = new Set<string>(); // Dedup by "KIND|label"
+        const seen = new Set<string>();
 
         // 1. Entity Notes (notes marked as entities)
         for (const note of notes) {
@@ -56,7 +70,6 @@ export function CalendarEntitySidebar() {
                                 kind: entity.kind as EntityKind,
                                 subtype: entity.subtype,
                                 label: entity.label,
-                                // No noteId for inline entities - they live in the content
                                 attributes: entity.attributes || {},
                             });
                         }
@@ -70,53 +83,81 @@ export function CalendarEntitySidebar() {
         return allEntities;
     }, [notes]);
 
-
-    // 2. Handle updates from the sidebar
+    // Handle updates from the sidebar - now uses unified hook for bi-directional sync
     const handleEntityUpdate = useCallback(async (entity: ParsedEntity, attributes: EntityAttributes) => {
-        // Find the note that owns this entity
-        // If the entity has a noteId, use that.
-        const targetNote = notes.find(n =>
-            (entity.noteId && n.id === entity.noteId) ||
-            (n.isEntity && n.entityKind === entity.kind && n.entityLabel === entity.label)
-        );
+        // Update via unified hook - this syncs to both SQLite AND legacy note content
+        await unifiedAttrs.setFields(attributes);
 
-        if (!targetNote) {
-            toast.error(`Could not find source note for ${entity.label}`);
-            return;
+        // Note: The unified hook handles syncing to the note content automatically,
+        // so we don't need to manually update the note here anymore.
+        // This ensures Calendar and Notes views stay in sync.
+    }, [unifiedAttrs.setFields]);
+
+    // Set global focus when entity is selected
+    const handleFocusClick = useCallback(() => {
+        if (selectedEntity) {
+            setGlobalEntityFocus(selectedEntity);
+            toast.success(`Now viewing ${selectedEntity.label}'s timeline`);
         }
+    }, [selectedEntity, setGlobalEntityFocus]);
 
-        try {
-            const content = targetNote.content ? JSON.parse(targetNote.content) : {};
+    return (
+        <div className="h-full border-l border-border bg-sidebar w-[380px] flex flex-col overflow-hidden transition-all">
+            {/* Focus Indicator Banner */}
+            {isGlobalFocusActive && (
+                <div className="px-4 py-2 bg-primary/10 border-b border-primary/20 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                        <Focus className="h-4 w-4 text-primary" />
+                        <span className="font-medium text-primary">
+                            Viewing: {globalFocusEntityLabel}
+                        </span>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearGlobalFocus}
+                        className="h-6 px-2 text-xs hover:bg-primary/10"
+                    >
+                        <X className="h-3 w-3 mr-1" />
+                        Clear
+                    </Button>
+                </div>
+            )}
 
-            if (!content.entityAttributes) {
-                content.entityAttributes = {};
-            }
+            {/* Entity selected but not focused - show focus button */}
+            {selectedEntity && !isGlobalFocusActive && (
+                <div className="px-4 py-2 bg-muted/50 border-b border-border flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                        {selectedEntity.label} selected
+                    </span>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleFocusClick}
+                        className="h-6 px-2 text-xs"
+                    >
+                        <Focus className="h-3 w-3 mr-1" />
+                        Focus View
+                    </Button>
+                </div>
+            )}
 
-            const entityKey = `${entity.kind}|${entity.label}`;
-            // Merge updates
-            content.entityAttributes[entityKey] = {
-                ...content.entityAttributes[entityKey],
-                ...attributes
-            };
+            <FactSheetContainer
+                externalEntities={entityNotes}
+                onEntityUpdate={handleEntityUpdate}
+            />
+        </div>
+    );
+}
 
-            await updateNoteContent(targetNote.id, JSON.stringify(content));
-            // toast.success(`Updated ${entity.label}`); // Optional: too noisy?
-        } catch (err) {
-            console.error("Failed to update entity attributes", err);
-            toast.error("Failed to save changes");
-        }
-    }, [notes, updateNoteContent]);
-
-    // 3. Render the container wrapped in its own selection provider
-    // allowing it to manage "Selected Entity" state independently of the Notes page.
+/**
+ * CalendarEntitySidebar - Entity sidebar for the fantasy calendar
+ * Wraps content in its own EntitySelectionProvider for independent state
+ */
+export function CalendarEntitySidebar() {
     return (
         <EntitySelectionProvider>
-            <div className="h-full border-l border-border bg-sidebar w-[380px] flex flex-col overflow-hidden transition-all">
-                <FactSheetContainer
-                    externalEntities={entityNotes}
-                    onEntityUpdate={handleEntityUpdate}
-                />
-            </div>
+            <CalendarEntitySidebarInner />
         </EntitySelectionProvider>
     );
 }

@@ -53,6 +53,103 @@ export interface StatGridField extends BaseField {
   }>;
 }
 
+// ============================================
+// EXTENDED FIELD TYPES (Phase 2)
+// ============================================
+
+/**
+ * Slider field - for continuous value selection
+ */
+export interface SliderField extends BaseField {
+  type: 'slider';
+  min: number;
+  max: number;
+  step?: number;
+  showValue?: boolean;
+  color?: string;
+  marks?: Array<{ value: number; label: string }>;
+}
+
+/**
+ * Counter field - for discrete integer values with +/- buttons
+ */
+export interface CounterField extends BaseField {
+  type: 'counter';
+  min?: number;
+  max?: number;
+  step?: number;
+  showButtons?: boolean;
+}
+
+/**
+ * Toggle field - for boolean on/off values
+ */
+export interface ToggleField extends BaseField {
+  type: 'toggle';
+  onLabel?: string;
+  offLabel?: string;
+}
+
+/**
+ * Date field - fantasy calendar aware date picker
+ */
+export interface DateField extends BaseField {
+  type: 'date';
+  calendarId?: string; // Optional calendar system
+  includeTime?: boolean;
+  format?: string; // Display format
+}
+
+/**
+ * Color field - color picker with palette support
+ */
+export interface ColorField extends BaseField {
+  type: 'color';
+  palette?: string[]; // Preset colors
+  allowCustom?: boolean;
+}
+
+/**
+ * Rating field - star/icon based rating
+ */
+export interface RatingField extends BaseField {
+  type: 'rating';
+  maxRating?: number; // Default 5
+  icon?: 'star' | 'heart' | 'circle' | 'flame';
+  allowHalf?: boolean;
+  color?: string;
+}
+
+/**
+ * Tags field - multi-value tag input with suggestions
+ */
+export interface TagsField extends BaseField {
+  type: 'tags';
+  suggestions?: string[];
+  maxTags?: number;
+  allowCustom?: boolean;
+  color?: string; // Tag badge color
+}
+
+/**
+ * Rich text field - formatted text with basic styling
+ */
+export interface RichTextField extends BaseField {
+  type: 'rich-text';
+  minHeight?: number;
+  maxHeight?: number;
+  toolbar?: ('bold' | 'italic' | 'underline' | 'link' | 'list')[];
+}
+
+/**
+ * Entity link field - reference to another entity
+ */
+export interface EntityLinkField extends BaseField {
+  type: 'entity-link';
+  allowedKinds?: string[]; // Restrict to specific entity kinds
+  multiple?: boolean;
+}
+
 export type FactSheetField =
   | TextField
   | NumberField
@@ -60,7 +157,18 @@ export type FactSheetField =
   | ArrayField
   | ProgressField
   | RelationshipField
-  | StatGridField;
+  | StatGridField
+  // Extended field types
+  | SliderField
+  | CounterField
+  | ToggleField
+  | DateField
+  | ColorField
+  | RatingField
+  | TagsField
+  | RichTextField
+  | EntityLinkField;
+
 
 // Card definition
 export interface FactSheetCard {

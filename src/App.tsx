@@ -18,6 +18,7 @@ import { NERProvider } from "@/contexts/NERContext";
 import { EntityThemeProvider } from "@/contexts/EntityThemeContext";
 import { initializeSQLiteAndHydrate } from "@/lib/db";
 import { initCozoGraphSchema } from '@/lib/cozo/schema/init';
+import { bindingEngine } from '@/lib/bindings';
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,11 @@ const App = () => {
                 await initializeJotaiStore();
                 console.log("Jotai store initialized");
                 setJotaiReady(true);
+
+                // Initialize Binding Engine
+                setInitStatus("Initializing binding engine...");
+                await bindingEngine.initialize();
+                console.log("Binding engine initialized");
 
                 setStorageReady(true);
             } catch (e) {

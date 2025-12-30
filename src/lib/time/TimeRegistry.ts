@@ -55,6 +55,55 @@ export interface CalendarDictionary {
     monthDays: Record<string, number>;
 }
 
+// ============================================
+// ENTITY TIMELINE TYPES
+// ============================================
+
+/**
+ * An event or note associated with an entity, with fantasy date context
+ */
+export interface EntityTimelineEntry {
+    id: string;
+    type: 'EVENT' | 'NOTE' | 'MENTION';
+    title: string;
+    description?: string;
+    fantasyDate: {
+        year: number;
+        monthIndex: number;
+        dayIndex: number;
+        eraId?: string;
+    };
+    sourceNoteId?: string;
+    role?: 'participant' | 'location' | 'artifact' | 'owner';
+    metadata?: Record<string, unknown>;
+}
+
+/**
+ * Query for entity timeline
+ */
+export interface EntityTimelineQuery {
+    entityId: string;
+    calendarId?: string;
+    startYear?: number;
+    endYear?: number;
+    includeEvents?: boolean;
+    includeNotes?: boolean;
+    includeMentions?: boolean;
+}
+
+/**
+ * Result of entity relationship query
+ */
+export interface EntityRelationship {
+    targetEntityId: string;
+    targetLabel: string;
+    relationshipType: string;
+    sharedEvents: number;
+    sharedNotes: number;
+    confidence: number;
+}
+
+
 class TimeRegistryImpl {
     /**
      * Get all months for a calendar, ordered by index
@@ -238,6 +287,173 @@ class TimeRegistryImpl {
     hasTimeUnits(calendarId: string): boolean {
         const months = this.getMonths(calendarId);
         return months.length > 0;
+    }
+
+    // ============================================
+    // ENTITY TIMELINE METHODS
+    // ============================================
+
+    /**
+     * Get timeline entries for a specific entity
+     * Aggregates events, notes, and mentions where the entity is involved
+     */
+    getEntityTimeline(query: EntityTimelineQuery): EntityTimelineEntry[] {
+        const entries: EntityTimelineEntry[] = [];
+
+        // This would integrate with dbClient and CozoDB
+        // For now, we provide a structure that can be populated by consumers
+
+        if (!cozoDb.isReady()) {
+            console.warn('[TimeRegistry] getEntityTimeline: CozoDB not ready');
+            return entries;
+        }
+
+        try {
+            // Query events where entity is a participant
+            const eventQuery = `
+                ?[event_id, title, year, month_index, day_index, era_id, role] :=
+                    *calendar_event_participants{event_id, entity_id, role},
+                    entity_id == $entity_id,
+                    *calendar_events{id: event_id, title, year, month_index, day_index, era_id}
+                :order year, month_index, day_index
+            `;
+
+            const result = cozoDb.runQuery(eventQuery, { entity_id: query.entityId });
+
+            if (result.ok && result.rows) {
+                for (const row of result.rows as any[]) {
+                    const [eventId, title, year, monthIndex, dayIndex, eraId, role] = row;
+
+                    // Apply date filters if specified
+                    if (query.startYear !== undefined && year < query.startYear) continue;
+                    if (query.endYear !== undefined && year > query.endYear) continue;
+
+                    entries.push({
+                        id: eventId,
+                        type: 'EVENT',
+                        title: title || 'Untitled Event',
+                        fantasyDate: {
+                            year: year || 1,
+                            monthIndex: monthIndex || 0,
+                            dayIndex: dayIndex || 0,
+                            eraId: eraId,
+                        },
+                        role: role || 'participant',
+                    });
+                }
+            }
+        } catch (err) {
+            console.warn('[TimeRegistry] getEntityTimeline failed:', err);
+        }
+
+        // Sort by fantasy date
+        entries.sort((a, b) => {
+            if (a.fantasyDate.year !== b.fantasyDate.year) {
+                return a.fantasyDate.year - b.fantasyDate.year;
+            }
+            if (a.fantasyDate.monthIndex !== b.fantasyDate.monthIndex) {
+                return a.fantasyDate.monthIndex - b.fantasyDate.monthIndex;
+            }
+            return a.fantasyDate.dayIndex - b.fantasyDate.dayIndex;
+        });
+
+        return entries;
+    }
+
+    /**
+     * Get entities that share timeline presence with the given entity
+     */
+    getEntityRelationships(entityId: string): EntityRelationship[] {
+        const relationships: EntityRelationship[] = [];
+
+        if (!cozoDb.isReady()) {
+            return relationships;
+        }
+
+        try {
+            // Find entities that appear in the same events
+            const coOccurrenceQuery = `
+                ?[other_id, other_label, rel_type, shared_events, confidence] :=
+                    *relationships{source_id, target_id, type, confidence},
+                    (source_id == $entity_id, other_id = target_id) or 
+                    (target_id == $entity_id, other_id = source_id),
+                    rel_type = type,
+                    *entity{id: other_id, label: other_label},
+                    shared_events = 1
+                :limit 50
+            `;
+
+            const result = cozoDb.runQuery(coOccurrenceQuery, { entity_id: entityId });
+
+            if (result.ok && result.rows) {
+                for (const row of result.rows as any[]) {
+                    const [otherId, otherLabel, relType, sharedEvents, confidence] = row;
+
+                    relationships.push({
+                        targetEntityId: otherId,
+                        targetLabel: otherLabel || 'Unknown',
+                        relationshipType: relType || 'related_to',
+                        sharedEvents: sharedEvents || 0,
+                        sharedNotes: 0,
+                        confidence: confidence || 0.5,
+                    });
+                }
+            }
+        } catch (err) {
+            console.warn('[TimeRegistry] getEntityRelationships failed:', err);
+        }
+
+        return relationships;
+    }
+
+    /**
+     * Get all entities that have timeline entries within a date range
+     */
+    getEntitiesInDateRange(
+        calendarId: string,
+        startYear: number,
+        endYear: number
+    ): Array<{ entityId: string; label: string; entryCount: number }> {
+        const entities: Array<{ entityId: string; label: string; entryCount: number }> = [];
+
+        if (!cozoDb.isReady()) {
+            return entities;
+        }
+
+        try {
+            const rangeQuery = `
+                ?[entity_id, entity_label, count(event_id)] :=
+                    *calendar_event_participants{event_id, entity_id},
+                    *calendar_events{id: event_id, year, calendar_id},
+                    calendar_id == $calendar_id,
+                    year >= $start_year,
+                    year <= $end_year,
+                    *entity{id: entity_id, label: entity_label}
+                :order -count(event_id)
+                :limit 100
+            `;
+
+            const result = cozoDb.runQuery(rangeQuery, {
+                calendar_id: calendarId,
+                start_year: startYear,
+                end_year: endYear,
+            });
+
+            if (result.ok && result.rows) {
+                for (const row of result.rows as any[]) {
+                    const [entityId, label, count] = row;
+                    entities.push({
+                        entityId,
+                        label: label || 'Unknown',
+                        entryCount: count || 0,
+                    });
+                }
+            }
+        } catch (err) {
+            console.warn('[TimeRegistry] getEntitiesInDateRange failed:', err);
+        }
+
+        return entities;
     }
 }
 

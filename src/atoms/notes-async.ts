@@ -251,10 +251,20 @@ export const updateNoteAtom = atom(
  * Returns the created note's ID
  * 
  * Usage: const noteId = await store.set(createNoteAtom, { folderId: 'xyz', title: 'New Note' })
+ * 
+ * Entity-aware: If ownerEntityId and fantasyDate are provided (from narrative focus),
+ * they are stored with the note for entity-scoped views.
  */
 export const createNoteAtom = atom(
     null,
-    async (get, set, params: { folderId?: string; title?: string; sourceNoteId?: string }) => {
+    async (get, set, params: {
+        folderId?: string;
+        title?: string;
+        sourceNoteId?: string;
+        // Entity ownership context (from narrative focus)
+        ownerEntityId?: string;
+        fantasyDate?: { year: number; monthIndex: number; dayIndex: number; eraId?: string };
+    }) => {
         const newNoteId = generateId();
         const timestamp = Date.now();
 
@@ -289,10 +299,18 @@ export const createNoteAtom = atom(
                 parent_id: params.folderId || null,
                 source_note_id: params.sourceNoteId,
                 is_entity: false,
+                // Entity ownership context
+                owner_entity_id: params.ownerEntityId || null,
+                fantasy_date_created: params.fantasyDate || null,
             };
 
             await dbClient.insertNode(nodeInput);
-            console.log(`[Atoms] ✅ Created note ${newNoteId}`);
+
+            if (params.ownerEntityId) {
+                console.log(`[Atoms] ✅ Created note ${newNoteId} (owned by entity: ${params.ownerEntityId})`);
+            } else {
+                console.log(`[Atoms] ✅ Created note ${newNoteId}`);
+            }
 
             return newNoteId;
         } catch (error) {
@@ -303,6 +321,7 @@ export const createNoteAtom = atom(
         }
     }
 );
+
 
 /**
  * Delete note by ID
@@ -342,6 +361,9 @@ export const deleteNoteAtom = atom(
 /**
  * Create new folder
  * Returns the created folder's ID
+ * 
+ * Entity-aware: If ownerEntityId and fantasy_date are provided (from narrative focus),
+ * they are stored with the folder for entity-scoped views.
  */
 export const createFolderAtom = atom(
     null,
@@ -354,6 +376,8 @@ export const createFolderAtom = atom(
         isSubtypeRoot?: boolean;
         color?: string;
         fantasy_date?: { year: number; month: number; day: number };
+        // Entity ownership context (from narrative focus)
+        ownerEntityId?: string;
     }) => {
         const newFolderId = generateId();
         const timestamp = Date.now();
@@ -401,10 +425,18 @@ export const createFolderAtom = atom(
                 color: params.color,
                 // Store fantasy_date in attributes field
                 attributes: params.fantasy_date ? { fantasy_date: params.fantasy_date } : null,
+                // Entity ownership context
+                owner_entity_id: params.ownerEntityId || null,
+                fantasy_date_created: params.fantasy_date || null,
             };
 
             await dbClient.insertNode(nodeInput);
-            console.log(`[Atoms] ✅ Created folder ${newFolderId}`);
+
+            if (params.ownerEntityId) {
+                console.log(`[Atoms] ✅ Created folder ${newFolderId} (owned by entity: ${params.ownerEntityId})`);
+            } else {
+                console.log(`[Atoms] ✅ Created folder ${newFolderId}`);
+            }
 
             return newFolderId;
         } catch (error) {
@@ -415,6 +447,7 @@ export const createFolderAtom = atom(
         }
     }
 );
+
 
 /**
  * Update folder fields
