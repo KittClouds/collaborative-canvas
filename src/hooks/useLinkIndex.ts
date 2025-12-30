@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { linkIndex, type BacklinkInfo, type WikiLink } from '@/lib/linking/LinkIndex';
-import type { Note } from '@/contexts/NotesContext';
+import type { Note } from '@/types/noteTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 
 interface EntityStats {

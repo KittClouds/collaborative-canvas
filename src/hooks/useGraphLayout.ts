@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { GraphProjection } from '../lib/graph/projections/types/base';
 
 export type LayoutAlgorithm = 'force' | 'hierarchical' | 'radial' | 'circular';
 

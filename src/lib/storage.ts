@@ -1,4 +1,4 @@
-import type { Note, Folder } from '@/contexts/NotesContext';
+import type { Note, Folder } from '@/types/noteTypes';
 
 export const STORAGE_KEY = 'networked-notes-data';
 const BACKUP_KEY = `${STORAGE_KEY}-backup`;
@@ -52,13 +52,13 @@ function parseStorageData(data: string): { notes: Note[]; folders: Folder[] } {
 export function saveToStorage(notes: Note[], folders: Folder[]) {
   try {
     const data = JSON.stringify({ notes, folders });
-    
+
     // Keep backup of previous state before saving
     const current = localStorage.getItem(STORAGE_KEY);
     if (current) {
       localStorage.setItem(BACKUP_KEY, current);
     }
-    
+
     localStorage.setItem(STORAGE_KEY, data);
   } catch (e) {
     console.error('Failed to save notes to storage:', e);
@@ -73,11 +73,11 @@ export function exportNotes(notes: Note[], folders: Folder[]) {
     exportedAt: new Date().toISOString(),
     version: '1.0',
   };
-  
+
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: 'application/json',
   });
-  
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -94,11 +94,11 @@ export function importNotes(file: File): Promise<{ notes: Note[]; folders: Folde
       try {
         const content = e.target?.result as string;
         const data = JSON.parse(content);
-        
+
         if (!data.notes || !data.folders) {
           throw new Error('Invalid backup file format');
         }
-        
+
         resolve({
           notes: data.notes.map((n: any) => ({
             ...n,

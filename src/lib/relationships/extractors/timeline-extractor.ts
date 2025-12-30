@@ -13,7 +13,7 @@
 import { temporalAhoMatcher, type TemporalMention, type TemporalKind } from '@/lib/entities/scanner-v3/extractors/TemporalAhoMatcher';
 import { relationshipRegistry, RelationshipSource, type RelationshipInput, type RelationshipProvenance } from '@/lib/relationships';
 import type { TemporalPoint, TimeGranularity, TemporalSpan } from '@/types/temporal';
-import type { Folder, Note } from '../../../contexts/NotesContext';
+import type { Folder, Note } from '@/types/noteTypes';
 
 export type TemporalRelationshipType =
     | 'PRECEDES'
@@ -456,8 +456,8 @@ export class TimelineRelationshipExtractor {
                 return aSeq - bSeq;
             }
 
-            const aCreated = new Date(a.createdAt || 0).getTime();
-            const bCreated = new Date(b.createdAt || 0).getTime();
+            const aCreated = new Date((a as any).createdAt || 0).getTime();
+            const bCreated = new Date((b as any).createdAt || 0).getTime();
             return aCreated - bCreated;
         });
     }

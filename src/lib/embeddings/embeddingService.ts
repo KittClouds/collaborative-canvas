@@ -1,5 +1,5 @@
 import { EmbeddingEngine } from './EmbeddingEngine';
-import type { Note } from '@/contexts/NotesContext';
+import type { Note } from '@/types/noteTypes';
 
 export type EmbeddingModel = 'small' | 'medium';
 

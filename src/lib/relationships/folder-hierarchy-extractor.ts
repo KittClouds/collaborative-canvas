@@ -9,7 +9,7 @@
 
 import { folderSchemaRegistry } from '@/lib/folders/schema-registry';
 import { generateId } from '@/lib/utils/ids';
-import type { Folder, Note } from '@/contexts/NotesContext';
+import type { Folder, Note } from '@/types/noteTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 import type { UnifiedRelationship, RelationshipProvenance } from './types';
 import { RelationshipSource } from './types';

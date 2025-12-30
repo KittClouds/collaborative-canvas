@@ -116,6 +116,7 @@ export function useJotaiNotes() {
             isTypedRoot?: boolean;
             isSubtypeRoot?: boolean;
             color?: string;
+            fantasy_date?: { year: number; month: number; day: number };
         }
     ): Promise<Folder> => {
         const folderId = await createFolder({ name, parentId, ...options });
@@ -140,6 +141,7 @@ export function useJotaiNotes() {
             is_subtype_root: options?.isSubtypeRoot,
             isSubtypeRoot: options?.isSubtypeRoot,
             color: options?.color,
+            fantasy_date: options?.fantasy_date,
             is_entity: false,
             isEntity: false,
             created_at: timestamp,

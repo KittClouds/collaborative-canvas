@@ -55,9 +55,11 @@ export const optimizedFolderTreeAtom = atom((get) => {
     }
 
     // Check for deleted folders
+    let folderDeleted = false;
     for (const [id] of lastFoldersSnapshot) {
         if (!currentFoldersSnapshot.has(id)) {
             changedFolderIds.add(id);
+            folderDeleted = true;
 
             // Also invalidate the deleted folder's parent so its children array updates
             const deletedFolder = lastFoldersSnapshot.get(id);
@@ -82,11 +84,16 @@ export const optimizedFolderTreeAtom = atom((get) => {
     }
 
     // Invalidate cache for changed folders
-    for (const folderId of changedFolderIds) {
-        // Remove all cache entries for this folder
-        for (const key of folderTreeCache.keys()) {
-            if (key.startsWith(`${folderId}-`)) {
-                folderTreeCache.delete(key);
+    // When a folder is deleted, clear entire cache to ensure root-level folders are rebuilt
+    if (folderDeleted) {
+        folderTreeCache.clear();
+    } else {
+        for (const folderId of changedFolderIds) {
+            // Remove all cache entries for this folder
+            for (const key of folderTreeCache.keys()) {
+                if (key.startsWith(`${folderId}-`)) {
+                    folderTreeCache.delete(key);
+                }
             }
         }
     }

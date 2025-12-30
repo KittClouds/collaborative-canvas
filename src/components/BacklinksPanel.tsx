@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNotes } from '@/contexts/NotesContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Link2 } from 'lucide-react';
@@ -41,7 +40,7 @@ export function BacklinksPanel({ backlinks, onNavigate }: BacklinksPanelProps) {
                 const parsed = parseEntityFromTitle(backlink.sourceNoteTitle);
                 const displayName = getDisplayName(backlink.sourceNoteTitle);
                 const entityColor = parsed?.kind ? ENTITY_COLORS[parsed.kind as EntityKind] : undefined;
-                
+
                 return (
                   <div
                     key={`${backlink.sourceNoteId}-${idx}`}
@@ -50,18 +49,18 @@ export function BacklinksPanel({ backlinks, onNavigate }: BacklinksPanelProps) {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div 
+                        <div
                           className="font-medium text-sm truncate"
                           style={entityColor ? { color: entityColor } : undefined}
                         >
                           {displayName}
                         </div>
                         {parsed?.kind && (
-                          <Badge 
-                            variant="outline" 
+                          <Badge
+                            variant="outline"
                             className="text-xs mt-1"
-                            style={entityColor ? { 
-                              backgroundColor: `${entityColor}20`, 
+                            style={entityColor ? {
+                              backgroundColor: `${entityColor}20`,
                               color: entityColor,
                               borderColor: `${entityColor}40`
                             } : undefined}

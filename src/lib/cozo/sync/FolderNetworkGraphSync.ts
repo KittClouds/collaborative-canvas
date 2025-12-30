@@ -1,6 +1,6 @@
 import { mutationCoordinator } from '../mutations';
 import { generateId } from '@/lib/utils/ids';
-import type { Folder } from '@/contexts/NotesContext';
+import type { Folder } from '@/types/noteTypes';
 import type { NetworkInstance, NetworkRelationshipInstance } from '@/lib/networks/types';
 
 const DEBOUNCE_MS = 500;
@@ -13,7 +13,7 @@ export class FolderNetworkGraphSync {
 
   async init(): Promise<void> {
     if (this.initialized) return;
-    
+
     try {
       await mutationCoordinator.init();
       this.initialized = true;
@@ -47,7 +47,7 @@ export class FolderNetworkGraphSync {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
-    
+
     this.debounceTimer = setTimeout(() => {
       this.flushPendingSync();
     }, DEBOUNCE_MS);
@@ -61,7 +61,7 @@ export class FolderNetworkGraphSync {
 
     const folders = Array.from(this.pendingFolders.values());
     const networks = Array.from(this.pendingNetworks.values());
-    
+
     this.pendingFolders.clear();
     this.pendingNetworks.clear();
 
@@ -77,10 +77,10 @@ export class FolderNetworkGraphSync {
   private async syncFolderHierarchy(folders: Folder[]): Promise<void> {
     const folderMap = new Map(folders.map(f => [f.id, f]));
     let syncCount = 0;
-    
+
     for (const folder of folders) {
       if (!folder.parentId) continue;
-      
+
       const parent = folderMap.get(folder.parentId);
       if (!parent) continue;
 
@@ -188,7 +188,7 @@ export class FolderNetworkGraphSync {
   }
 
   private async syncNetworkRelationships(
-    networkId: string, 
+    networkId: string,
     relationships: NetworkRelationshipInstance[]
   ): Promise<void> {
     const now = Date.now();
@@ -234,7 +234,7 @@ export class FolderNetworkGraphSync {
     await mutationCoordinator.delete('network_membership', networkId);
     await mutationCoordinator.delete('network_relationship', networkId);
     await mutationCoordinator.delete('network_instance', networkId);
-    
+
     console.log(`[FolderNetworkGraphSync] Deleted network ${networkId} via MutationCoordinator`);
   }
 }

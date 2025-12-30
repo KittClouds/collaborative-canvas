@@ -26,6 +26,7 @@ export interface Folder {
     id: string;
     name: string;
     parent_id: string | null;
+    parentId?: string | null; // Alias for parent_id
     collapsed?: boolean;
     updatedAt: number;
     updated_at?: number; // DB field
@@ -36,6 +37,9 @@ export interface Folder {
     inherited_kind?: string | null;
     entitySubtype?: string | null;
     color?: string | null;
+
+    // Calendar provenance (fantasy date when created from calendar)
+    fantasy_date?: { year: number; month: number; day: number } | null;
 }
 
 export interface FolderWithChildren extends Folder {

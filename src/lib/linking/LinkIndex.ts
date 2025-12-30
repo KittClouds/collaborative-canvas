@@ -1,4 +1,4 @@
-import type { Note } from '@/contexts/NotesContext';
+import type { Note } from '@/types/noteTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 import { scanDocument } from '@/lib/entities/documentScanner';
 
@@ -247,7 +247,7 @@ export class LinkIndex {
 
     // Check by entity label if it's an entity note
     if (note.isEntity && note.entityLabel && note.entityKind) {
-      const entityKey = this.getBacklinkKey(note.entityLabel, note.entityKind);
+      const entityKey = this.getBacklinkKey(note.entityLabel, note.entityKind as EntityKind);
       const entityBacklinks = this.backlinkMap.get(entityKey) || [];
 
       // Avoid duplicates

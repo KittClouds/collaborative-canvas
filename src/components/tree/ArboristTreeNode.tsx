@@ -118,6 +118,13 @@ export function ArboristTreeNode({
                 style={{ color: iconColor }}
             />
 
+            {/* Fantasy Date Badge (if created from calendar) */}
+            {data.fantasyDate && (
+                <span className="text-[9px] text-muted-foreground font-mono shrink-0 z-10 opacity-70">
+                    {`D${data.fantasyDate.day}.M${data.fantasyDate.month}`}
+                </span>
+            )}
+
             {/* Display name */}
             <span className="truncate text-sm flex-1 z-10">
                 {getDisplayName(data.name) || (isFolder ? "New Folder" : "Untitled Note")}

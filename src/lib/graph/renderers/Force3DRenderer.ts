@@ -1,4 +1,34 @@
-import { GraphProjection, Force3DGraphData, Force3DNode, Force3DLink } from '../projections/types/base';
+// Inline types since projections/types/base doesn't exist
+interface GraphProjection {
+    nodes: Array<{ id: string; type: string; weight?: number;[key: string]: any }>;
+    edges: Array<{ source: string | object; target: string | object;[key: string]: any }>;
+}
+
+interface Force3DNode {
+    id: string;
+    type: string;
+    weight?: number;
+    x?: number;
+    y?: number;
+    z?: number;
+    fx?: number | null;
+    fy?: number | null;
+    fz?: number | null;
+    [key: string]: any;
+}
+
+interface Force3DLink {
+    source: string | Force3DNode;
+    target: string | Force3DNode;
+    curvature?: number;
+    rotation?: number;
+    [key: string]: any;
+}
+
+interface Force3DGraphData {
+    nodes: Force3DNode[];
+    links: Force3DLink[];
+}
 
 export class Force3DRenderer {
     /**

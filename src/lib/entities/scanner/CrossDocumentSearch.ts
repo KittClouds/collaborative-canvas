@@ -8,7 +8,7 @@
  */
 
 import { entityRegistry, type RegisteredEntity } from '@/lib/cozo/graph/adapters';
-import type { Note } from '@/contexts/NotesContext';
+import type { Note } from '@/types/noteTypes';
 import { JSONContent } from '@tiptap/react';
 
 export interface EntitySearchResult {

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowRight, FileQuestion } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { WikiLink } from '@/lib/linking/LinkIndex';
-import type { Note } from '@/contexts/NotesContext';
+import type { Note } from '@/types/noteTypes';
 import { ENTITY_COLORS } from '@/lib/entities/entityTypes';
 
 interface OutgoingLinksPanelProps {
@@ -17,7 +17,7 @@ export function OutgoingLinksPanel({ outgoingLinks, notes, onNavigate }: Outgoin
   // Check if a link target exists
   const checkLinkExists = (link: WikiLink): boolean => {
     const normalizedTarget = link.targetTitle.toLowerCase().trim();
-    return notes.some(n => 
+    return notes.some(n =>
       n.title.toLowerCase().trim() === normalizedTarget ||
       (n.isEntity && n.entityLabel?.toLowerCase().trim() === normalizedTarget)
     );
@@ -112,11 +112,11 @@ export function OutgoingLinksPanel({ outgoingLinks, notes, onNavigate }: Outgoin
                           className="p-2 rounded-md bg-card hover:bg-accent transition-colors cursor-pointer flex items-center gap-2 border"
                           onClick={() => onNavigate(link.targetTitle, true, link)}
                         >
-                          <Badge 
-                            variant="outline" 
+                          <Badge
+                            variant="outline"
                             className="text-xs shrink-0"
-                            style={color ? { 
-                              backgroundColor: `${color}20`, 
+                            style={color ? {
+                              backgroundColor: `${color}20`,
                               color,
                               borderColor: `${color}40`
                             } : undefined}

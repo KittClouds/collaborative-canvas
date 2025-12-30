@@ -8,6 +8,7 @@ import { Provider as JotaiProvider } from "jotai";
 import { jotaiStore, initializeJotaiStore } from "@/lib/store";
 
 import Index from "./pages/Index";
+import FantasyCalendarPage from "./pages/FantasyCalendarPage";
 import GraphExplorerPage from "./pages/GraphExplorerPage";
 import NotFound from "./pages/NotFound";
 import { initializeStorage, getBlueprintStore } from "@/lib/storage/index";
@@ -92,6 +93,7 @@ const App = () => {
                                 <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                                     <Routes>
                                         <Route path="/" element={<Index />} />
+                                        <Route path="/calendar" element={<FantasyCalendarPage />} />
                                         <Route path="/graph" element={<GraphExplorerPage />} />
                                         <Route path="*" element={<NotFound />} />
                                     </Routes>

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Force3DNode } from '../lib/graph/projections/types/base';
 
 export function useGraphInteraction() {
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);

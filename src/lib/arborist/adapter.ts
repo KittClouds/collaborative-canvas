@@ -91,6 +91,7 @@ function transformFolderToNode(
         effectiveColor,
         depth,
         count: children.length,
+        fantasyDate: (folder as any).fantasy_date || rawFolder.fantasy_date,
         folderData: {
             ...folder,
             // Ensure folderData has correct props for TypedFolderMenu

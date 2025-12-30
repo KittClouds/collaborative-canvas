@@ -25,7 +25,7 @@ import {
     type NetworkSchema,
     type NetworkRelationshipDef,
 } from '@/lib/networks';
-import type { Folder, Note } from '../../../contexts/NotesContext';
+import type { Folder, Note } from '@/types/noteTypes';
 
 export interface NetworkSyncResult {
     imported: number;
@@ -271,7 +271,7 @@ export class NetworkAdapter {
 
         if (folder.entityKind === 'NETWORK' && entity.entityKind) {
             const parentFolder = await this.getParentFolder(folder);
-            if (parentFolder?.isEntity && parentFolder.entityKind) {
+            if ((parentFolder as any).isEntity && parentFolder.entityKind) {
                 const defaultRelationship = this.inferRelationshipFromStructure(
                     schema,
                     parentFolder.entityKind as string,

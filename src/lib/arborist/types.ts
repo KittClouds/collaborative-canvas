@@ -41,6 +41,9 @@ export interface ArboristNode {
     effectiveColor?: string;  // Resolved color (folder → parent → default)
     depth?: number;           // Tree depth for indentation
 
+    // Calendar provenance (fantasy date when created from calendar)
+    fantasyDate?: { year: number; month: number; day: number };
+
     // Original data references (for mutations)
     folderData?: Folder;
     noteData?: Note;

@@ -6,7 +6,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Boxes, Network, Settings, PanelRightClose, PanelRightOpen, Type } from "lucide-react";
+import { Boxes, Network, Settings, PanelRightClose, PanelRightOpen, Type, CalendarClock } from "lucide-react";
 import { useBlueprintHub } from "@/features/blueprint-hub/hooks/useBlueprintHub";
 import { useNavigate, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,14 @@ export function SettingsDropdown({
                 >
                     <Network className="h-4 w-4" />
                     <span>Graph Explorer</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                    onClick={() => navigate('/calendar')}
+                    className={cn("gap-2", location.pathname === '/calendar' && "bg-accent/50")}
+                >
+                    <CalendarClock className="h-4 w-4" />
+                    <span>Fantasy Calendar</span>
                 </DropdownMenuItem>
 
                 <DropdownMenuItem

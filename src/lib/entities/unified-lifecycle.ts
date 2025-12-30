@@ -8,12 +8,29 @@
 
 import { entityRegistry } from '@/lib/cozo/graph/adapters';
 // import { getGraphSyncManager } from '@/lib/graph/integration';
-import { autoSaveEntityRegistry } from '@/lib/storage/entityStorage';
-import { folderRelationshipCreator } from '@/lib/folders/relationship-creator';
+// TODO: These modules don't exist yet - stub them out
+// import { autoSaveEntityRegistry } from '@/lib/storage/entityStorage';
+// import { folderRelationshipCreator } from '@/lib/folders/relationship-creator';
 import { relationshipRegistry, RelationshipSource } from '@/lib/relationships';
-import type { Note, Folder } from '@/contexts/NotesContext';
+import type { Note, Folder } from '@/types/noteTypes';
 import type { EntityKind } from './entityTypes';
 import { parseEntityFromTitle, parseFolderEntityFromName, parseEntityWithRelation } from './titleParser';
+
+// Stub for missing autoSaveEntityRegistry
+const autoSaveEntityRegistry = (registry: any) => {
+    // TODO: Implement persistence when entityStorage module is created
+    console.debug('[UnifiedLifecycle] autoSaveEntityRegistry stub called');
+};
+
+// Stub for missing folderRelationshipCreator
+const folderRelationshipCreator = {
+    onSubfolderCreated: (parent: Folder, child: Folder) => { },
+    onNoteCreated: (parent: Folder, note: Note) => { },
+    onNoteMoved: (note: Note, oldFolder: Folder | null, newFolder: Folder) => { },
+    onFolderMoved: (folder: Folder, oldParent: Folder | null, newParent: Folder | null) => { },
+    onFolderDeleted: (folderId: string) => { },
+    getStats: () => ({ totalRelationships: 0, byType: {} }),
+};
 
 /**
  * Unified entity lifecycle - ensures all layers stay in sync
@@ -32,7 +49,7 @@ export class UnifiedEntityLifecycle {
                 note.id,
                 {
                     subtype: parsed.subtype,
-                    metadata: {
+                    attributes: {
                         createdVia: 'note_creation',
                         folderId: note.folderId,
                         noteTitle: note.title
@@ -44,7 +61,7 @@ export class UnifiedEntityLifecycle {
                 const targetEntity = entityRegistry.findEntity(parsed.inlineRelation.targetLabel);
                 if (targetEntity) {
                     relationshipRegistry.add({
-                        sourceEntityId: entity.id,
+                        sourceEntityId: (entity as any).id,
                         targetEntityId: targetEntity.id,
                         type: parsed.inlineRelation.type,
                         provenance: [{
@@ -74,7 +91,7 @@ export class UnifiedEntityLifecycle {
         // Entity removed (was entity, now regular note)
         if (oldParsed && oldParsed.label && !newParsed) {
             const entity = entityRegistry.findEntity(oldParsed.label);
-            if (entity && entity.firstMentionNoteId === note.id) {
+            if (entity && (entity as any).firstMentionNoteId === note.id) {
                 // This note was the defining note - delete entity
                 entityRegistry.deleteEntity(entity.id);
             } else if (entity) {
@@ -132,7 +149,7 @@ export class UnifiedEntityLifecycle {
         // If this was a defining entity note, delete the entity
         if (wasEntity && entityLabel) {
             const entity = entityRegistry.findEntity(entityLabel);
-            if (entity && entity.firstMentionNoteId === noteId) {
+            if (entity && (entity as any).firstMentionNoteId === noteId) {
                 entityRegistry.deleteEntity(entity.id);
             }
         }
@@ -156,7 +173,7 @@ export class UnifiedEntityLifecycle {
                 folder.id, // Use folder ID as source
                 {
                     subtype: parsed.subtype,
-                    metadata: {
+                    attributes: {
                         type: 'folder_container',
                         isTypedRoot: parsed.isTypedRoot,
                         isSubtypeRoot: parsed.isSubtypeRoot,
@@ -231,7 +248,7 @@ export class UnifiedEntityLifecycle {
         if (wasTyped && entityKind) {
             // Find and delete folder entity
             const folderEntities = entityRegistry.getAllEntities().filter(
-                e => e.metadata?.type === 'folder_container' && e.firstMentionNoteId === folderId
+                e => (e as any).attributes?.type === 'folder_container' && (e as any).firstMentionNoteId === folderId
             );
 
             for (const folderEntity of folderEntities) {

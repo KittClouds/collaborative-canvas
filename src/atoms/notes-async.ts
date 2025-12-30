@@ -12,7 +12,7 @@ import {
     isSavingAtom,
     lastSavedAtom,
 } from './notes';
-import type { Note, Folder } from '@/contexts/NotesContext';
+import type { Note, Folder } from '@/types/noteTypes';
 import type { SQLiteNode, SQLiteNodeInput } from '@/lib/db/client/types';
 
 // ============================================
@@ -39,6 +39,19 @@ function transformToNote(node: SQLiteNode): Note {
  * Transform SQLite node to Folder type
  */
 function transformToFolder(node: SQLiteNode): Folder {
+    // Parse attributes to extract fantasy_date if present
+    let fantasyDate = null;
+    if (node.attributes) {
+        try {
+            const attrs = typeof node.attributes === 'string'
+                ? JSON.parse(node.attributes)
+                : node.attributes;
+            fantasyDate = attrs?.fantasy_date || null;
+        } catch {
+            // Ignore parse errors
+        }
+    }
+
     return {
         ...node,
         type: 'FOLDER',
@@ -47,6 +60,7 @@ function transformToFolder(node: SQLiteNode): Folder {
         isEntity: Boolean(node.is_entity),
         createdAt: node.created_at,
         updatedAt: node.updated_at,
+        fantasy_date: fantasyDate,
     } as unknown as Folder;
 }
 
@@ -333,6 +347,7 @@ export const createFolderAtom = atom(
         isTypedRoot?: boolean;
         isSubtypeRoot?: boolean;
         color?: string;
+        fantasy_date?: { year: number; month: number; day: number };
     }) => {
         const newFolderId = generateId();
         const timestamp = Date.now();
@@ -354,6 +369,7 @@ export const createFolderAtom = atom(
             is_subtype_root: params.isSubtypeRoot,
             isSubtypeRoot: params.isSubtypeRoot,
             color: params.color,
+            fantasy_date: params.fantasy_date,
             is_entity: false,
             isEntity: false,
             created_at: timestamp,
@@ -377,6 +393,8 @@ export const createFolderAtom = atom(
                 is_typed_root: params.isTypedRoot,
                 is_subtype_root: params.isSubtypeRoot,
                 color: params.color,
+                // Store fantasy_date in attributes field
+                attributes: params.fantasy_date ? { fantasy_date: params.fantasy_date } : null,
             };
 
             await dbClient.insertNode(nodeInput);

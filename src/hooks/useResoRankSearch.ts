@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { ResoRankScorer, createProductionScorer, ProximityStrategy, RESORANK_PRODUCTION_CONFIG } from '@/lib/resorank';
-import { Note } from '@/contexts/NotesContext';
+import type { Note } from '@/types/noteTypes';
 
 export function useResoRankSearch(notes: Note[]) {
     const scorerRef = useRef<ResoRankScorer<string> | null>(null);

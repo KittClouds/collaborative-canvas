@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { generateId } from '@/lib/utils/ids';
 import type { NodeId } from '@/lib/graph/types';
 import type { EntityKind } from '@/lib/entities/entityTypes';
-import type { Folder, Note } from '@/contexts/NotesContext';
+import type { Folder, Note } from '@/types/noteTypes';
 import {
     NetworkSchema,
     NetworkInstance,

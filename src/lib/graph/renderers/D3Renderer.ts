@@ -1,4 +1,30 @@
-import { GraphProjection, D3GraphData, D3Node, D3Link } from '../projections/types/base';
+// Inline types since projections/types/base doesn't exist
+interface GraphProjection {
+    nodes: Array<{ id: string; type: string; weight?: number;[key: string]: any }>;
+    edges: Array<{ source: string | object; target: string | object;[key: string]: any }>;
+}
+
+interface D3Node {
+    id: string;
+    type: string;
+    weight?: number;
+    x?: number;
+    y?: number;
+    fx?: number | null;
+    fy?: number | null;
+    [key: string]: any;
+}
+
+interface D3Link {
+    source: string | D3Node;
+    target: string | D3Node;
+    [key: string]: any;
+}
+
+interface D3GraphData {
+    nodes: D3Node[];
+    links: D3Link[];
+}
 
 export class D3Renderer {
     /**

@@ -1,5 +1,10 @@
 import { useState, useMemo } from 'react';
-import { GraphProjection } from '../lib/graph/projections/types/base';
+
+// Inline type since projections/types/base doesn't exist
+interface GraphProjection {
+    nodes: Array<{ id: string; type: string; weight?: number }>;
+    edges: Array<{ source: string | object; target: string | object }>;
+}
 
 export interface FilterState {
     entityTypes: string[];
