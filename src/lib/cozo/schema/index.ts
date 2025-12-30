@@ -71,6 +71,14 @@ export {
 } from './layer1-mutation-log';
 
 export {
+  TIME_UNIT_SCHEMA,
+  TIME_UNIT_EDGE_SCHEMA,
+  TIME_UNIT_QUERIES,
+  type TimeUnitType,
+  type TimeUnitRow
+} from './layer2-time-registry';
+
+export {
   applyEmbeddingSchema,
   getEmbeddingForNote,
   saveEmbeddingForNote,

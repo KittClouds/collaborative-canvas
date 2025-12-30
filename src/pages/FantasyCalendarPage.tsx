@@ -30,7 +30,9 @@ function CalendarPageContent() {
         selectDay,
         createCalendar,
         setHighlightedEventId,
-        getEventsForDay
+        getEventsForDay,
+        setEditorScope,
+        isGenerating
     } = useCalendarContext();
 
     const [showTimeline, setShowTimeline] = React.useState(true);
@@ -40,8 +42,8 @@ function CalendarPageContent() {
         setTimeout(() => navigate('/'), 50);
     }, [navigate]);
 
-    const handleWizardComplete = useCallback((config: CalendarConfig) => {
-        createCalendar(config);
+    const handleWizardComplete = useCallback(async (config: CalendarConfig) => {
+        await createCalendar(config);
         setIsSetupMode(false);
         toast.success(`Calendar "${config.name}" created!`, {
             description: `Starting year ${config.startingYear} ${config.eraAbbreviation || 'CE'}`
@@ -53,15 +55,33 @@ function CalendarPageContent() {
         // Select this day to highlight it
         selectDay(date.dayIndex);
 
+        // Auto-scope editor to 'day' view
+        setEditorScope('day');
+
         // If there are events on this day, highlight the first one to scroll timeline
         const dayEvents = getEventsForDay(date);
         if (dayEvents.length > 0) {
             setHighlightedEventId(dayEvents[0].id);
         }
+
+        // Smooth scroll to the editor
+        setTimeout(() => {
+            document.getElementById('narrative-editor-container')?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }, 50);
     };
 
     const handleEventClick = (id: string) => {
         setHighlightedEventId(id);
+        // Also scroll to editor to see details
+        setTimeout(() => {
+            document.getElementById('narrative-editor-container')?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }, 50);
     };
 
     const zoomIn = () => {
@@ -82,7 +102,7 @@ function CalendarPageContent() {
                 <div className="p-4">
                     <Button variant="outline" onClick={() => setIsSetupMode(false)}>Cancel</Button>
                 </div>
-                <CalendarSetupWizard onComplete={handleWizardComplete} />
+                <CalendarSetupWizard onComplete={handleWizardComplete} isGenerating={isGenerating} />
             </div>
         );
     }
@@ -208,7 +228,9 @@ function CalendarPageContent() {
                     </div>
 
                     {/* Narrative Event Editor - Kanban Board */}
-                    <NarrativeEventEditor className="min-h-[600px]" />
+                    <div id="narrative-editor-container">
+                        <NarrativeEventEditor className="min-h-[600px]" />
+                    </div>
                 </div>
             </div>
         </div>

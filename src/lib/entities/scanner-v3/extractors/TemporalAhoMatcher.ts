@@ -16,6 +16,7 @@
  */
 
 import { AllProfanity } from 'allprofanity';
+import { TimeRegistry, type CalendarDictionary } from '@/lib/time';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -185,6 +186,13 @@ class TemporalAhoMatcher {
     private patternKinds: Map<string, TemporalKind> = new Map();
     private initialized = false;
 
+    // Calendar-specific state for hydration
+    private calendarDictionary: CalendarDictionary | null = null;
+    private activeCalendarId: string | null = null;
+    private customMonthIndex: Record<string, number> = {};
+    private customWeekdayIndex: Record<string, number> = {};
+    private customMonthDays: Record<string, number> = {};
+
     constructor() {
         // Lazy initialization
     }
@@ -251,6 +259,196 @@ class TemporalAhoMatcher {
      */
     isInitialized(): boolean {
         return this.initialized;
+    }
+
+    /**
+     * Get the active calendar ID (if hydrated)
+     */
+    getActiveCalendarId(): string | null {
+        return this.activeCalendarId;
+    }
+
+    /**
+     * Hydrate the matcher with custom calendar terms from CozoDB
+     * This adds calendar-specific months, weekdays, and eras to the detection dictionary
+     */
+    async hydrate(calendarId: string): Promise<void> {
+        console.log('[TemporalAho] Hydrating with calendar:', calendarId);
+
+        const dictionary = TimeRegistry.getCalendarDictionary(calendarId);
+
+        if (dictionary.months.length === 0 && dictionary.weekdays.length === 0) {
+            console.log('[TemporalAho] No time units found for calendar, using defaults');
+            return;
+        }
+
+        this.calendarDictionary = dictionary;
+        this.activeCalendarId = calendarId;
+        this.customMonthIndex = dictionary.monthIndex;
+        this.customWeekdayIndex = dictionary.weekdayIndex;
+        this.customMonthDays = dictionary.monthDays;
+
+        // Reset and rebuild with custom + default patterns
+        this.initialized = false;
+        this.patternKinds.clear();
+        this.initializeWithDictionary(dictionary);
+
+        console.log('[TemporalAho] Hydrated with', dictionary.months.length, 'months,',
+            dictionary.weekdays.length, 'weekdays,', dictionary.eras.length, 'eras');
+    }
+
+    /**
+     * Initialize with a custom dictionary (custom months, weekdays, eras)
+     */
+    private initializeWithDictionary(dictionary: CalendarDictionary): void {
+        if (this.initialized) return;
+
+        const allPatterns: string[] = [];
+
+        // Add custom calendar patterns FIRST (higher priority)
+        for (const month of dictionary.months) {
+            if (month && !allPatterns.includes(month)) {
+                allPatterns.push(month);
+                this.patternKinds.set(month.toLowerCase(), 'MONTH');
+            }
+        }
+
+        for (const weekday of dictionary.weekdays) {
+            if (weekday && !allPatterns.includes(weekday)) {
+                allPatterns.push(weekday);
+                this.patternKinds.set(weekday.toLowerCase(), 'WEEKDAY');
+            }
+        }
+
+        for (const era of dictionary.eras) {
+            if (era && !allPatterns.includes(era)) {
+                allPatterns.push(era);
+                this.patternKinds.set(era.toLowerCase(), 'ERA');
+            }
+        }
+
+        // Then add the hardcoded patterns (fallback for universal terms)
+        // Skip if they conflict with custom patterns
+        for (const p of WEEKDAYS) {
+            if (!this.patternKinds.has(p.toLowerCase())) {
+                allPatterns.push(p);
+                this.patternKinds.set(p.toLowerCase(), 'WEEKDAY');
+            }
+        }
+        for (const p of MONTHS) {
+            if (!this.patternKinds.has(p.toLowerCase())) {
+                allPatterns.push(p);
+                this.patternKinds.set(p.toLowerCase(), 'MONTH');
+            }
+        }
+        for (const p of NARRATIVE_MARKERS) {
+            allPatterns.push(p);
+            this.patternKinds.set(p.toLowerCase(), 'NARRATIVE_MARKER');
+        }
+        for (const p of RELATIVE_PHRASES) {
+            allPatterns.push(p);
+            this.patternKinds.set(p.toLowerCase(), 'RELATIVE');
+        }
+        for (const p of TIME_OF_DAY) {
+            allPatterns.push(p);
+            this.patternKinds.set(p.toLowerCase(), 'TIME_OF_DAY');
+        }
+        for (const p of TEMPORAL_CONNECTORS) {
+            allPatterns.push(p);
+            this.patternKinds.set(p.toLowerCase(), 'CONNECTOR');
+        }
+        for (const p of ERA_MARKERS) {
+            if (!this.patternKinds.has(p.toLowerCase())) {
+                allPatterns.push(p);
+                this.patternKinds.set(p.toLowerCase(), 'ERA');
+            }
+        }
+
+        // Build the Aho-Corasick automaton
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this.filter = new AllProfanity({
+            algorithm: {
+                matching: 'aho-corasick',
+            },
+        } as any);
+
+        this.filter.clearList();
+        if (allPatterns.length > 0) {
+            this.filter.add(allPatterns);
+        }
+
+        console.log(`[TemporalAho] Initialized with ${allPatterns.length} temporal patterns (including custom)`);
+        this.initialized = true;
+    }
+
+    /**
+     * Validate a detected date against calendar physics
+     * Returns whether the day number is valid for the given month
+     */
+    validateDate(monthName: string, day: number): { valid: boolean; maxDays: number } {
+        if (!this.activeCalendarId) {
+            // No calendar hydrated, use generic validation
+            return { valid: day >= 1 && day <= 31, maxDays: 31 };
+        }
+
+        const normalized = monthName.toLowerCase().trim();
+        const maxDays = this.customMonthDays[normalized];
+
+        if (maxDays === undefined) {
+            // Unknown month in this calendar, assume valid with 31 day max
+            return { valid: day >= 1 && day <= 31, maxDays: 31 };
+        }
+
+        return {
+            valid: day >= 1 && day <= maxDays,
+            maxDays
+        };
+    }
+
+    /**
+     * Get custom month index (for calendar-aware ordering)
+     * Returns undefined if month not found in active calendar
+     */
+    getMonthIndex(monthName: string): number | undefined {
+        const normalized = monthName.toLowerCase().trim();
+
+        // Check custom calendar first
+        if (this.customMonthIndex[normalized] !== undefined) {
+            return this.customMonthIndex[normalized];
+        }
+
+        // Fall back to hardcoded Earth months
+        return MONTH_INDEX[normalized];
+    }
+
+    /**
+     * Get custom weekday index (for calendar-aware ordering)
+     * Returns undefined if weekday not found in active calendar
+     */
+    getWeekdayIndex(weekdayName: string): number | undefined {
+        const normalized = weekdayName.toLowerCase().trim();
+
+        // Check custom calendar first
+        if (this.customWeekdayIndex[normalized] !== undefined) {
+            return this.customWeekdayIndex[normalized];
+        }
+
+        // Fall back to hardcoded Earth weekdays
+        return WEEKDAY_INDEX[normalized];
+    }
+
+    /**
+     * Clear hydration state (revert to defaults)
+     */
+    clearHydration(): void {
+        this.calendarDictionary = null;
+        this.activeCalendarId = null;
+        this.customMonthIndex = {};
+        this.customWeekdayIndex = {};
+        this.customMonthDays = {};
+        this.initialized = false;
+        this.patternKinds.clear();
+        console.log('[TemporalAho] Cleared hydration, will use defaults on next scan');
     }
 
     /**
@@ -336,14 +534,20 @@ class TemporalAhoMatcher {
     ): TemporalMention['metadata'] {
         const metadata: TemporalMention['metadata'] = {};
 
-        // Weekday index
-        if (kind === 'WEEKDAY' && pattern in WEEKDAY_INDEX) {
-            metadata.weekdayIndex = WEEKDAY_INDEX[pattern];
+        // Weekday index - check custom calendar first, then fallback
+        if (kind === 'WEEKDAY') {
+            const idx = this.getWeekdayIndex(pattern);
+            if (idx !== undefined) {
+                metadata.weekdayIndex = idx;
+            }
         }
 
-        // Month index
-        if (kind === 'MONTH' && pattern in MONTH_INDEX) {
-            metadata.monthIndex = MONTH_INDEX[pattern];
+        // Month index - check custom calendar first, then fallback
+        if (kind === 'MONTH') {
+            const idx = this.getMonthIndex(pattern);
+            if (idx !== undefined) {
+                metadata.monthIndex = idx;
+            }
         }
 
         // Narrative number (e.g., "Chapter 5" → 5)

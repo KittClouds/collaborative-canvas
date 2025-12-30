@@ -1,5 +1,20 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi, afterEach } from 'vitest';
 import { temporalAhoMatcher } from '../TemporalAhoMatcher';
+
+// Mock TimeRegistry for hydration tests
+vi.mock('@/lib/time', () => ({
+    TimeRegistry: {
+        getCalendarDictionary: vi.fn(() => ({
+            calendarId: 'cal_test',
+            months: ['flob', 'flo', 'bork', 'bor', 'zam'],
+            weekdays: ['sunfall', 'sun', 'moonrise', 'moo'],
+            eras: ['first age', 'fa'],
+            monthIndex: { 'flob': 0, 'flo': 0, 'bork': 1, 'bor': 1, 'zam': 2 },
+            weekdayIndex: { 'sunfall': 0, 'sun': 0, 'moonrise': 1, 'moo': 1 },
+            monthDays: { 'flob': 30, 'flo': 30, 'bork': 28, 'bor': 28, 'zam': 31 }
+        }))
+    }
+}));
 
 describe('TemporalAhoMatcher', () => {
     beforeAll(() => {
@@ -235,6 +250,162 @@ describe('TemporalAhoMatcher', () => {
             );
 
             expect(hasFullPhrase).toBe(true);
+        });
+    });
+
+    // ==================== HYDRATION TESTS ====================
+
+    describe('hydration', () => {
+        beforeEach(() => {
+            // Reset to clean state before each hydration test
+            temporalAhoMatcher.clearHydration();
+        });
+
+        afterEach(() => {
+            // Clean up after hydration tests
+            temporalAhoMatcher.clearHydration();
+        });
+
+        it('should have no active calendar before hydration', () => {
+            expect(temporalAhoMatcher.getActiveCalendarId()).toBeNull();
+        });
+
+        it('should set active calendar ID after hydration', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            expect(temporalAhoMatcher.getActiveCalendarId()).toBe('cal_test');
+        });
+
+        it('should detect custom month names after hydration', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            const result = temporalAhoMatcher.findMentions('The battle occurred on Flob 5th');
+            const months = result.filter(m => m.kind === 'MONTH');
+
+            expect(months.length).toBe(1);
+            expect(months[0].text.toLowerCase()).toBe('flob');
+        });
+
+        it('should detect custom weekday names after hydration', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            const result = temporalAhoMatcher.findMentions('It was Sunfall when they arrived');
+            const weekdays = result.filter(m => m.kind === 'WEEKDAY');
+
+            expect(weekdays.length).toBe(1);
+            expect(weekdays[0].text.toLowerCase()).toBe('sunfall');
+        });
+
+        it('should return correct custom month index', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            expect(temporalAhoMatcher.getMonthIndex('flob')).toBe(0);
+            expect(temporalAhoMatcher.getMonthIndex('bork')).toBe(1);
+            expect(temporalAhoMatcher.getMonthIndex('zam')).toBe(2);
+        });
+
+        it('should return correct custom weekday index', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            expect(temporalAhoMatcher.getWeekdayIndex('sunfall')).toBe(0);
+            expect(temporalAhoMatcher.getWeekdayIndex('moonrise')).toBe(1);
+        });
+
+        it('should fallback to Earth months when not hydrated', () => {
+            // Before hydration, should use Earth indices
+            expect(temporalAhoMatcher.getMonthIndex('january')).toBe(0);
+            expect(temporalAhoMatcher.getMonthIndex('december')).toBe(11);
+        });
+
+        it('should still detect Earth months after hydration', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            // Earth months should still work as fallback
+            const result = temporalAhoMatcher.findMentions('In January and February');
+            const months = result.filter(m => m.kind === 'MONTH');
+
+            expect(months.length).toBe(2);
+        });
+    });
+
+    describe('validateDate', () => {
+        beforeEach(() => {
+            temporalAhoMatcher.clearHydration();
+        });
+
+        afterEach(() => {
+            temporalAhoMatcher.clearHydration();
+        });
+
+        it('should return valid=true for days within month range', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            const result = temporalAhoMatcher.validateDate('Flob', 15);
+
+            expect(result.valid).toBe(true);
+            expect(result.maxDays).toBe(30);
+        });
+
+        it('should return valid=false for days exceeding month range', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            const result = temporalAhoMatcher.validateDate('Flob', 35);
+
+            expect(result.valid).toBe(false);
+            expect(result.maxDays).toBe(30);
+        });
+
+        it('should use 31 as default when not hydrated', () => {
+            const result = temporalAhoMatcher.validateDate('SomeMonth', 15);
+
+            expect(result.valid).toBe(true);
+            expect(result.maxDays).toBe(31);
+        });
+
+        it('should validate edge case of day 1', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            const result = temporalAhoMatcher.validateDate('Bork', 1);
+
+            expect(result.valid).toBe(true);
+        });
+
+        it('should validate edge case of max day', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            // Bork has 28 days
+            expect(temporalAhoMatcher.validateDate('Bork', 28).valid).toBe(true);
+            expect(temporalAhoMatcher.validateDate('Bork', 29).valid).toBe(false);
+        });
+
+        it('should handle case-insensitive month names', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+
+            expect(temporalAhoMatcher.validateDate('FLOB', 15).valid).toBe(true);
+            expect(temporalAhoMatcher.validateDate('flob', 15).valid).toBe(true);
+            expect(temporalAhoMatcher.validateDate('Flob', 15).valid).toBe(true);
+        });
+    });
+
+    describe('clearHydration', () => {
+        it('should reset active calendar ID', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+            expect(temporalAhoMatcher.getActiveCalendarId()).toBe('cal_test');
+
+            temporalAhoMatcher.clearHydration();
+
+            expect(temporalAhoMatcher.getActiveCalendarId()).toBeNull();
+        });
+
+        it('should reset to Earth month indices after clearing', async () => {
+            await temporalAhoMatcher.hydrate('cal_test');
+            expect(temporalAhoMatcher.getMonthIndex('flob')).toBe(0);
+
+            temporalAhoMatcher.clearHydration();
+            temporalAhoMatcher.initialize(); // Re-initialize with defaults
+
+            expect(temporalAhoMatcher.getMonthIndex('flob')).toBeUndefined();
+            expect(temporalAhoMatcher.getMonthIndex('january')).toBe(0);
         });
     });
 });

@@ -37,8 +37,9 @@ import {
   NOTE_ENTITY_LINKS_SCHEMA,
   ENTITY_BACKLINKS_SCHEMA,
 } from './layer2-bidirectional-links';
+import { TIME_UNIT_SCHEMA, TIME_UNIT_EDGE_SCHEMA } from './layer2-time-registry';
 
-export const SCHEMA_VERSION = '1.4.0';
+export const SCHEMA_VERSION = '1.5.0';
 
 const ALL_SCHEMAS = [
   { name: 'episode', schema: EPISODE_SCHEMA },
@@ -72,6 +73,8 @@ const ALL_SCHEMAS = [
   { name: 'note_entity_links', schema: NOTE_ENTITY_LINKS_SCHEMA },
   { name: 'entity_backlinks', schema: ENTITY_BACKLINKS_SCHEMA },
   { name: 'temporal_mention', schema: TEMPORAL_MENTION_SCHEMA },
+  { name: 'time_unit', schema: TIME_UNIT_SCHEMA },
+  { name: 'time_unit_sequence', schema: TIME_UNIT_EDGE_SCHEMA },
 ];
 
 export interface SchemaInitResult {

@@ -734,6 +734,100 @@ function handleQuery(payload: { sql: string; params?: unknown[] }): unknown {
 }
 
 // ============================================
+// COZODB PERSISTENCE OPERATIONS
+// ============================================
+
+const COZO_TABLES = [
+  'cozo_entities',
+  'cozo_entity_aliases',
+  'cozo_entity_mentions',
+  'cozo_entity_metadata',
+  'cozo_relationships',
+  'cozo_relationship_provenance',
+  'cozo_relationship_attributes',
+];
+
+function handleCozoBulkInsert(payload: { table: string; columns: string[]; rows: unknown[][] }): { inserted: number } {
+  const db = getDatabase();
+  const { table, columns, rows } = payload;
+
+  if (!COZO_TABLES.includes(table)) {
+    throw new Error(`Invalid CozoDB table: ${table}`);
+  }
+
+  if (rows.length === 0) {
+    return { inserted: 0 };
+  }
+
+  const placeholders = columns.map(() => '?').join(', ');
+  const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`;
+
+  db.exec('BEGIN TRANSACTION');
+  try {
+    for (const row of rows) {
+      db.exec({
+        sql,
+        bind: row as (string | number | null | Uint8Array)[],
+      });
+    }
+    db.exec('COMMIT');
+    return { inserted: rows.length };
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+function handleCozoGetTableData(table: string): { columns: string[]; rows: unknown[][] } {
+  const db = getDatabase();
+
+  if (!COZO_TABLES.includes(table)) {
+    throw new Error(`Invalid CozoDB table: ${table}`);
+  }
+
+  // Get column names
+  const pragmaResult = db.exec({
+    sql: `PRAGMA table_info(${table})`,
+    returnValue: 'resultRows',
+    rowMode: 'object',
+  }) as unknown as Array<{ name: string }>;
+
+  const columns = pragmaResult.map(r => r.name);
+
+  // Get all rows
+  const rows = db.exec({
+    sql: `SELECT * FROM ${table}`,
+    returnValue: 'resultRows',
+    rowMode: 'array',
+  }) as unknown as unknown[][];
+
+  return { columns, rows: rows || [] };
+}
+
+function handleCozoGetTables(): string[] {
+  const db = getDatabase();
+
+  const result = db.exec({
+    sql: `SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'cozo_%'`,
+    returnValue: 'resultRows',
+    rowMode: 'object',
+  }) as unknown as Array<{ name: string }>;
+
+  return result.map(r => r.name);
+}
+
+function handleCozoClearTable(table: string): { cleared: boolean } {
+  const db = getDatabase();
+
+  if (!COZO_TABLES.includes(table)) {
+    throw new Error(`Invalid CozoDB table: ${table}`);
+  }
+
+  db.exec(`DELETE FROM ${table}`);
+  return { cleared: true };
+}
+
+// ============================================
 // MESSAGE HANDLER
 // ============================================
 
@@ -867,6 +961,20 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
       // Transaction operations (Weapons-Grade Sync)
       case 'TRANSACTION_EXECUTE':
         result = handleTransactionExecute(payload as Delta[]);
+        break;
+
+      // CozoDB Persistence operations
+      case 'COZO_BULK_INSERT':
+        result = handleCozoBulkInsert(payload as { table: string; columns: string[]; rows: unknown[][] });
+        break;
+      case 'COZO_GET_TABLE_DATA':
+        result = handleCozoGetTableData(payload as string);
+        break;
+      case 'COZO_GET_TABLES':
+        result = handleCozoGetTables();
+        break;
+      case 'COZO_CLEAR_TABLE':
+        result = handleCozoClearTable(payload as string);
         break;
 
       default:

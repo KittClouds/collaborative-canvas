@@ -316,6 +316,87 @@ export function NarrativeEventEditor({ className }: NarrativeEventEditorProps) {
                     </div>
                 </motion.div>
 
+                {/* Analytics Panel */}
+                {filteredEvents.length > 0 && (
+                    <motion.div
+                        className="px-4 py-3 border-b bg-muted/5"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                    >
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {/* Total Events */}
+                            <div className="flex flex-col items-center p-3 rounded-lg bg-card border">
+                                <span className="text-2xl font-bold text-primary">{stats.total}</span>
+                                <span className="text-xs text-muted-foreground">Total Events</span>
+                            </div>
+
+                            {/* Completion Progress */}
+                            <div className="flex flex-col items-center p-3 rounded-lg bg-card border">
+                                <span className="text-2xl font-bold text-emerald-500">
+                                    {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
+                                </span>
+                                <span className="text-xs text-muted-foreground">Completed</span>
+                                <Progress
+                                    value={stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}
+                                    className="h-1 w-full mt-1"
+                                />
+                            </div>
+
+                            {/* Average Tension */}
+                            <div className="flex flex-col items-center p-3 rounded-lg bg-card border">
+                                <span className={cn(
+                                    "text-2xl font-bold",
+                                    stats.avgTension > 70 ? "text-red-500" :
+                                        stats.avgTension > 40 ? "text-amber-500" : "text-blue-500"
+                                )}>
+                                    {stats.avgTension}
+                                </span>
+                                <span className="text-xs text-muted-foreground">Avg Tension</span>
+                                <div className="w-full h-1.5 mt-1 rounded-full bg-muted overflow-hidden">
+                                    <motion.div
+                                        className={cn(
+                                            "h-full rounded-full",
+                                            stats.avgTension > 70 ? "bg-red-500" :
+                                                stats.avgTension > 40 ? "bg-amber-500" : "bg-blue-500"
+                                        )}
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${stats.avgTension}%` }}
+                                        transition={{ duration: 0.5, ease: 'easeOut' }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Causal Links */}
+                            <div className="flex flex-col items-center p-3 rounded-lg bg-card border">
+                                <span className="text-2xl font-bold text-violet-500">
+                                    {stats.withCausality}
+                                </span>
+                                <span className="text-xs text-muted-foreground">Causal Links</span>
+                                <GitBranch className="h-4 w-4 mt-1 text-muted-foreground/50" />
+                            </div>
+                        </div>
+
+                        {/* Status Distribution Mini-Chart */}
+                        <div className="flex items-center justify-center gap-6 mt-3 pt-3 border-t border-dashed">
+                            {(Object.entries(columns) as [keyof typeof STATUS_CONFIG, CalendarEvent[]][]).map(([status, statusEvents]) => {
+                                const config = STATUS_CONFIG[status];
+                                const percent = stats.total > 0 ? Math.round((statusEvents.length / stats.total) * 100) : 0;
+                                return (
+                                    <div key={status} className="flex items-center gap-2">
+                                        <div
+                                            className="w-2.5 h-2.5 rounded-full"
+                                            style={{ backgroundColor: config.color }}
+                                        />
+                                        <span className="text-xs text-muted-foreground">
+                                            {config.label}: <strong className="text-foreground">{statusEvents.length}</strong> ({percent}%)
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </motion.div>
+                )}
+
                 {/* Kanban Board */}
                 <motion.div
                     className="flex gap-4 p-4 overflow-x-auto"

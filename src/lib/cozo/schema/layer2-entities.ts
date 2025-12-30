@@ -13,6 +13,7 @@ export const ENTITY_KINDS = [
   'BEAT',
   'TIMELINE',
   'NARRATIVE',
+  'TIME_UNIT',
 ] as const;
 
 export type CozoEntityKind = typeof ENTITY_KINDS[number];

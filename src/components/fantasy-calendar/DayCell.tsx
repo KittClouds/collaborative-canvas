@@ -14,6 +14,7 @@ import { EventCard } from './EventCard';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { getEventTypeById } from '@/lib/fantasy-calendar/eventTypeRegistry';
 
 interface DayCellProps {
     dayIndex: number;           // 0-based day index in month
@@ -115,22 +116,75 @@ export function DayCell({
                 </button>
             </div>
 
+
+
             {/* Events - compact stack */}
-            {events.length > 0 ? (
+            {events.filter(e => e.showInCell !== false).length > 0 ? (
                 <div className="flex-1 min-h-0 space-y-0.5 overflow-y-auto scrollbar-thin">
-                    {sortedEvents.slice(0, 4).map(event => (
-                        <EventCard
-                            key={event.id}
-                            event={event}
-                            onClick={() => onEventClick?.(event.id)}
-                            compact
-                        />
-                    ))}
+                    {sortedEvents
+                        .filter(e => e.showInCell !== false)
+                        .slice(0, 4)
+                        .map(event => {
+                            const eventType = event.eventTypeId ? getEventTypeById(event.eventTypeId) : undefined;
+                            const displayColor = event.color || eventType?.color || '#6366f1';
+
+                            if (event.cellDisplayMode === 'minimal') {
+                                return (
+                                    <TooltipProvider key={event.id}>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div
+                                                    className="h-1.5 w-full rounded-full cursor-pointer hover:brightness-110 transition-all"
+                                                    style={{ backgroundColor: displayColor }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onEventClick?.(event.id);
+                                                    }}
+                                                />
+                                            </TooltipTrigger>
+                                            <TooltipContent side="right" className="text-xs">
+                                                {event.title}
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                );
+                            }
+
+                            if (event.cellDisplayMode === 'badge') {
+                                return (
+                                    <div
+                                        key={event.id}
+                                        className={cn(
+                                            "text-[10px] px-1 py-0.5 rounded truncate font-medium cursor-pointer transition-colors border-l-2 pl-1.5",
+                                            "bg-accent/10 hover:bg-accent/20 text-foreground/90"
+                                        )}
+                                        style={{ borderLeftColor: displayColor }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onEventClick?.(event.id);
+                                        }}
+                                        title={event.title}
+                                    >
+                                        {event.title}
+                                    </div>
+                                );
+                            }
+
+                            // Default 'full' mode
+                            return (
+                                <EventCard
+                                    key={event.id}
+                                    event={event}
+                                    onClick={() => onEventClick?.(event.id)}
+                                    compact
+                                />
+                            );
+                        })}
 
                     {/* Overflow indicator */}
-                    {events.length > 4 && (
+                    {events.filter(e => e.showInCell !== false).length > 4 && (
                         <div className="text-[9px] text-muted-foreground text-center py-0.5">
-                            +{events.length - 4} more
+                            +{events.filter(e => e.showInCell !== false).length - 4} more
                         </div>
                     )}
                 </div>

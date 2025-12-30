@@ -67,9 +67,12 @@ export function FantasyCalendarGrid({
                     </Button>
                 </div>
 
-                <h2 className="text-xl font-semibold tracking-tight">
-                    Year {viewDate.year} {era ? `- ${era.name}` : ''}
-                </h2>
+                <div className="flex flex-col items-center">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono">{calendar.name}</span>
+                    <h2 className="text-xl font-semibold tracking-tight">
+                        Year {viewDate.year} {era ? `- ${era.name}` : ''}
+                    </h2>
+                </div>
 
                 <div className="flex items-center gap-2">
                     <Button variant="ghost" size="sm" onClick={() => onNavigateYear('next')}>

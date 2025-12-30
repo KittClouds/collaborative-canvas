@@ -27,6 +27,8 @@ import {
     navigateYear as utilNavigateYear
 } from '@/lib/fantasy-calendar/utils';
 import { generateId } from '@/lib/utils/ids';
+import { executeGenesis, clearCalendarTimeUnits } from '@/lib/time';
+import { temporalAhoMatcher } from '@/lib/entities/scanner-v3/extractors/TemporalAhoMatcher';
 
 // Configuration passed from the wizard
 export interface CalendarConfig {
@@ -78,8 +80,9 @@ export interface CalendarContextValue {
     removeTimeMarker: (id: string) => void;
 
     // Calendar Management
-    createCalendar: (config: CalendarConfig) => void;
+    createCalendar: (config: CalendarConfig) => Promise<void>;
     setIsSetupMode: (mode: boolean) => void;
+    isGenerating: boolean;
 
     // UI State
     highlightedEventId: string | null;
@@ -156,6 +159,7 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
     const [isSetupMode, setIsSetupMode] = useState(false);
     const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null);
     const [editorScope, setEditorScope] = useState<EditorScope>('day');
+    const [isGenerating, setIsGenerating] = useState(false);
 
     // Computed values
     const currentMonth = useMemo(() =>
@@ -377,7 +381,9 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
     }, []);
 
     // Calendar creation from wizard config
-    const createCalendar = useCallback((config: CalendarConfig) => {
+    const createCalendar = useCallback(async (config: CalendarConfig) => {
+        setIsGenerating(true);
+
         const calId = generateUUID();
         const eraId = generateUUID();
 
@@ -445,6 +451,20 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
             createdFrom: config.orbitalMechanics ? 'orbital' : 'manual'
         };
 
+        // Execute World Genesis - register time units in CozoDB
+        try {
+            console.log('[CalendarContext] Executing world genesis for calendar:', calId);
+            await clearCalendarTimeUnits(calId); // Clean slate
+            await executeGenesis(config, calId, months);
+
+            // Hydrate the scanner with new calendar terms
+            await temporalAhoMatcher.hydrate(calId);
+
+            console.log('[CalendarContext] World genesis complete for:', calId);
+        } catch (err) {
+            console.error('[CalendarContext] Genesis failed:', err);
+        }
+
         setCalendar(newCalendar);
         setViewDate({
             year: config.startingYear || 1,
@@ -453,6 +473,7 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
             eraId: defaultEra.id
         });
         setEvents([]);
+        setIsGenerating(false);
     }, []);
 
     // === NARRATIVE API IMPLEMENTATIONS ===
@@ -630,6 +651,7 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
         // Calendar Management
         createCalendar,
         setIsSetupMode,
+        isGenerating,
 
         // === NARRATIVE API ===
         editorScope,

@@ -43,7 +43,12 @@ export type WorkerMessageType =
   | 'SET_RESORANK_CACHE'
   | 'CLEAR_RESORANK_CACHE'
   // Transaction operations (Weapons-Grade Sync)
-  | 'TRANSACTION_EXECUTE';
+  | 'TRANSACTION_EXECUTE'
+  // CozoDB Persistence operations
+  | 'COZO_BULK_INSERT'
+  | 'COZO_GET_TABLE_DATA'
+  | 'COZO_GET_TABLES'
+  | 'COZO_CLEAR_TABLE';
 
 export interface WorkerMessage {
   id: string;
@@ -378,4 +383,19 @@ export function parseJson<T>(data: string | null | undefined): T | null {
   } catch {
     return null;
   }
+}
+
+// ============================================
+// COZODB PERSISTENCE TYPES
+// ============================================
+
+export interface CozoTableData {
+  columns: string[];
+  rows: unknown[][];
+}
+
+export interface CozoBulkInsertPayload {
+  table: string;
+  columns: string[];
+  rows: unknown[][];
 }

@@ -253,6 +253,38 @@ class DBClient {
       this.pending.clear();
     }
   }
+
+  // ============================================
+  // COZODB PERSISTENCE METHODS
+  // ============================================
+
+  /**
+   * Bulk insert/replace rows into a CozoDB persistence table
+   */
+  async cozoBulkInsert(table: string, columns: string[], rows: unknown[][]): Promise<void> {
+    await this.send('COZO_BULK_INSERT', { table, columns, rows });
+  }
+
+  /**
+   * Get all data from a CozoDB persistence table
+   */
+  async cozoGetTableData(table: string): Promise<{ columns: string[]; rows: unknown[][] }> {
+    return this.send<{ columns: string[]; rows: unknown[][] }>('COZO_GET_TABLE_DATA', table);
+  }
+
+  /**
+   * Get list of all CozoDB persistence tables
+   */
+  async cozoGetTables(): Promise<string[]> {
+    return this.send<string[]>('COZO_GET_TABLES', null);
+  }
+
+  /**
+   * Clear all data from a CozoDB persistence table
+   */
+  async cozoClearTable(table: string): Promise<void> {
+    await this.send('COZO_CLEAR_TABLE', table);
+  }
 }
 
 export const dbClient = new DBClient();

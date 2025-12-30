@@ -8,7 +8,8 @@ import {
     Trash2,
     Sparkles,
     RotateCcw,
-    Clock
+    Clock,
+    Loader2
 } from 'lucide-react';
 import {
     getStarDefaults,
@@ -29,7 +30,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 
 interface CalendarSetupWizardProps {
-    onComplete: (config: CalendarConfig) => void;
+    onComplete: (config: CalendarConfig) => Promise<void> | void;
+    isGenerating?: boolean;
 }
 
 // Generate default day names
@@ -42,7 +44,7 @@ function generateDefaultMonthNames(count: number): string[] {
     return Array.from({ length: count }, (_, i) => `Month ${i + 1}`);
 }
 
-export function CalendarSetupWizard({ onComplete }: CalendarSetupWizardProps) {
+export function CalendarSetupWizard({ onComplete, isGenerating = false }: CalendarSetupWizardProps) {
     const [mode, setMode] = useState<'simulation' | 'manual'>('simulation');
 
     // Common fields
@@ -625,9 +627,22 @@ export function CalendarSetupWizard({ onComplete }: CalendarSetupWizardProps) {
                                     </div>
                                 </div>
                             </div>
-                            <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white" onClick={() => handleComplete(true)}>
-                                <Save className="mr-2 h-4 w-4" />
-                                Generate Calendar System
+                            <Button
+                                className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                                onClick={() => handleComplete(true)}
+                                disabled={isGenerating}
+                            >
+                                {isGenerating ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Constructing World Timeline...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save className="mr-2 h-4 w-4" />
+                                        Generate Calendar System
+                                    </>
+                                )}
                             </Button>
                         </CardContent>
                     </Card>
@@ -707,9 +722,22 @@ export function CalendarSetupWizard({ onComplete }: CalendarSetupWizardProps) {
 
                     <Card>
                         <CardContent className="pt-6">
-                            <Button className="w-full" onClick={() => handleComplete(false)}>
-                                <Save className="mr-2 h-4 w-4" />
-                                Create Calendar
+                            <Button
+                                className="w-full"
+                                onClick={() => handleComplete(false)}
+                                disabled={isGenerating}
+                            >
+                                {isGenerating ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Constructing World Timeline...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save className="mr-2 h-4 w-4" />
+                                        Create Calendar
+                                    </>
+                                )}
                             </Button>
                         </CardContent>
                     </Card>

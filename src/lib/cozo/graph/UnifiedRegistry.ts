@@ -9,7 +9,6 @@
  */
 
 import { cozoDb } from '../db';
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import type { EntityKind } from '@/lib/entities/entityTypes';
 
 // ==================== TYPES ====================
@@ -75,28 +74,13 @@ export interface GlobalStats {
     relationshipsByType: Record<string, number>;
 }
 
-// ==================== INDEXEDDB SCHEMA ====================
-
-interface CozoRegistryDB extends DBSchema {
-    'cozo_snapshots': {
-        key: string;
-        value: {
-            id: string;
-            timestamp: number;
-            data: string;
-            stats: GlobalStats;
-        };
-    };
-    'metadata': {
-        key: string;
-        value: any;
-    };
-}
+// ==================== NOTE ====================
+// Persistence is now handled by CozoDB's SQLite bridge (db.ts)
+// No IndexedDB needed here anymore
 
 // ==================== UNIFIED REGISTRY ====================
 
 export class CozoUnifiedRegistry {
-    private db: IDBPDatabase<CozoRegistryDB> | null = null;
     private initialized = false;
 
     private entityCache = new Map<string, CozoEntity>();
@@ -111,17 +95,9 @@ export class CozoUnifiedRegistry {
 
         console.log('[CozoUnifiedRegistry] Initializing...');
 
+        // CozoDB now handles its own SQLite-based persistence
         await cozoDb.init();
         await this.createSchema();
-
-        this.db = await openDB<CozoRegistryDB>('cozo-registry-v1', 1, {
-            upgrade(db) {
-                db.createObjectStore('cozo_snapshots', { keyPath: 'id' });
-                db.createObjectStore('metadata');
-            },
-        });
-
-        await this.restoreLatestSnapshot();
 
         this.initialized = true;
         console.log('[CozoUnifiedRegistry] ✅ Initialized');
@@ -129,7 +105,7 @@ export class CozoUnifiedRegistry {
 
     private async createSchema(): Promise<void> {
         console.log('[CozoUnifiedRegistry] Creating schemas...');
-        
+
         const schemas = [
             { name: 'entities', script: `:create entities { id: String => label: String, normalized: String, kind: String, subtype: String?, first_note: String, created_at: Int, created_by: String }` },
             { name: 'entity_aliases', script: `:create entity_aliases { entity_id: String, normalized: String => alias: String }` },
@@ -162,7 +138,7 @@ export class CozoUnifiedRegistry {
                 }
             }
         }
-        
+
         console.log('[CozoUnifiedRegistry] Schema creation complete');
     }
 
@@ -239,7 +215,7 @@ export class CozoUnifiedRegistry {
             }
         }
         await this.incrementMention(id, noteId);
-        this.scheduleSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
 
         const insertedEntity = await this.getEntityById(id);
         if (!insertedEntity) {
@@ -292,7 +268,7 @@ export class CozoUnifiedRegistry {
     async getAllEntities(filters?: { kind?: EntityKind; subtype?: string; minMentions?: number }): Promise<CozoEntity[]> {
         const whereClauses: string[] = [];
         const params: Record<string, any> = {};
-        
+
         if (filters?.kind) {
             whereClauses.push(`kind == $filter_kind`);
             params.filter_kind = filters.kind;
@@ -357,7 +333,7 @@ export class CozoUnifiedRegistry {
         }
 
         this.entityCache.delete(id);
-        this.scheduleSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
         return true;
     }
 
@@ -377,7 +353,7 @@ export class CozoUnifiedRegistry {
         cozoDb.runQuery(`?[id] := *entities{id}, id == $id :rm entities {id}`, { id });
 
         this.entityCache.delete(id);
-        this.scheduleSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
         return true;
     }
 
@@ -421,7 +397,7 @@ export class CozoUnifiedRegistry {
         }
 
         await this.deleteEntity(sourceId);
-        this.scheduleSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
         return true;
     }
 
@@ -429,7 +405,7 @@ export class CozoUnifiedRegistry {
         console.log(`[CozoUnifiedRegistry] Cleaning up note ${noteId}`);
         cozoDb.runQuery(`?[entity_id, note_id] := *entity_mentions{entity_id, note_id}, note_id == $note_id :rm entity_mentions {entity_id, note_id}`, { note_id: noteId });
         cozoDb.runQuery(`?[relationship_id, source, origin_id] := *relationship_provenance{relationship_id, source, origin_id}, origin_id == $origin_id :rm relationship_provenance {relationship_id, source, origin_id}`, { origin_id: noteId });
-        this.scheduleSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
     }
 
     // ==================== ALIAS MANAGEMENT ====================
@@ -567,7 +543,7 @@ export class CozoUnifiedRegistry {
             for (const [key, value] of Object.entries(options.attributes)) await this.setRelationshipAttribute(id, key, value);
         }
 
-        this.scheduleSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
         return (await this.getRelationshipById(id))!;
     }
 
@@ -645,7 +621,7 @@ export class CozoUnifiedRegistry {
         this.deleteRelationshipAttributes(id);
         cozoDb.runQuery(`?[id] := *relationships{id}, id == $id :rm relationships {id}`, { id });
         this.relationshipCache.delete(id);
-        this.scheduleSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
         return true;
     }
 
@@ -873,33 +849,18 @@ export class CozoUnifiedRegistry {
     ];
 
     /**
-     * Create snapshot of current Cozo state → IndexedDB (via CozoDB service)
+     * @deprecated - Persistence is now automatic via SQLite bridge.
+     * This method is kept for backwards compatibility but is a no-op.
      */
     async createSnapshot(): Promise<void> {
-        try {
-            await cozoDb.saveSnapshot(this.COZO_RELATIONS);
-            console.log('[CozoUnifiedRegistry] Snapshot saved via CozoDB persistence');
-        } catch (err) {
-            console.error('[CozoUnifiedRegistry] Failed to create snapshot:', err);
-        }
+        // No-op: Persistence is now automatic via CozoDB SQLite bridge
     }
 
     /**
-     * Restore latest snapshot from IndexedDB → CozoDB
-     * CozoDB now automatically restores on init, so this just logs the info
+     * @deprecated - CozoDB now automatically restores from SQLite on init.
      */
     private async restoreLatestSnapshot(): Promise<void> {
-        try {
-            const info = await cozoDb.getSnapshotInfo();
-
-            if (info) {
-                console.log('[CozoUnifiedRegistry] ✅ Restored from snapshot:', info);
-            } else {
-                console.log('[CozoUnifiedRegistry] No previous snapshot found');
-            }
-        } catch (err) {
-            console.error('[CozoUnifiedRegistry] Failed to get snapshot info:', err);
-        }
+        // No-op: CozoDB handles hydration from SQLite automatically
     }
 
     /**
@@ -1012,7 +973,7 @@ export class CozoUnifiedRegistry {
         this.deleteRelationshipAttributes(id);
         cozoDb.runQuery(`?[id] := *relationships{id}, id == $id :rm relationships {id}`, { id });
         this.relationshipCache.delete(id);
-        this.scheduleSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
         return true;
     }
 
@@ -1055,19 +1016,16 @@ export class CozoUnifiedRegistry {
             }
         }
 
-        this.scheduleSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
         return this.getRelationshipByIdSync(id)!;
     }
 
-
-    private snapshotDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    private scheduleSnapshot(): void {
-        if (this.snapshotDebounceTimer) clearTimeout(this.snapshotDebounceTimer);
-        this.snapshotDebounceTimer = setTimeout(() => { this.createSnapshot().catch(err => console.error('[CozoUnifiedRegistry] Snapshot failed:', err)); }, 2000);
+    /**
+     * @deprecated - Persistence is now automatic via SQLite bridge.
+     */
+    async persist(): Promise<void> {
+        // No-op: Persistence is now automatic
     }
-
-    async persist(): Promise<void> { await this.createSnapshot(); }
 
     async export(): Promise<{ version: string; timestamp: number; stats: GlobalStats; data: string }> {
         return { version: '1.0', timestamp: Date.now(), stats: await this.getGlobalStats(), data: cozoDb.exportRelations(this.COZO_RELATIONS) };
@@ -1075,7 +1033,7 @@ export class CozoUnifiedRegistry {
 
     async import(exported: { data: string }): Promise<void> {
         cozoDb.importRelations(exported.data);
-        await this.createSnapshot();
+        // Note: Persistence is now automatic via SQLite bridge
         this.entityCache.clear();
         this.relationshipCache.clear();
     }
@@ -1087,7 +1045,8 @@ export class CozoUnifiedRegistry {
         }
         this.entityCache.clear();
         this.relationshipCache.clear();
-        if (this.db) { await this.db.clear('cozo_snapshots'); await this.db.clear('metadata'); }
+        // Clear SQLite persistence via cozoDb
+        await cozoDb.clearSnapshots();
         console.warn('[CozoUnifiedRegistry] ⚠️ All data cleared');
     }
 
@@ -1236,7 +1195,7 @@ export class CozoUnifiedRegistry {
     getAllEntitiesSync(filters?: { kind?: EntityKind; subtype?: string; minMentions?: number }): CozoEntity[] {
         const whereClauses: string[] = [];
         const params: Record<string, any> = {};
-        
+
         if (filters?.kind) {
             whereClauses.push(`kind == $filter_kind`);
             params.filter_kind = filters.kind;

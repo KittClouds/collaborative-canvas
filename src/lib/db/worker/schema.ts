@@ -151,44 +151,44 @@ export const SCHEMA_STATEMENTS: string[] = [
   // ============================================
   // NODE INDEXES
   // ============================================
-  
+
   // Primary lookups
   `CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type)`,
   `CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id)`,
-  
+
   // Entity queries
   `CREATE INDEX IF NOT EXISTS idx_nodes_entity_kind ON nodes(entity_kind)`,
   `CREATE INDEX IF NOT EXISTS idx_nodes_source_note ON nodes(source_note_id)`,
   `CREATE INDEX IF NOT EXISTS idx_nodes_blueprint ON nodes(blueprint_id)`,
-  
+
   // Temporal queries
   `CREATE INDEX IF NOT EXISTS idx_nodes_updated ON nodes(updated_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(created_at DESC)`,
-  
+
   // Narrative ordering
   `CREATE INDEX IF NOT EXISTS idx_nodes_sequence ON nodes(parent_id, sequence)`,
-  
+
   // Type-specific roots
   `CREATE INDEX IF NOT EXISTS idx_nodes_typed_root ON nodes(entity_kind, is_typed_root)`,
-  
+
   // Composite indexes
   `CREATE INDEX IF NOT EXISTS idx_nodes_type_parent ON nodes(type, parent_id)`,
   `CREATE INDEX IF NOT EXISTS idx_nodes_kind_subtype ON nodes(entity_kind, entity_subtype)`,
-  
+
   // ============================================
   // EDGE INDEXES
   // ============================================
-  
+
   // Graph traversal
   `CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source)`,
   `CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target)`,
   `CREATE INDEX IF NOT EXISTS idx_edges_source_target ON edges(source, target)`,
-  
+
   // Filtered traversal
   `CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(type)`,
   `CREATE INDEX IF NOT EXISTS idx_edges_source_type ON edges(source, type)`,
   `CREATE INDEX IF NOT EXISTS idx_edges_target_type ON edges(target, type)`,
-  
+
   // Co-occurrence queries
   `CREATE INDEX IF NOT EXISTS idx_edges_type_weight ON edges(type, weight DESC)`,
 
@@ -303,9 +303,104 @@ export const VALIDATION_TRIGGERS: string[] = [
   END`,
 ];
 
+// ============================================
+// COZODB PERSISTENCE TABLES
+// ============================================
+
+export const COZO_SCHEMA_STATEMENTS: string[] = [
+  // CozoDB Entities - mirrors the Cozo 'entities' relation
+  `CREATE TABLE IF NOT EXISTS cozo_entities (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    normalized TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    subtype TEXT,
+    first_note TEXT,
+    created_at INTEGER NOT NULL,
+    created_by TEXT NOT NULL
+  )`,
+
+  // CozoDB Entity Aliases
+  `CREATE TABLE IF NOT EXISTS cozo_entity_aliases (
+    entity_id TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    normalized TEXT NOT NULL,
+    PRIMARY KEY (entity_id, normalized),
+    FOREIGN KEY (entity_id) REFERENCES cozo_entities(id) ON DELETE CASCADE
+  )`,
+
+  // CozoDB Entity Mentions
+  `CREATE TABLE IF NOT EXISTS cozo_entity_mentions (
+    entity_id TEXT NOT NULL,
+    note_id TEXT NOT NULL,
+    mention_count INTEGER DEFAULT 0,
+    last_seen INTEGER,
+    PRIMARY KEY (entity_id, note_id),
+    FOREIGN KEY (entity_id) REFERENCES cozo_entities(id) ON DELETE CASCADE
+  )`,
+
+  // CozoDB Entity Metadata
+  `CREATE TABLE IF NOT EXISTS cozo_entity_metadata (
+    entity_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT,
+    PRIMARY KEY (entity_id, key),
+    FOREIGN KEY (entity_id) REFERENCES cozo_entities(id) ON DELETE CASCADE
+  )`,
+
+  // CozoDB Relationships
+  `CREATE TABLE IF NOT EXISTS cozo_relationships (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    inverse_type TEXT,
+    bidirectional INTEGER DEFAULT 0,
+    confidence REAL DEFAULT 0.5,
+    namespace TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (source_id) REFERENCES cozo_entities(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_id) REFERENCES cozo_entities(id) ON DELETE CASCADE
+  )`,
+
+  // CozoDB Relationship Provenance
+  `CREATE TABLE IF NOT EXISTS cozo_relationship_provenance (
+    relationship_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    origin_id TEXT NOT NULL,
+    confidence REAL DEFAULT 0.5,
+    timestamp INTEGER NOT NULL,
+    context TEXT,
+    PRIMARY KEY (relationship_id, source, origin_id),
+    FOREIGN KEY (relationship_id) REFERENCES cozo_relationships(id) ON DELETE CASCADE
+  )`,
+
+  // CozoDB Relationship Attributes
+  `CREATE TABLE IF NOT EXISTS cozo_relationship_attributes (
+    relationship_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT,
+    PRIMARY KEY (relationship_id, key),
+    FOREIGN KEY (relationship_id) REFERENCES cozo_relationships(id) ON DELETE CASCADE
+  )`,
+
+  // CozoDB Indexes
+  `CREATE INDEX IF NOT EXISTS idx_cozo_entities_normalized ON cozo_entities(normalized)`,
+  `CREATE INDEX IF NOT EXISTS idx_cozo_entities_kind ON cozo_entities(kind)`,
+  `CREATE INDEX IF NOT EXISTS idx_cozo_aliases_normalized ON cozo_entity_aliases(normalized)`,
+  `CREATE INDEX IF NOT EXISTS idx_cozo_mentions_entity ON cozo_entity_mentions(entity_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_cozo_mentions_note ON cozo_entity_mentions(note_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_cozo_rels_source ON cozo_relationships(source_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_cozo_rels_target ON cozo_relationships(target_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_cozo_rels_type ON cozo_relationships(type)`,
+  `CREATE INDEX IF NOT EXISTS idx_cozo_rels_namespace ON cozo_relationships(namespace)`,
+];
+
 // All statements in order
 export const ALL_SCHEMA_STATEMENTS: string[] = [
   ...SCHEMA_STATEMENTS,
   ...FTS_TRIGGERS,
   ...VALIDATION_TRIGGERS,
+  ...COZO_SCHEMA_STATEMENTS,
 ];
