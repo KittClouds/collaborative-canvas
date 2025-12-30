@@ -1,9 +1,13 @@
 /**
  * CalendarContext - Centralized state management for Fantasy Calendar
  * Provides unified API for sidebar, timeline, and grid components
+ * 
+ * STATE PERSISTENCE: Uses Jotai atoms backed by SQLite WASM + OPFS
+ * HYDRATION: Lazy - loads calendar data when this provider mounts
  */
 
-import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useCallback, useMemo, ReactNode, useEffect, useState } from 'react';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
     CalendarDefinition,
     FantasyDate,
@@ -29,6 +33,24 @@ import {
 import { generateId } from '@/lib/utils/ids';
 import { executeGenesis, clearCalendarTimeUnits } from '@/lib/time';
 import { temporalAhoMatcher } from '@/lib/entities/scanner-v3/extractors/TemporalAhoMatcher';
+
+// Calendar Atoms
+import {
+    calendarAtom,
+    calendarEventsAtom,
+    calendarPeriodsAtom,
+    calendarViewStateAtom,
+    isCalendarHydratedAtom,
+    hydrateCalendarAtom,
+    saveCalendarAtom,
+    createEventAtom,
+    updateEventAtom,
+    deleteEventAtom,
+    createPeriodAtom,
+    updatePeriodAtom,
+    deletePeriodAtom,
+    updateViewStateAtom,
+} from '@/atoms/calendar';
 
 // Configuration passed from the wizard
 export interface CalendarConfig {
@@ -152,14 +174,44 @@ interface CalendarProviderProps {
 }
 
 export function CalendarProvider({ children }: CalendarProviderProps) {
-    const [calendar, setCalendar] = useState<CalendarDefinition>(DEFAULT_CALENDAR);
-    const [viewDate, setViewDate] = useState<FantasyDate>({ year: 1, monthIndex: 0, dayIndex: 0 });
-    const [events, setEvents] = useState<CalendarEvent[]>([]);
-    const [periods, setPeriods] = useState<Period[]>([]);
-    const [isSetupMode, setIsSetupMode] = useState(false);
-    const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null);
-    const [editorScope, setEditorScope] = useState<EditorScope>('day');
+    // ============================================
+    // JOTAI STATE (SQLite-backed)
+    // ============================================
+    const storedCalendar = useAtomValue(calendarAtom);
+    const events = useAtomValue(calendarEventsAtom);
+    const periods = useAtomValue(calendarPeriodsAtom);
+    const viewState = useAtomValue(calendarViewStateAtom);
+    const isHydrated = useAtomValue(isCalendarHydratedAtom);
+
+    // Write atoms
+    const hydrateCalendar = useSetAtom(hydrateCalendarAtom);
+    const saveCalendar = useSetAtom(saveCalendarAtom);
+    const createEvent = useSetAtom(createEventAtom);
+    const updateEventAtomFn = useSetAtom(updateEventAtom);
+    const deleteEvent = useSetAtom(deleteEventAtom);
+    const createPeriod = useSetAtom(createPeriodAtom);
+    const updatePeriodAtomFn = useSetAtom(updatePeriodAtom);
+    const deletePeriod = useSetAtom(deletePeriodAtom);
+    const updateViewState = useSetAtom(updateViewStateAtom);
+
+    // Local state for things that don't need persistence
     const [isGenerating, setIsGenerating] = useState(false);
+    const [localCalendar, setLocalCalendar] = useState<CalendarDefinition | null>(null);
+
+    // Use stored calendar or default
+    const calendar = storedCalendar || localCalendar || DEFAULT_CALENDAR;
+    const viewDate = viewState.viewDate;
+    const isSetupMode = viewState.isSetupMode;
+    const highlightedEventId = viewState.highlightedEventId;
+    const editorScope = viewState.editorScope;
+
+    // Lazy hydrate on mount
+    useEffect(() => {
+        if (!isHydrated) {
+            hydrateCalendar().catch(console.error);
+        }
+    }, [isHydrated, hydrateCalendar]);
+
 
     // Computed values
     const currentMonth = useMemo(() =>
@@ -185,95 +237,116 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
         [events, viewDate.year, viewDate.monthIndex]
     );
 
+    // Helper to update view date
+    const setViewDate = useCallback((newDate: FantasyDate | ((prev: FantasyDate) => FantasyDate)) => {
+        if (typeof newDate === 'function') {
+            updateViewState({ viewDate: newDate(viewDate) });
+        } else {
+            updateViewState({ viewDate: newDate });
+        }
+    }, [updateViewState, viewDate]);
+
+    // Helper to update highlighted event
+    const setHighlightedEventId = useCallback((id: string | null) => {
+        updateViewState({ highlightedEventId: id });
+    }, [updateViewState]);
+
+    // Helper to update setup mode
+    const setIsSetupMode = useCallback((mode: boolean) => {
+        updateViewState({ isSetupMode: mode });
+    }, [updateViewState]);
+
+    // Helper to update editor scope
+    const setEditorScope = useCallback((scope: EditorScope) => {
+        updateViewState({ editorScope: scope });
+    }, [updateViewState]);
+
     // Navigation
     const navigateMonth = useCallback((dir: 'prev' | 'next') => {
-        setViewDate(prev => {
-            let newMonth = prev.monthIndex + (dir === 'next' ? 1 : -1);
-            let newYear = prev.year;
+        let newMonth = viewDate.monthIndex + (dir === 'next' ? 1 : -1);
+        let newYear = viewDate.year;
 
-            if (newMonth < 0) {
-                newMonth = calendar.months.length - 1;
-                newYear = utilNavigateYear(prev.year, 'prev', calendar.hasYearZero);
-            } else if (newMonth >= calendar.months.length) {
-                newMonth = 0;
-                newYear = utilNavigateYear(prev.year, 'next', calendar.hasYearZero);
-            }
+        if (newMonth < 0) {
+            newMonth = calendar.months.length - 1;
+            newYear = utilNavigateYear(viewDate.year, 'prev', calendar.hasYearZero);
+        } else if (newMonth >= calendar.months.length) {
+            newMonth = 0;
+            newYear = utilNavigateYear(viewDate.year, 'next', calendar.hasYearZero);
+        }
 
-            return { ...prev, monthIndex: newMonth, year: newYear, dayIndex: 0 };
-        });
-    }, [calendar.months.length, calendar.hasYearZero]);
+        updateViewState({ viewDate: { ...viewDate, monthIndex: newMonth, year: newYear, dayIndex: 0 } });
+    }, [calendar.months.length, calendar.hasYearZero, viewDate, updateViewState]);
 
     const navigateYear = useCallback((dir: 'prev' | 'next') => {
-        setViewDate(prev => ({
-            ...prev,
-            year: utilNavigateYear(prev.year, dir, calendar.hasYearZero)
-        }));
-    }, [calendar.hasYearZero]);
+        updateViewState({
+            viewDate: {
+                ...viewDate,
+                year: utilNavigateYear(viewDate.year, dir, calendar.hasYearZero)
+            }
+        });
+    }, [calendar.hasYearZero, viewDate, updateViewState]);
 
     const navigateDay = useCallback((dir: 'prev' | 'next') => {
-        setViewDate(prev => {
-            const currentMonth = calendar.months[prev.monthIndex];
-            const daysInMonth = getDaysInMonth(currentMonth, prev.year);
-            let newDay = prev.dayIndex + (dir === 'next' ? 1 : -1);
-            let newMonth = prev.monthIndex;
-            let newYear = prev.year;
+        const currentMonthDef = calendar.months[viewDate.monthIndex];
+        const daysInMonth = getDaysInMonth(currentMonthDef, viewDate.year);
+        let newDay = viewDate.dayIndex + (dir === 'next' ? 1 : -1);
+        let newMonth = viewDate.monthIndex;
+        let newYear = viewDate.year;
 
-            if (newDay < 0) {
-                // Go to previous month's last day
-                newMonth = prev.monthIndex - 1;
-                if (newMonth < 0) {
-                    newMonth = calendar.months.length - 1;
-                    newYear = utilNavigateYear(prev.year, 'prev', calendar.hasYearZero);
-                }
-                const prevMonthDef = calendar.months[newMonth];
-                newDay = getDaysInMonth(prevMonthDef, newYear) - 1;
-            } else if (newDay >= daysInMonth) {
-                // Go to next month's first day
-                newMonth = prev.monthIndex + 1;
-                if (newMonth >= calendar.months.length) {
-                    newMonth = 0;
-                    newYear = utilNavigateYear(prev.year, 'next', calendar.hasYearZero);
-                }
-                newDay = 0;
+        if (newDay < 0) {
+            // Go to previous month's last day
+            newMonth = viewDate.monthIndex - 1;
+            if (newMonth < 0) {
+                newMonth = calendar.months.length - 1;
+                newYear = utilNavigateYear(viewDate.year, 'prev', calendar.hasYearZero);
             }
+            const prevMonthDef = calendar.months[newMonth];
+            newDay = getDaysInMonth(prevMonthDef, newYear) - 1;
+        } else if (newDay >= daysInMonth) {
+            // Go to next month's first day
+            newMonth = viewDate.monthIndex + 1;
+            if (newMonth >= calendar.months.length) {
+                newMonth = 0;
+                newYear = utilNavigateYear(viewDate.year, 'next', calendar.hasYearZero);
+            }
+            newDay = 0;
+        }
 
-            return { ...prev, dayIndex: newDay, monthIndex: newMonth, year: newYear };
-        });
-    }, [calendar.months, calendar.hasYearZero]);
+        updateViewState({ viewDate: { ...viewDate, dayIndex: newDay, monthIndex: newMonth, year: newYear } });
+    }, [calendar.months, calendar.hasYearZero, viewDate, updateViewState]);
 
     const selectDay = useCallback((dayIndex: number) => {
-        setViewDate(prev => ({ ...prev, dayIndex }));
-    }, []);
+        updateViewState({ viewDate: { ...viewDate, dayIndex } });
+    }, [viewDate, updateViewState]);
 
     const goToYear = useCallback((year: number) => {
-        setViewDate(prev => ({ ...prev, year, monthIndex: 0, dayIndex: 0 }));
-    }, []);
+        updateViewState({ viewDate: { ...viewDate, year, monthIndex: 0, dayIndex: 0 } });
+    }, [viewDate, updateViewState]);
 
     const goToDate = useCallback((date: FantasyDate) => {
-        setViewDate(date);
-    }, []);
+        updateViewState({ viewDate: date });
+    }, [updateViewState]);
 
 
-    // Events
+    // Events - Use atom functions
     const addEvent = useCallback((event: Omit<CalendarEvent, 'id' | 'calendarId'>): CalendarEvent => {
         const newEvent: CalendarEvent = {
             ...event,
             id: generateId(),
             calendarId: calendar.id
         };
-        setEvents(prev => [...prev, newEvent]);
+        createEvent({ ...event, calendarId: calendar.id });
         return newEvent;
-    }, [calendar.id]);
+    }, [calendar.id, createEvent]);
+
 
     const updateEvent = useCallback((id: string, updates: Partial<Omit<CalendarEvent, 'id' | 'calendarId'>>) => {
-        setEvents(prev => prev.map(e =>
-            e.id === id ? { ...e, ...updates } : e
-        ));
-    }, []);
+        updateEventAtomFn({ id, updates });
+    }, [updateEventAtomFn]);
 
     const removeEvent = useCallback((id: string) => {
-        setEvents(prev => prev.filter(e => e.id !== id));
-    }, []);
+        deleteEvent(id);
+    }, [deleteEvent]);
 
     const getEventById = useCallback((id: string): CalendarEvent | undefined => {
         return events.find(e => e.id === id);
@@ -288,21 +361,21 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
     }, [events]);
 
     const toggleEventStatus = useCallback((id: string) => {
-        setEvents(prev => prev.map(e => {
-            if (e.id !== id) return e;
-            // Cycle: undefined/todo -> in-progress -> completed -> todo
-            const statusCycle: Record<string, 'todo' | 'in-progress' | 'completed'> = {
-                'undefined': 'in-progress',
-                'todo': 'in-progress',
-                'in-progress': 'completed',
-                'completed': 'todo'
-            };
-            const current = e.status || 'todo';
-            return { ...e, status: statusCycle[current] };
-        }));
-    }, []);
+        const event = events.find(e => e.id === id);
+        if (!event) return;
 
-    // Periods
+        // Cycle: undefined/todo -> in-progress -> completed -> todo
+        const statusCycle: Record<string, 'todo' | 'in-progress' | 'completed'> = {
+            'undefined': 'in-progress',
+            'todo': 'in-progress',
+            'in-progress': 'completed',
+            'completed': 'todo'
+        };
+        const current = event.status || 'todo';
+        updateEventAtomFn({ id, updates: { status: statusCycle[current] } });
+    }, [events, updateEventAtomFn]);
+
+    // Periods - Use atom functions
     const addPeriod = useCallback((period: Omit<Period, 'id' | 'calendarId'>): Period => {
         const newPeriod: Period = {
             ...period,
@@ -310,24 +383,17 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
             calendarId: calendar.id,
             createdAt: new Date().toISOString()
         };
-        setPeriods(prev => [...prev, newPeriod].sort((a, b) => a.startYear - b.startYear));
+        createPeriod({ ...period, calendarId: calendar.id, createdAt: new Date().toISOString() });
         return newPeriod;
-    }, [calendar.id]);
+    }, [calendar.id, createPeriod]);
 
     const updatePeriod = useCallback((id: string, updates: Partial<Omit<Period, 'id' | 'calendarId'>>) => {
-        setPeriods(prev => prev.map(p =>
-            p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
-        ));
-    }, []);
+        updatePeriodAtomFn({ id, updates: { ...updates, updatedAt: new Date().toISOString() } });
+    }, [updatePeriodAtomFn]);
 
     const removePeriod = useCallback((id: string) => {
-        // Also clear periodId from any events that reference this period
-        setEvents(prev => prev.map(e =>
-            e.periodId === id ? { ...e, periodId: undefined } : e
-        ));
-        // Remove child periods
-        setPeriods(prev => prev.filter(p => p.id !== id && p.parentPeriodId !== id));
-    }, []);
+        deletePeriod(id);
+    }, [deletePeriod]);
 
     const getPeriodById = useCallback((id: string): Period | undefined => {
         return periods.find(p => p.id === id);
@@ -360,25 +426,31 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
             })[0];
     }, [periods]);
 
-    // Time Markers
+    // Time Markers - These are part of the calendar definition
+    // For now, we'll update them optimistically and save calendar
     const addTimeMarker = useCallback((marker: Omit<TimeMarker, 'id' | 'calendarId'>) => {
         const newMarker: TimeMarker = {
             ...marker,
             id: generateUUID(),
             calendarId: calendar.id
         };
-        setCalendar(prev => ({
-            ...prev,
-            timeMarkers: [...prev.timeMarkers, newMarker].sort((a, b) => a.year - b.year)
-        }));
-    }, [calendar.id]);
+        const updatedCalendar: CalendarDefinition = {
+            ...calendar,
+            timeMarkers: [...calendar.timeMarkers, newMarker].sort((a, b) => a.year - b.year)
+        };
+        setLocalCalendar(updatedCalendar);
+        saveCalendar(updatedCalendar);
+    }, [calendar, saveCalendar]);
+
 
     const removeTimeMarker = useCallback((id: string) => {
-        setCalendar(prev => ({
-            ...prev,
-            timeMarkers: prev.timeMarkers.filter(m => m.id !== id)
-        }));
-    }, []);
+        const updatedCalendar: CalendarDefinition = {
+            ...calendar,
+            timeMarkers: calendar.timeMarkers.filter(m => m.id !== id)
+        };
+        setLocalCalendar(updatedCalendar);
+        saveCalendar(updatedCalendar);
+    }, [calendar, saveCalendar]);
 
     // Calendar creation from wizard config
     const createCalendar = useCallback(async (config: CalendarConfig) => {
@@ -465,16 +537,23 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
             console.error('[CalendarContext] Genesis failed:', err);
         }
 
-        setCalendar(newCalendar);
-        setViewDate({
-            year: config.startingYear || 1,
-            monthIndex: 0,
-            dayIndex: 0,
-            eraId: defaultEra.id
+        // Save to SQLite and update local state
+        setLocalCalendar(newCalendar);
+        await saveCalendar(newCalendar);
+
+        updateViewState({
+            viewDate: {
+                year: config.startingYear || 1,
+                monthIndex: 0,
+                dayIndex: 0,
+                eraId: defaultEra.id
+            }
         });
-        setEvents([]);
+
+        // Events are stored separately in atoms, they'll hydrate on next load
         setIsGenerating(false);
-    }, []);
+    }, [saveCalendar, updateViewState]);
+
 
     // === NARRATIVE API IMPLEMENTATIONS ===
 
@@ -526,51 +605,55 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
 
     // Link two events causally
     const linkEvents = useCallback((causeId: string, effectId: string, weight: number = 1) => {
-        setEvents(prev => prev.map(e => {
-            if (e.id === causeId) {
-                const causes = new Set(e.causes || []);
-                causes.add(effectId);
-                return { ...e, causes: Array.from(causes), causalityWeight: weight };
-            }
-            if (e.id === effectId) {
-                const causedBy = new Set(e.causedBy || []);
-                causedBy.add(causeId);
-                return { ...e, causedBy: Array.from(causedBy) };
-            }
-            return e;
-        }));
-    }, []);
+        // Update cause event
+        const causeEvent = events.find(e => e.id === causeId);
+        if (causeEvent) {
+            const causes = new Set(causeEvent.causes || []);
+            causes.add(effectId);
+            updateEventAtomFn({ id: causeId, updates: { causes: Array.from(causes), causalityWeight: weight } });
+        }
+        // Update effect event
+        const effectEvent = events.find(e => e.id === effectId);
+        if (effectEvent) {
+            const causedBy = new Set(effectEvent.causedBy || []);
+            causedBy.add(causeId);
+            updateEventAtomFn({ id: effectId, updates: { causedBy: Array.from(causedBy) } });
+        }
+    }, [events, updateEventAtomFn]);
 
     // Unlink two events
     const unlinkEvents = useCallback((causeId: string, effectId: string) => {
-        setEvents(prev => prev.map(e => {
-            if (e.id === causeId && e.causes) {
-                return { ...e, causes: e.causes.filter(id => id !== effectId) };
-            }
-            if (e.id === effectId && e.causedBy) {
-                return { ...e, causedBy: e.causedBy.filter(id => id !== causeId) };
-            }
-            return e;
-        }));
-    }, []);
+        const causeEvent = events.find(e => e.id === causeId);
+        if (causeEvent?.causes) {
+            updateEventAtomFn({ id: causeId, updates: { causes: causeEvent.causes.filter(id => id !== effectId) } });
+        }
+        const effectEvent = events.find(e => e.id === effectId);
+        if (effectEvent?.causedBy) {
+            updateEventAtomFn({ id: effectId, updates: { causedBy: effectEvent.causedBy.filter(id => id !== causeId) } });
+        }
+    }, [events, updateEventAtomFn]);
 
     // Add participant to event
     const addParticipant = useCallback((eventId: string, entityRef: EntityRef) => {
-        setEvents(prev => prev.map(e => {
-            if (e.id !== eventId) return e;
-            const participants = e.participants || [];
-            if (participants.some(p => p.id === entityRef.id)) return e;
-            return { ...e, participants: [...participants, entityRef] };
-        }));
-    }, []);
+        const event = events.find(e => e.id === eventId);
+        if (!event) return;
+
+        const participants = event.participants || [];
+        if (participants.some(p => p.id === entityRef.id)) return;
+
+        updateEventAtomFn({ id: eventId, updates: { participants: [...participants, entityRef] } });
+    }, [events, updateEventAtomFn]);
 
     // Remove participant from event
     const removeParticipant = useCallback((eventId: string, entityId: string) => {
-        setEvents(prev => prev.map(e => {
-            if (e.id !== eventId || !e.participants) return e;
-            return { ...e, participants: e.participants.filter(p => p.id !== entityId) };
-        }));
-    }, []);
+        const event = events.find(e => e.id === eventId);
+        if (!event?.participants) return;
+
+        updateEventAtomFn({
+            id: eventId,
+            updates: { participants: event.participants.filter(p => p.id !== entityId) }
+        });
+    }, [events, updateEventAtomFn]);
 
     // Get events by entity
     const getEventsByEntity = useCallback((entityId: string): CalendarEvent[] => {
@@ -583,24 +666,23 @@ export function CalendarProvider({ children }: CalendarProviderProps) {
 
     // Toggle cell visibility
     const toggleCellVisibility = useCallback((eventId: string) => {
-        setEvents(prev => prev.map(e =>
-            e.id === eventId ? { ...e, showInCell: !(e.showInCell ?? true) } : e
-        ));
-    }, []);
+        const event = events.find(e => e.id === eventId);
+        if (!event) return;
+        updateEventAtomFn({ id: eventId, updates: { showInCell: !(event.showInCell ?? true) } });
+    }, [events, updateEventAtomFn]);
 
     // Toggle timeline pin
     const toggleTimelinePin = useCallback((eventId: string) => {
-        setEvents(prev => prev.map(e =>
-            e.id === eventId ? { ...e, pinnedToTimeline: !e.pinnedToTimeline } : e
-        ));
-    }, []);
+        const event = events.find(e => e.id === eventId);
+        if (!event) return;
+        updateEventAtomFn({ id: eventId, updates: { pinnedToTimeline: !event.pinnedToTimeline } });
+    }, [events, updateEventAtomFn]);
 
     // Set cell display mode
     const setCellDisplayMode = useCallback((eventId: string, mode: 'minimal' | 'badge' | 'full') => {
-        setEvents(prev => prev.map(e =>
-            e.id === eventId ? { ...e, cellDisplayMode: mode } : e
-        ));
-    }, []);
+        updateEventAtomFn({ id: eventId, updates: { cellDisplayMode: mode } });
+    }, [updateEventAtomFn]);
+
 
     const value: CalendarContextValue = {
         // State

@@ -67,7 +67,7 @@ export interface WorkerResponse {
 // NODE TYPES (Full Schema)
 // ============================================
 
-export type NodeType = 'NOTE' | 'FOLDER' | 'ENTITY' | 'BLUEPRINT' | 'TEMPORAL';
+export type NodeType = 'NOTE' | 'FOLDER' | 'ENTITY' | 'BLUEPRINT' | 'TEMPORAL' | 'CALENDAR' | 'CALENDAR_EVENT' | 'CALENDAR_PERIOD';
 
 export interface SQLiteNode {
   id: string;

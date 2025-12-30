@@ -32,8 +32,14 @@ function transformToNote(node: SQLiteNode): Note {
         createdAt: node.created_at,
         updatedAt: node.updated_at,
         connections: node.extraction ? JSON.parse(node.extraction) : undefined,
+        // Entity fields - critical for entity sidebar
+        isEntity: Boolean(node.is_entity),
+        entityKind: node.entity_kind,
+        entityLabel: node.is_entity ? node.label : undefined, // Entity notes use label as entityLabel
+        entitySubtype: node.entity_subtype,
     } as unknown as Note;
 }
+
 
 /**
  * Transform SQLite node to Folder type

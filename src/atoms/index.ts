@@ -71,3 +71,23 @@ export {
 
 // Types
 export type { FolderWithChildren } from '@/types/noteTypes';
+
+// Calendar atoms
+export {
+    calendarAtom,
+    calendarEventsAtom,
+    calendarPeriodsAtom,
+    calendarViewStateAtom,
+    isCalendarHydratedAtom,
+    isCalendarLoadingAtom,
+    hydrateCalendarAtom,
+    saveCalendarAtom,
+    createEventAtom,
+    updateEventAtom,
+    deleteEventAtom,
+    createPeriodAtom,
+    updatePeriodAtom,
+    deletePeriodAtom,
+    updateViewStateAtom,
+    setSetupModeAtom,
+} from './calendar';

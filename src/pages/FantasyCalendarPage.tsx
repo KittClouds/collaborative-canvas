@@ -6,11 +6,12 @@ import { FantasyDate } from '@/lib/fantasy-calendar/types';
 import { CalendarSetupWizard } from '@/components/fantasy-calendar/CalendarSetupWizard';
 import { FantasyCalendarGrid } from '@/components/fantasy-calendar/FantasyCalendarGrid';
 import { CalendarSidebar } from '@/components/fantasy-calendar/CalendarSidebar';
+import { CalendarEntitySidebar } from '@/components/fantasy-calendar/CalendarEntitySidebar';
 import { DualTimeline, TimeScale } from '@/components/fantasy-calendar/DualTimeline';
 import { NarrativeEventEditor } from '@/components/fantasy-calendar/NarrativeEventEditor';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, PlusCircle, CalendarClock, Clock, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, PlusCircle, CalendarClock, Clock, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Inner component that consumes the context
@@ -36,7 +37,9 @@ function CalendarPageContent() {
     } = useCalendarContext();
 
     const [showTimeline, setShowTimeline] = React.useState(true);
+    const [showEntities, setShowEntities] = React.useState(true);
     const [scale, setScale] = React.useState<TimeScale>('decade');
+
 
     const handleBackToEditor = useCallback(() => {
         setTimeout(() => navigate('/'), 50);
@@ -173,6 +176,15 @@ function CalendarPageContent() {
                     {/* Right Side Actions */}
                     <div className="flex items-center gap-2 shrink-0">
                         <Button
+                            variant={showEntities ? "secondary" : "ghost"}
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={() => setShowEntities(!showEntities)}
+                        >
+                            <Sparkles className="mr-2 h-3.5 w-3.5" />
+                            Entities
+                        </Button>
+                        <Button
                             variant={showTimeline ? "secondary" : "ghost"}
                             size="sm"
                             className="h-8 text-xs"
@@ -233,9 +245,15 @@ function CalendarPageContent() {
                     </div>
                 </div>
             </div>
+
+            {/* Right Sidebar - Entity Views */}
+            {showEntities && (
+                <CalendarEntitySidebar />
+            )}
         </div>
     );
 }
+
 
 // Wrapper that provides the context
 export default function FantasyCalendarPage() {

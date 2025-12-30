@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect, useCallback, useState } from 'react';
 import { useJotaiNotes } from '@/hooks/useJotaiNotes';
-import { useEntitySelection } from '@/contexts/EntitySelectionContext';
+import { useEntitySelection, EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
 import { parseNoteConnectionsFromDocument } from '@/lib/entities/documentScanner';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { EntityKind } from '@/lib/entities/entityTypes';
@@ -52,7 +52,12 @@ function setPanelMode(mode: PanelMode) {
   localStorage.setItem(PANEL_MODE_STORAGE_KEY, mode);
 }
 
-export function FactSheetContainer() {
+interface FactSheetContainerProps {
+  externalEntities?: ParsedEntity[];
+  onEntityUpdate?: (entity: ParsedEntity, attributes: EntityAttributes) => void;
+}
+
+export function FactSheetContainer({ externalEntities, onEntityUpdate }: FactSheetContainerProps = {}) {
   const { selectedNote, updateNoteContent } = useJotaiNotes();
   const {
     selectedEntity,
@@ -87,8 +92,12 @@ export function FactSheetContainer() {
     SettingsManager.updateLLMSettings({ extractorModel: id });
   }, []);
 
-  // ... (rest of the component)
+  // Compute entities (either from selected note or external prop)
   const allEntities = useMemo(() => {
+    if (externalEntities) {
+      return externalEntities;
+    }
+
     const entities: ParsedEntity[] = [];
 
     // Check if note itself is an entity
@@ -98,7 +107,7 @@ export function FactSheetContainer() {
         subtype: selectedNote.entitySubtype,
         label: selectedNote.entityLabel,
         noteId: selectedNote.id,
-        attributes: {},
+        attributes: {}, // TODO: Fetch from content if stored there
       });
     }
 
@@ -128,49 +137,62 @@ export function FactSheetContainer() {
     }
 
     return entities;
-  }, [selectedNote?.content, selectedNote?.isEntity, selectedNote?.entityKind, selectedNote?.entityLabel, selectedNote?.entitySubtype, selectedNote?.id]);
+  }, [selectedNote?.content, selectedNote?.isEntity, selectedNote?.entityKind, selectedNote?.entityLabel, selectedNote?.entitySubtype, selectedNote?.id, externalEntities]);
 
   // Update context when entities change
   useEffect(() => {
-    setEntitiesInCurrentNote(allEntities);
+    // Only update if the list is different to avoid loops
+    // Simple length check for now, could be more robust
+    if (entitiesInCurrentNote.length !== allEntities.length ||
+      !entitiesInCurrentNote.every((e, i) => e.label === allEntities[i].label)) {
+      setEntitiesInCurrentNote(allEntities);
+    }
 
     // Auto-select first entity if none selected or current selection not in list
+    // BUT only if we have entities and no current selection (or invalid selection)
     if (allEntities.length > 0) {
       const currentStillValid = selectedEntity && allEntities.some(
         e => e.kind === selectedEntity.kind && e.label === selectedEntity.label
       );
       if (!currentStillValid) {
+        // If externalEntities are provided (Calendar Mode), we might NOT want to auto-select 
+        // to avoid jumping focus around unless the user explicitly picks one.
+        // However, existing behavior is to auto-select. Let's keep consistency for now.
         setSelectedEntity(allEntities[0]);
       }
     } else {
-      setSelectedEntity(null);
+      if (selectedEntity) setSelectedEntity(null);
     }
-  }, [allEntities, selectedEntity, setSelectedEntity, setEntitiesInCurrentNote]);
+  }, [allEntities, selectedEntity, setSelectedEntity, setEntitiesInCurrentNote, entitiesInCurrentNote]);
 
-  // Handle attribute updates - persist to note content
+  // Handle attribute updates
   const handleAttributeUpdate = useCallback(
     (attributes: EntityAttributes) => {
-      if (!selectedNote || !selectedEntity) return;
+      if (!selectedEntity) return;
 
-      // For now, we'll store entity attributes in a special section of the note content
-      // In a full implementation, this would update the entity's attributes in the content JSON
-      try {
-        const content = JSON.parse(selectedNote.content);
-        if (!content.entityAttributes) {
-          content.entityAttributes = {};
+      if (onEntityUpdate) {
+        onEntityUpdate(selectedEntity, attributes);
+      } else if (selectedNote) {
+        // Default behavior: update current note
+        try {
+          const content = JSON.parse(selectedNote.content);
+          if (!content.entityAttributes) {
+            content.entityAttributes = {};
+          }
+          const entityKey = `${selectedEntity.kind}|${selectedEntity.label}`;
+          content.entityAttributes[entityKey] = attributes;
+          updateNoteContent(selectedNote.id, JSON.stringify(content));
+        } catch {
+          // Handle parse error
         }
-        const entityKey = `${selectedEntity.kind}|${selectedEntity.label}`;
-        content.entityAttributes[entityKey] = attributes;
-        updateNoteContent(selectedNote.id, JSON.stringify(content));
-      } catch {
-        // Handle parse error
       }
     },
-    [selectedNote, selectedEntity, updateNoteContent]
+    [selectedNote, selectedEntity, updateNoteContent, onEntityUpdate]
   );
 
-  // No note selected
-  if (!selectedNote) {
+  // Render Loading/Empty states
+  // If externalEntities is undefined, we are in "Note Mode", so we check for selectedNote
+  if (!externalEntities && !selectedNote) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6 text-center">
         <FileQuestion className="h-12 w-12 text-muted-foreground/50 mb-4" />
@@ -187,11 +209,13 @@ export function FactSheetContainer() {
       <div className="flex flex-col items-center justify-center h-full p-6 text-center">
         <Sparkles className="h-12 w-12 text-muted-foreground/50 mb-4" />
         <p className="text-sm text-muted-foreground mb-2">
-          No entities in this note
+          No entities found
         </p>
-        <p className="text-xs text-muted-foreground/70 max-w-[280px]">
-          Add entities using syntax like <code className="bg-muted px-1 rounded">[CHARACTER|Name]</code> or create an entity note
-        </p>
+        {!externalEntities && (
+          <p className="text-xs text-muted-foreground/70 max-w-[280px]">
+            Add entities using syntax like <code className="bg-muted px-1 rounded">[CHARACTER|Name]</code> or create an entity note
+          </p>
+        )}
       </div>
     );
   }
@@ -303,7 +327,14 @@ export function FactSheetContainer() {
             onUpdate={handleAttributeUpdate}
           />
         )}
+        {/* Fallback if no entity selected but we have them (shouldn't happen with auto-select) */}
+        {!selectedEntity && allEntities.length > 0 && (
+          <div className="p-6 text-center text-muted-foreground text-sm">
+            Select an entity to view details
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
