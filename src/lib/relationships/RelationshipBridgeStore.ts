@@ -157,6 +157,33 @@ class RelationshipBridgeStoreImpl {
         // Sync to CozoDB for graph queries
         await this.syncToCozoDB(unifiedRel, input.networkId);
 
+        // Auto-enroll in matching networks (Phase 5: Network Auto-Membership)
+        if (!input.networkId) {
+            try {
+                const { checkAndAutoEnroll } = await import('@/lib/networks/autoMembership');
+                const enrolledNetworks = await checkAndAutoEnroll(
+                    id,
+                    input.sourceEntityId,
+                    input.targetEntityId,
+                    {
+                        relationship_name: relationshipType.name,
+                        display_label: relationshipType.displayLabel,
+                        relationship_type_id: relationshipType.id,
+                    },
+                    sourceEntity.kind,
+                    targetEntity.kind
+                );
+
+                if (enrolledNetworks.length > 0) {
+                    console.log(`[RelationshipBridge] Auto-enrolled in ${enrolledNetworks.length} network(s):`,
+                        enrolledNetworks.map(n => n.name).join(', '));
+                }
+            } catch (err) {
+                // Non-fatal - don't block relationship creation if auto-enrollment fails
+                console.warn('[RelationshipBridge] Auto-enrollment check failed:', err);
+            }
+        }
+
         // Return resolved instance
         const resolved: ResolvedRelationshipInstance = {
             id,
@@ -613,6 +640,19 @@ class RelationshipBridgeStoreImpl {
         const networkId = rel.attributes?.networkId as string | undefined;
         if (networkId) {
             resolved.network = await this.resolveNetwork(networkId);
+        }
+
+        // Fetch network memberships (Phase 5: Network Auto-Membership)
+        try {
+            const { getRelationshipNetworkMemberships } = await import('@/lib/networks/autoMembership');
+            resolved.networkMemberships = await getRelationshipNetworkMemberships(
+                rel.sourceEntityId,
+                rel.targetEntityId,
+                rel.type
+            );
+        } catch (err) {
+            // Non-fatal - network membership lookup is optional
+            console.warn('[RelationshipBridgeStore] Failed to fetch network memberships:', err);
         }
 
         return resolved;

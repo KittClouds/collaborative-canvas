@@ -78,3 +78,21 @@ export {
     getSchemaById,
     getSchemasForKind,
 } from './schemas';
+
+// Auto-membership (Phase 5)
+export {
+    networkAutoMembership,
+    findMatchingSchemas,
+    checkAndAutoEnroll,
+    getRelationshipNetworkMemberships,
+    getAvailableNetworksForRelationship,
+    addRelationshipToNetwork,
+    removeRelationshipFromNetwork,
+    syncRelationshipsToNetworks,
+} from './autoMembership';
+
+export type {
+    NetworkMatchResult,
+    RelationshipNetworkMembership,
+    AddToNetworkInput,
+} from './autoMembership';

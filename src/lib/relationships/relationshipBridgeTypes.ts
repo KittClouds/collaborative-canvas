@@ -89,6 +89,16 @@ export interface ResolvedRelationshipInstance {
     /** Network context (if applicable) */
     network?: ResolvedNetworkRef;
 
+    /** All networks this relationship belongs to (Phase 5: Network Auto-Membership) */
+    networkMemberships?: Array<{
+        networkId: string;
+        networkName: string;
+        schemaName: string;
+        relationshipCode: string;
+        networkRelationshipId: string;
+        color?: string;
+    }>;
+
     /** Combined confidence score */
     confidence: number;
 
