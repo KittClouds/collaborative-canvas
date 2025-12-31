@@ -11,6 +11,7 @@ import {
   BindableFieldWrapper,
 } from './cards';
 import { MetaCardsSection } from './MetaCardsSection';
+import { RelationshipEditorCard } from './cards/RelationshipEditorCard';
 
 interface ItemFactSheetProps {
   entity: ParsedEntity;
@@ -119,6 +120,9 @@ export function ItemFactSheet({ entity, onUpdate }: ItemFactSheetProps) {
           {card.fields.map(renderField)}
         </FactSheetCard>
       ))}
+
+      {/* Unified Relationship Editor - Blueprint Hub Integration */}
+      <RelationshipEditorCard entity={entity} />
 
       {/* User's Custom Meta Cards */}
       <MetaCardsSection entity={entity} />

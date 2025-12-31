@@ -150,6 +150,57 @@ export interface EntityLinkField extends BaseField {
   multiple?: boolean;
 }
 
+// ============================================
+// RELATIONSHIP-AWARE FIELD TYPES (Phase 3)
+// Tightly coupled with Blueprint Hub
+// ============================================
+
+/**
+ * Relationship slot field - connected to Blueprint Hub relationship types
+ * Enables inline relationship creation from Fact Sheets
+ */
+export interface RelationshipSlotField extends BaseField {
+  type: 'relationship-slot';
+
+  /** Links to a specific Blueprint Hub RelationshipTypeDef */
+  relationshipTypeId?: string;
+
+  /** Alternative: allow multiple relationship types from Blueprint Hub */
+  allowedRelationshipTypes?: string[];
+
+  /** Direction filter for relationships */
+  direction: 'outgoing' | 'incoming' | 'both';
+
+  /** Target entity kinds filter (from Blueprint) */
+  targetEntityKinds?: EntityKind[];
+
+  /** Cardinality constraints */
+  maxCount?: number;
+
+  /** Whether to show "Add from Blueprint" picker */
+  showBlueprintPicker?: boolean;
+
+  /** Group label for organizing relationship slots */
+  groupLabel?: string;
+}
+
+/**
+ * Network membership field - shows which networks entity belongs to
+ * Integrates with lib/networks for family trees, factions, etc.
+ */
+export interface NetworkMembershipField extends BaseField {
+  type: 'network-membership';
+
+  /** Filter by network kind */
+  networkKinds?: string[];
+
+  /** Show role in network */
+  showRole?: boolean;
+
+  /** Allow editing network memberships */
+  editable?: boolean;
+}
+
 export type FactSheetField =
   | TextField
   | NumberField
@@ -167,7 +218,10 @@ export type FactSheetField =
   | RatingField
   | TagsField
   | RichTextField
-  | EntityLinkField;
+  | EntityLinkField
+  // Relationship-aware field types
+  | RelationshipSlotField
+  | NetworkMembershipField;
 
 
 // Card definition

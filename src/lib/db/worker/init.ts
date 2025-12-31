@@ -1,5 +1,5 @@
 import sqlite3InitModule from '@sqliteai/sqlite-wasm';
-import { SCHEMA_STATEMENTS, FTS_TRIGGERS, VALIDATION_TRIGGERS, SCHEMA_VERSION } from './schema';
+import { SCHEMA_STATEMENTS, FTS_TRIGGERS, VALIDATION_TRIGGERS, SCHEMA_VERSION, COZO_SCHEMA_STATEMENTS, ENTITY_ATTRIBUTES_SCHEMA } from './schema';
 
 export type SQLite3Database = ReturnType<typeof createDatabase>;
 
@@ -71,7 +71,7 @@ function getTableColumns(db: SQLite3Database, tableName: string): Set<string> {
 
 function migrateNodesTable(db: SQLite3Database): void {
   console.log('[SQLite Worker] Migrating nodes table using CREATE-INSERT-DROP pattern...');
-  
+
   const existingColumns = getTableColumns(db, 'nodes');
   if (existingColumns.size === 0) return;
 
@@ -79,9 +79,9 @@ function migrateNodesTable(db: SQLite3Database): void {
   db.exec('ALTER TABLE nodes RENAME TO nodes_temp_old');
 
   // 2. Create new table (use the schema definition)
-  const createStmt = SCHEMA_STATEMENTS.find(s => s.trim().toUpperCase().startsWith('CREATE TABLE IF NOT EXISTS NODES')) 
+  const createStmt = SCHEMA_STATEMENTS.find(s => s.trim().toUpperCase().startsWith('CREATE TABLE IF NOT EXISTS NODES'))
     || SCHEMA_STATEMENTS.find(s => s.trim().toUpperCase().startsWith('CREATE TABLE NODES'));
-    
+
   if (!createStmt) {
     console.error('[SQLite Worker] Could not find nodes table schema for migration');
     db.exec('ALTER TABLE nodes_temp_old RENAME TO nodes');
@@ -121,7 +121,7 @@ function migrateNodesTable(db: SQLite3Database): void {
   } catch (err) {
     console.warn('[SQLite Worker] Could not rebuild FTS index during migration:', err);
   }
-  
+
   console.log('[SQLite Worker] Nodes table migration complete');
 }
 
@@ -133,11 +133,18 @@ function runMigrations(db: SQLite3Database): void {
   const currentVersion = getSchemaVersion(db);
   console.log(`[SQLite Worker] Current schema version: ${currentVersion}, target: ${SCHEMA_VERSION}`);
 
+  // Combine all schema statements
+  const allStatements = [
+    ...SCHEMA_STATEMENTS,
+    ...COZO_SCHEMA_STATEMENTS,
+    ...ENTITY_ATTRIBUTES_SCHEMA,
+  ];
+
   const tables: string[] = [];
   const indexes: string[] = [];
   const virtualTables: string[] = [];
-  
-  for (const stmt of SCHEMA_STATEMENTS) {
+
+  for (const stmt of allStatements) {
     const trimmed = stmt.trim().toUpperCase();
     if (trimmed.startsWith('CREATE TABLE')) {
       tables.push(stmt);
@@ -192,7 +199,7 @@ function runMigrations(db: SQLite3Database): void {
 
 function initializeMetadata(db: SQLite3Database): void {
   const now = Date.now();
-  
+
   // Set default metadata values if they don't exist
   const defaults: [string, string][] = [
     ['created_at', now.toString()],

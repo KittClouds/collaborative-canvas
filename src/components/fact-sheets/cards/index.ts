@@ -21,3 +21,6 @@ export { EditableRichText } from './EditableRichText';
 export { BindingIndicator, BindingBadge } from './BindingIndicator';
 export { BindableFieldWrapper, useBindableField } from './BindableFieldWrapper';
 
+// Relationship management (Phase 7D - Blueprint Hub integration)
+export { RelationshipEditorCard } from './RelationshipEditorCard';
+export { RelationshipDetailsPanel } from './RelationshipDetailsPanel';
