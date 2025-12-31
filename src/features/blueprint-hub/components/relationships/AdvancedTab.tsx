@@ -207,7 +207,7 @@ export function AdvancedTab({ onCreate, onCancel, entityTypes }: AdvancedTabProp
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[70]">
                 {DIRECTION_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
                     {opt.label}
@@ -226,7 +226,7 @@ export function AdvancedTab({ onCreate, onCancel, entityTypes }: AdvancedTabProp
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[70]">
                 {CARDINALITY_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
                     {opt.label}
@@ -328,7 +328,7 @@ export function AdvancedTab({ onCreate, onCancel, entityTypes }: AdvancedTabProp
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[70]">
                   <SelectItem value="combat">Combat</SelectItem>
                   <SelectItem value="social">Social</SelectItem>
                   <SelectItem value="possession">Possession</SelectItem>

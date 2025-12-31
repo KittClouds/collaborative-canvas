@@ -50,7 +50,7 @@ export function EntityKindSelector({
           )}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="z-[70]">
         {availableKinds.map((kind) => {
           const Icon = ENTITY_ICONS[kind];
           const color = ENTITY_COLORS[kind];

@@ -186,7 +186,7 @@ export function EntityTypesTab({ isLoading: contextLoading }: EntityTypesTabProp
               {showKindSuggestions && filteredSuggestions.length > 0 && (
                 <div
                   ref={suggestionsRef}
-                  className="absolute z-50 w-full mt-1 max-h-48 overflow-auto rounded-md border bg-popover p-1 shadow-md"
+                  className="absolute z-[70] w-full mt-1 max-h-48 overflow-auto rounded-md border bg-popover p-1 shadow-md"
                 >
                   {filteredSuggestions.map((kind) => (
                     <button

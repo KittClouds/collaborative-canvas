@@ -7,12 +7,18 @@ import {
   QuickCreateTab,
   BlueprintsTab,
   AdvancedTab,
+  RelationshipInstancesDialog,
   type RelationshipPreset,
 } from '../relationships';
+import type { RelationshipTypeDef } from '../../types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Trash2, ArrowRight, ArrowLeft, Zap, LayoutGrid, Settings2 } from 'lucide-react';
+import { Plus, Trash2, ArrowRight, ArrowLeft, Zap, LayoutGrid, Settings2, Eye, User } from 'lucide-react';
+import { useEntitySelectionSafe } from '@/contexts/EntitySelectionContext';
+import { relationshipBridgeStore } from '@/lib/relationships/RelationshipBridgeStore';
+import type { EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, ENTITY_ICONS } from '@/lib/entities/entityTypes';
 
 interface RelationshipTypesTabProps {
   isLoading: boolean;
@@ -24,11 +30,25 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
   const { versionId } = useBlueprintHubContext();
   const { relationshipTypes, isLoading: hookLoading, create, remove } = useRelationshipTypes(versionId);
   const { entityTypes } = useEntityTypes(versionId);
+  const entitySelectionContext = useEntitySelectionSafe();
+  const selectedEntity = entitySelectionContext?.selectedEntity ?? null;
   const [view, setView] = useState<ViewMode>('list');
   const [activeTab, setActiveTab] = useState('quick');
   const [presetData, setPresetData] = useState<RelationshipPreset | undefined>(undefined);
+  const [instanceCounts, setInstanceCounts] = useState<Map<string, number>>(new Map());
+  const [viewInstancesType, setViewInstancesType] = useState<RelationshipTypeDef | null>(null);
 
   const isLoading = contextLoading || hookLoading;
+
+  // Load instance counts
+  useEffect(() => {
+    const loadCounts = async () => {
+      await relationshipBridgeStore.initialize();
+      const counts = await relationshipBridgeStore.getInstanceCountsByType();
+      setInstanceCounts(counts);
+    };
+    loadCounts();
+  }, [relationshipTypes]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -46,9 +66,11 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
     setPresetData(undefined);
   };
 
-  const handleSelectPreset = (preset: RelationshipPreset) => {
+  const handleSelectPreset = (preset: RelationshipPreset, sourceEntity?: { id: string; name: string; kind: EntityKind }) => {
     setPresetData(preset);
     setActiveTab('quick');
+    // If sourceEntity is provided, we could pre-populate a relationship creation flow
+    // For now, we just set the preset data
   };
 
   const handleOpenCreate = () => {
@@ -143,6 +165,22 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
+      {/* Entity awareness header */}
+      {selectedEntity && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
+          {(() => {
+            const EntityIcon = ENTITY_ICONS[selectedEntity.kind as EntityKind] || User;
+            return <EntityIcon className="w-4 h-4" style={{ color: ENTITY_COLORS[selectedEntity.kind as EntityKind] }} />;
+          })()}
+          <span className="text-sm">
+            Working with <strong>{selectedEntity.label}</strong>
+          </span>
+          <Badge variant="outline" className="text-xs ml-auto">
+            {selectedEntity.kind}
+          </Badge>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Relationship Types</h3>
         <Button size="sm" onClick={handleOpenCreate}>
@@ -214,15 +252,26 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
                       }}
                     />
 
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-xs text-muted-foreground flex items-center gap-3">
                       <span className="font-mono text-[11px] bg-muted px-1.5 py-0.5 rounded">
                         {relType.relationship_name}
                       </span>
                       {relType.attributes.length > 0 && (
-                        <span className="ml-3">
+                        <span>
                           {relType.attributes.length} attribute{relType.attributes.length !== 1 ? 's' : ''}
                         </span>
                       )}
+                      {instanceCounts.get(relType.relationship_type_id) ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[10px] gap-1 px-2"
+                          onClick={() => setViewInstancesType(relType)}
+                        >
+                          <Eye className="w-3 h-3" />
+                          {instanceCounts.get(relType.relationship_type_id)} instance{instanceCounts.get(relType.relationship_type_id) !== 1 ? 's' : ''}
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
 
@@ -239,6 +288,14 @@ export function RelationshipTypesTab({ isLoading: contextLoading }: Relationship
             );
           })}
         </div>
+      )}
+      {/* View Instances Dialog */}
+      {viewInstancesType && (
+        <RelationshipInstancesDialog
+          open={!!viewInstancesType}
+          onOpenChange={(open) => !open && setViewInstancesType(null)}
+          relationshipType={viewInstancesType}
+        />
       )}
     </div>
   );

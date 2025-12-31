@@ -120,3 +120,12 @@ export function useEntitySelection() {
   }
   return context;
 }
+
+/**
+ * Safe version of useEntitySelection that returns null when outside provider.
+ * Use this in components that may be rendered outside the EntitySelectionProvider.
+ */
+export function useEntitySelectionSafe(): EntitySelectionContextType | null {
+  const context = useContext(EntitySelectionContext);
+  return context ?? null;
+}

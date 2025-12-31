@@ -8,8 +8,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Search, ArrowRight, ArrowLeftRight, Minus } from 'lucide-react';
+import { Search, ArrowRight, ArrowLeftRight, Minus, User, Sparkles } from 'lucide-react';
 import { ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/entities/entityTypes';
+import { useEntitySelectionSafe } from '@/contexts/EntitySelectionContext';
+import { cn } from '@/lib/utils';
 import {
   RELATIONSHIP_PRESETS,
   PRESET_CATEGORIES,
@@ -18,7 +20,7 @@ import {
 } from './relationshipPresets';
 
 interface BlueprintsTabProps {
-  onSelectPreset: (preset: RelationshipPreset) => void;
+  onSelectPreset: (preset: RelationshipPreset, sourceEntity?: { id: string; name: string; kind: EntityKind }) => void;
 }
 
 function DirectionIcon({ direction }: { direction: string }) {
@@ -35,6 +37,14 @@ function DirectionIcon({ direction }: { direction: string }) {
 export function BlueprintsTab({ onSelectPreset }: BlueprintsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<Set<PresetCategory>>(new Set());
+  const entitySelectionContext = useEntitySelectionSafe();
+  const selectedEntity = entitySelectionContext?.selectedEntity ?? null;
+
+  // Check if a preset is applicable to the selected entity
+  const isPresetApplicable = (preset: RelationshipPreset) => {
+    if (!selectedEntity) return false;
+    return preset.source_entity_kind === selectedEntity.kind;
+  };
 
   const filteredPresets = useMemo(() => {
     return RELATIONSHIP_PRESETS.filter((preset) => {
@@ -141,17 +151,37 @@ export function BlueprintsTab({ onSelectPreset }: BlueprintsTabProps) {
                       <span style={{ color: targetColor }}>{preset.target_entity_kind}</span>
                     </div>
 
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="w-full opacity-80 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectPreset(preset);
-                      }}
-                    >
-                      Use This Blueprint
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="w-full opacity-80 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectPreset(preset);
+                        }}
+                      >
+                        Use This Blueprint
+                      </Button>
+                      {selectedEntity && isPresetApplicable(preset) && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="w-full gap-1.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectPreset(preset, {
+                              id: selectedEntity.noteId || `${selectedEntity.kind}::${selectedEntity.label}`,
+                              name: selectedEntity.label,
+                              kind: selectedEntity.kind as EntityKind,
+                            });
+                          }}
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          Use With {selectedEntity.label}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs">

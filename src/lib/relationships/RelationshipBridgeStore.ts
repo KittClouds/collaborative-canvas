@@ -454,6 +454,59 @@ class RelationshipBridgeStoreImpl {
         }
     }
 
+    /**
+     * Get instance counts for all relationship types (batch query)
+     */
+    async getInstanceCountsByType(): Promise<Map<string, number>> {
+        const counts = new Map<string, number>();
+
+        try {
+            const { relationshipRegistry } = await import('@/lib/cozo/graph/adapters/RelationshipRegistryAdapter');
+            const allRelationships = relationshipRegistry.getAll();
+
+            // Count by type name
+            const typeNameCounts = new Map<string, number>();
+            for (const rel of allRelationships) {
+                const count = typeNameCounts.get(rel.type) || 0;
+                typeNameCounts.set(rel.type, count + 1);
+            }
+
+            // Map back to type IDs
+            for (const [typeId, typeDef] of this.relationshipTypeCache) {
+                const count = typeNameCounts.get(typeDef.relationship_name) || 0;
+                counts.set(typeId, count);
+            }
+        } catch (err) {
+            console.error('[RelationshipBridgeStore] Failed to get instance counts:', err);
+        }
+
+        return counts;
+    }
+
+    /**
+     * Get all instances of a specific relationship type
+     */
+    async getInstancesByType(relationshipTypeId: string): Promise<ResolvedRelationshipInstance[]> {
+        const typeDef = this.relationshipTypeCache.get(relationshipTypeId);
+        if (!typeDef) return [];
+
+        try {
+            const { relationshipRegistry } = await import('@/lib/cozo/graph/adapters/RelationshipRegistryAdapter');
+            const relationships = relationshipRegistry.getByType(typeDef.relationship_name);
+            return Promise.all(relationships.map(rel => this.unifiedToResolved(rel)));
+        } catch (err) {
+            console.error('[RelationshipBridgeStore] Failed to get instances by type:', err);
+            return [];
+        }
+    }
+
+    /**
+     * Get all cached relationship types
+     */
+    getAllRelationshipTypes(): RelationshipTypeDef[] {
+        return Array.from(this.relationshipTypeCache.values());
+    }
+
     // ==================== PRIVATE HELPERS ====================
 
     private typeDefToResolved(typeDef: RelationshipTypeDef): ResolvedRelationshipType {

@@ -173,7 +173,7 @@ export function AttributeBlueprintsTab({ isLoading: contextLoading }: AttributeB
               <SelectTrigger id="data_type">
                 <SelectValue placeholder="Select data type" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[70]">
                 {ATTRIBUTE_DATA_TYPES.map((type) => (
                   <SelectItem key={type} value={type}>
                     {type}

@@ -273,7 +273,7 @@ export function PatternEditor({ pattern, isNew, onSave, onCancel }: PatternEdito
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent>
+                                        <SelectContent className="z-[70]">
                                             {REF_KINDS.map(kind => (
                                                 <SelectItem key={kind} value={kind} className="capitalize">
                                                     {kind}
