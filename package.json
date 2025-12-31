@@ -107,6 +107,7 @@
     "react-router-dom": "^6.30.2",
     "reactjs-tiptap-editor": "^1.0.6",
     "recharts": "^2.15.4",
+    "resorank-core": "file:rust/resorank-core/pkg",
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",

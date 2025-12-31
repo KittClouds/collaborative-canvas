@@ -1,0 +1,7 @@
+/target
+/pkg
+**/*.log
+cargo_output.txt
+build_log.txt
+test_output.txt
+test_harness.html
