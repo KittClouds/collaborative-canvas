@@ -70,9 +70,11 @@ export function EntityMentionsPanel({
                         </div>
                     ) : (
                         <div className="space-y-2 pb-4">
-                            {entityStats.map((entity) => {
+                            {entityStats.map((entity, index) => {
                                 const color = ENTITY_COLORS[entity.entityKind] || '#6b7280';
                                 const entityKey = `${entity.entityKind}:${entity.entityLabel}`;
+                                // Use index in React key to handle duplicate entities in the array
+                                const reactKey = `${entityKey}-${index}`;
                                 const isExpanded = expandedEntities.has(entityKey);
                                 const mentions = getEntityMentions(
                                     entity.entityLabel,
@@ -81,7 +83,7 @@ export function EntityMentionsPanel({
 
                                 return (
                                     <Collapsible
-                                        key={entityKey}
+                                        key={reactKey}
                                         open={isExpanded}
                                         onOpenChange={() => toggleEntity(entityKey)}
                                     >

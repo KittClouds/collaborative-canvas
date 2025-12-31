@@ -5,7 +5,7 @@
  * When an entity is selected here, it also updates the narrative focus.
  */
 
-import React, { createContext, useContext, useCallback, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useCallback, ReactNode, useMemo, startTransition } from 'react';
 import { useAtom, useSetAtom, useAtomValue } from 'jotai';
 import { ParsedEntity } from '@/types/factSheetTypes';
 import {
@@ -55,16 +55,22 @@ export function EntitySelectionProvider({ children }: EntitySelectionProviderPro
   const setNarrativeFocus = useSetAtom(setNarrativeFocusAtom);
   const clearNarrativeFocus = useSetAtom(clearNarrativeFocusAtom);
 
-  // When setting selected entity, also update global focus if desired
+  // When setting selected entity, wrap in startTransition to allow async atom suspension
   const setSelectedEntity = useCallback((entity: ParsedEntity | null) => {
-    setLocalSelectedEntity(entity);
+    // Use startTransition to prevent "suspended during synchronous input" errors
+    // when async atoms (entityAttributesFamily, etc.) suspend on entity change
+    startTransition(() => {
+      setLocalSelectedEntity(entity);
+    });
     // Note: We don't auto-update global focus here to maintain backward compatibility
     // Components explicitly call setGlobalEntityFocus when they want global filtering
   }, []);
 
   const clearSelection = useCallback(() => {
-    setLocalSelectedEntity(null);
-    setEntitiesInCurrentNote([]);
+    startTransition(() => {
+      setLocalSelectedEntity(null);
+      setEntitiesInCurrentNote([]);
+    });
   }, []);
 
   // Set global entity focus (affects calendar, file creation, etc.)
