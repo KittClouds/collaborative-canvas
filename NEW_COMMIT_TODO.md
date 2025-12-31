@@ -1,9 +1,9 @@
 # New Commit to GraphAitev01 Task
 
 ## Todo List:
-- [ ] Stage all new changes for commit
-- [ ] Create commit with descriptive message  
-- [ ] Push changes to GraphAitev01 remote
+- [x] Stage all new changes for commit
+- [x] Create commit with descriptive message  
+- [x] Push changes to GraphAitev01 remote
 
 ## Current Status:
 - Modified files: 6 files changed

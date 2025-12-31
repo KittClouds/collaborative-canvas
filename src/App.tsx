@@ -19,6 +19,7 @@ import { EntityThemeProvider } from "@/contexts/EntityThemeContext";
 import { initializeSQLiteAndHydrate } from "@/lib/db";
 import { initCozoGraphSchema } from '@/lib/cozo/schema/init';
 import { bindingEngine } from '@/lib/bindings';
+import { EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
 
 const queryClient = new QueryClient();
 
@@ -93,17 +94,19 @@ const App = () => {
                     <NERProvider>
                         <EntityThemeProvider>
                             <BlueprintHubProvider>
-                                <Toaster />
-                                <Sonner />
-                                <BlueprintHubPanel />
-                                <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                                    <Routes>
-                                        <Route path="/" element={<Index />} />
-                                        <Route path="/calendar" element={<FantasyCalendarPage />} />
-                                        <Route path="/graph" element={<GraphExplorerPage />} />
-                                        <Route path="*" element={<NotFound />} />
-                                    </Routes>
-                                </BrowserRouter>
+                                <EntitySelectionProvider>
+                                    <Toaster />
+                                    <Sonner />
+                                    <BlueprintHubPanel />
+                                    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                                        <Routes>
+                                            <Route path="/" element={<Index />} />
+                                            <Route path="/calendar" element={<FantasyCalendarPage />} />
+                                            <Route path="/graph" element={<GraphExplorerPage />} />
+                                            <Route path="*" element={<NotFound />} />
+                                        </Routes>
+                                    </BrowserRouter>
+                                </EntitySelectionProvider>
                             </BlueprintHubProvider>
                         </EntityThemeProvider>
                     </NERProvider>

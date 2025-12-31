@@ -27,7 +27,6 @@ import { SchemaProvider } from '@/contexts/SchemaContext';
 import { SchemaManager } from '@/components/schema/SchemaManager';
 import { useLinkIndex } from '@/hooks/useLinkIndex';
 import { useEntitySync } from '@/hooks/useEntitySync';
-import { EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
 import { RightSidebar, RightSidebarProvider, RightSidebarTrigger } from '@/components/RightSidebar';
 import { TemporalHighlightProvider, useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
 import { formatEntityTitle, getDisplayName } from '@/lib/entities/titleParser';
@@ -332,11 +331,9 @@ const Index = () => {
     <ErrorBoundary>
       <SchemaProvider>
         <CozoProvider>
-          <EntitySelectionProvider>
-            <TemporalHighlightProvider>
-              <NotesApp />
-            </TemporalHighlightProvider>
-          </EntitySelectionProvider>
+          <TemporalHighlightProvider>
+            <NotesApp />
+          </TemporalHighlightProvider>
         </CozoProvider>
       </SchemaProvider>
     </ErrorBoundary>
