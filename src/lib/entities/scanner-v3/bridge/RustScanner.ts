@@ -100,6 +100,36 @@ export interface ScanResult {
     triples: ExtractedTriple[];
     stats: ScanStats;
     errors: Array<{ phase: string; message: string }>;
+    temporal?: TemporalMention[];
+}
+
+/** Temporal metadata (matches Rust TemporalMetadata) */
+export interface TemporalMetadata {
+    weekday_index?: number;
+    month_index?: number;
+    narrative_number?: number;
+    direction?: string;
+    era_year?: number;
+    era_name?: string;
+}
+
+/** Temporal mention (matches Rust TemporalMention) */
+export interface TemporalMention {
+    kind: string;
+    text: string;
+    start: number;
+    end: number;
+    confidence: number;
+    metadata?: TemporalMetadata;
+}
+
+/** Calendar dictionary for hydration */
+export interface CalendarDictionary {
+    // Note: Rust hydrate_calendar takes 3 args: months, weekdays, eras.
+    // We pass this object to the bridge, which spreads it.
+    months: string[];
+    weekdays: string[];
+    eras: string[];
 }
 
 // =============================================================================
@@ -139,7 +169,7 @@ const DEFAULT_CONFIG: RustScannerConfig = {
 export class RustScanner {
     private cortex: any | null = null; // Will be DocumentCortex when WASM is loaded
     private isInitialized = false;
-    private debounceTimers = new Map<string, NodeJS.Timeout>();
+    private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private config: RustScannerConfig;
     private resultHandlers: Array<(noteId: string, result: ScanResult) => void> = [];
 
@@ -162,7 +192,6 @@ export class RustScanner {
             // - '/wasm/kittcore' (public folder)
             const wasm = await import(
                 /* webpackIgnore: true */
-                // @ts-expect-error - WASM module path is configured at build time
                 '@kittcore/wasm'
             );
             await wasm.default(); // Initialize WASM
@@ -200,6 +229,28 @@ export class RustScanner {
             console.log('[RustScanner] Hydrated with', entities.length, 'entities');
         } catch (error) {
             console.error('[RustScanner] Failed to hydrate entities:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Hydrate with calendar data for custom temporal patterns
+     */
+    async hydrateCalendar(dictionary: CalendarDictionary): Promise<void> {
+        if (!this.cortex) {
+            throw new Error('RustScanner not initialized');
+        }
+
+        try {
+            // Rust signature: hydrate_calendar(months, weekdays, eras)
+            this.cortex.hydrateCalendar(
+                dictionary.months,
+                dictionary.weekdays,
+                dictionary.eras
+            );
+            console.log('[RustScanner] Hydrated calendar');
+        } catch (error) {
+            console.error('[RustScanner] Failed to hydrate calendar:', error);
             throw error;
         }
     }
@@ -251,6 +302,12 @@ export class RustScanner {
         try {
             const result = this.cortex.scan(text, entitySpans) as ScanResult;
 
+            // Guard against null result from WASM
+            if (!result || !result.stats) {
+                console.warn('[RustScanner] WASM returned null result');
+                return null;
+            }
+
             // Log performance if enabled
             if (this.config.logPerformance) {
                 const totalMs = result.stats.timings.total_us / 1000;
@@ -268,6 +325,7 @@ export class RustScanner {
                         relations: result.stats.relations_found,
                         triples: result.stats.triples_found,
                         implicit: result.stats.implicit_found,
+                        temporal: result.stats.temporal_found,
                     });
                 }
             }

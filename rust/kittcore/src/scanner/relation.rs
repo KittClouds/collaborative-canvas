@@ -561,7 +561,7 @@ impl RelationCortex {
     
     /// Extract with statistics
     pub fn extract_with_stats(&self, text: &str, entity_spans: &[EntitySpan]) -> (Vec<ExtractedRelation>, RelationStats) {
-        let start = std::time::Instant::now();
+        let start = instant::Instant::now();
         
         let entity_pairs = if entity_spans.len() > 1 {
             (entity_spans.len() * (entity_spans.len() - 1)) / 2

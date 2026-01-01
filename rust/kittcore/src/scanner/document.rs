@@ -17,6 +17,7 @@ use crate::scanner::{
     ImplicitCortex, ImplicitMention, EntityDefinition,
     TripleCortex, ExtractedTriple,
     RelationCortex, ExtractedRelation, EntitySpan,
+    TemporalCortex, TemporalMention,
 };
 
 // =============================================================================
@@ -38,7 +39,8 @@ pub struct ScanTimings {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ScanStats {
     pub timings: ScanTimings,
-    pub content_hash: u64,
+    /// Content hash as hex string (u64 would overflow JS Number.MAX_SAFE_INTEGER)
+    pub content_hash: String,
     pub was_skipped: bool,
     pub entities_found: usize,
     pub relations_found: usize,
@@ -61,7 +63,8 @@ pub struct ScanResult {
     pub relations: Vec<ExtractedRelation>,
     pub implicit: Vec<ImplicitMention>,
     pub triples: Vec<ExtractedTriple>,
-    // Note: entities and temporal will be added when we wire SyntaxCortex/TemporalCortex
+    pub temporal: Vec<TemporalMention>,
+    // Note: entities will be added when we wire SyntaxCortex
     
     // Metadata
     pub stats: ScanStats,
@@ -79,6 +82,7 @@ pub struct DocumentCortex {
     relation_cortex: RelationCortex,
     implicit_cortex: ImplicitCortex,
     triple_cortex: TripleCortex,
+    temporal_cortex: TemporalCortex,
     
     // State
     change_detector: ChangeDetector,
@@ -102,6 +106,7 @@ impl DocumentCortex {
             relation_cortex,
             implicit_cortex: ImplicitCortex::new(),
             triple_cortex: TripleCortex::new(),
+            temporal_cortex: TemporalCortex::new(),
             change_detector: ChangeDetector::new(),
             last_result: None,
         }
@@ -143,6 +148,13 @@ impl DocumentCortex {
             .map_err(|e| JsValue::from_str(&e))
     }
 
+    /// Hydrate temporal cortex (JS binding)
+    #[wasm_bindgen(js_name = hydrateCalendar)]
+    pub fn js_hydrate_calendar(&mut self, months: JsValue, weekdays: JsValue, eras: JsValue) -> Result<(), JsValue> {
+        self.temporal_cortex.hydrate_calendar(months, weekdays, eras)
+            .map_err(|e| JsValue::from_str(&format!("Failed to hydrate calendar: {:?}", e)))
+    }
+
     /// Unified scan - one call extracts everything (JS binding)
     /// 
     /// entity_spans should be an array of { label: string, start: number, end: number, kind?: string }
@@ -152,7 +164,13 @@ impl DocumentCortex {
             .unwrap_or_default();
         
         let result = self.scan(text, &spans);
-        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+        match serde_wasm_bindgen::to_value(&result) {
+            Ok(v) => v,
+            Err(e) => {
+                web_sys::console::error_1(&format!("[DocumentCortex] Serialization failed: {:?}", e).into());
+                JsValue::NULL
+            }
+        }
     }
 }
 
@@ -183,7 +201,7 @@ impl DocumentCortex {
     /// 
     /// The caller does NOT need to provide entity spans - the scanner is self-sufficient.
     pub fn scan(&mut self, text: &str, external_spans: &[EntitySpan]) -> ScanResult {
-        let overall_start = std::time::Instant::now();
+        let overall_start = instant::Instant::now();
         
         // Check for changes
         let change_result = self.change_detector.check(text);
@@ -193,23 +211,23 @@ impl DocumentCortex {
             if let Some(ref cached) = self.last_result {
                 let mut result = cached.clone();
                 result.stats.was_skipped = true;
-                result.stats.content_hash = change_result.content_hash;
+                result.stats.content_hash = format!("{:x}", change_result.content_hash);
                 result.stats.timings.total_us = overall_start.elapsed().as_micros() as u64;
                 return result;
             }
         }
         
         let mut result = ScanResult::default();
-        result.stats.content_hash = change_result.content_hash;
+        result.stats.content_hash = format!("{:x}", change_result.content_hash);
         
         // Phase 1: Triple extraction (independent, no entity context needed)
-        let triple_start = std::time::Instant::now();
+        let triple_start = instant::Instant::now();
         result.triples = self.triple_cortex.extract(text);
         result.stats.timings.triple_us = triple_start.elapsed().as_micros() as u64;
         result.stats.triples_found = result.triples.len();
         
         // Phase 2: Implicit entity mentions (FIRST - feeds into relations)
-        let implicit_start = std::time::Instant::now();
+        let implicit_start = instant::Instant::now();
         result.implicit = self.implicit_cortex.find_mentions(text);
         result.stats.timings.implicit_us = implicit_start.elapsed().as_micros() as u64;
         result.stats.implicit_found = result.implicit.len();
@@ -240,13 +258,20 @@ impl DocumentCortex {
         }
         
         // Phase 4: Relation extraction (uses combined spans)
-        let relation_start = std::time::Instant::now();
+        let relation_start = instant::Instant::now();
         result.relations = self.relation_cortex.extract(text, &all_spans);
         result.stats.timings.relation_us = relation_start.elapsed().as_micros() as u64;
         result.stats.relations_found = result.relations.len();
         
         // TODO: Phase 5: Syntax extraction (SyntaxCortex)
-        // TODO: Phase 6: Temporal extraction (TemporalCortex)
+        // Phase 5: Temporal extraction
+        let temporal_start = instant::Instant::now();
+        let temporal_result = self.temporal_cortex.scan_native(text);
+        result.temporal = temporal_result.mentions;
+        result.stats.timings.temporal_us = temporal_start.elapsed().as_micros() as u64;
+        result.stats.temporal_found = result.temporal.len();
+
+        // TODO: Phase 6: Syntax extraction (SyntaxCortex)
         
         // Finalize
         result.stats.timings.total_us = overall_start.elapsed().as_micros() as u64;

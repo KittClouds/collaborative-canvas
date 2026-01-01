@@ -329,8 +329,11 @@ const RichEditor = ({
 
   // Initialize Scanner 3.0 orchestrator
   useEffect(() => {
-    scannerOrchestrator.initialize();
-    console.log('[RichEditor] Scanner 3.0 initialized');
+    // Use IIFE to properly await async initialization
+    (async () => {
+      await scannerOrchestrator.initialize();
+      console.log('[RichEditor] Scanner 3.0 initialized');
+    })();
 
     return () => {
       scannerOrchestrator.shutdown();

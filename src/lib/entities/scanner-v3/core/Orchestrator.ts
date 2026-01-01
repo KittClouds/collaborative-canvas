@@ -15,7 +15,8 @@ import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import type { PatternMatchEvent, ScannerConfig } from '../types';
 
 import { triplePersistence } from '../persistence/TriplePersistence';
-import { rustScanner, type ScanResult as RustScanResult } from '../bridge/RustScanner';
+import { rustScanner, type ScanResult as RustScanResult, type TemporalMention as RustTemporalMention } from '../bridge/RustScanner';
+import { TimeRegistry } from '@/lib/time';
 
 // Limits to prevent memory issues
 const MAX_ENTITIES_PER_SCAN = 100;
@@ -48,7 +49,7 @@ export class ScannerOrchestrator {
             useAhoCorasickExtractor: true, // O(n) Aho-Corasick enabled by default
             useAllProfanityMatcher: true, // Scanner 3.5: AllProfanity for implicit matching
             useRelationshipWorker: true, // Scanner 3.5: Web Worker for relationship extraction
-            useRustScanner: false, // Scanner 4.0: Rust/WASM (disabled by default)
+            useRustScanner: true, // Scanner 4.0: Rust/WASM (ENABLED for A/B Testing)
             ...config,
         };
         this.changeDetector = new ChangeDetector();
@@ -87,9 +88,7 @@ export class ScannerOrchestrator {
     async initialize(): Promise<void> {
         if (this.isInitialized) return;
 
-        scannerEventBus.on('pattern-matched', this.handlePatternMatch.bind(this));
-
-        // Scanner 4.0: Initialize Rust Scanner
+        // Scanner 4.0: Initialize Rust Scanner FIRST (before subscribing to events)
         if (this.config.useRustScanner) {
             try {
                 await rustScanner.initialize();
@@ -112,7 +111,7 @@ export class ScannerOrchestrator {
                 implicitEntityMatcher.setUseAllProfanity(false);
             }
         } else {
-            // Explicitly disable if not configured
+            // Explicitly disable if not configured or if using Rust scanner
             implicitEntityMatcher.setUseAllProfanity(false);
         }
 
@@ -127,13 +126,31 @@ export class ScannerOrchestrator {
             }
         }
 
-        // Initialize temporal mention persistence
+        // Initialize Temporal Persistence
         if (this.config.enableTemporalExtraction) {
             initializeTemporalPersistence();
         }
 
+        // Subscribe to events AFTER all initialization is complete
+        // This prevents race conditions where events fire before Rust scanner is ready
+        scannerEventBus.on('pattern-matched', this.handlePatternMatch.bind(this));
+
         this.isInitialized = true;
         console.log('[Scanner 3.5] Initialized');
+    }
+
+    /**
+     * Hydrate with calendar data (Scanner 4.0)
+     */
+    async hydrateTemporal(calendarId: string): Promise<void> {
+        if (!this.config.useRustScanner) return;
+
+        try {
+            const dictionary = TimeRegistry.getCalendarDictionary(calendarId);
+            await rustScanner.hydrateCalendar(dictionary);
+        } catch (error) {
+            console.error('[Scanner 4.0] Failed to hydrate temporal dictionary:', error);
+        }
     }
 
     /**
@@ -205,9 +222,13 @@ export class ScannerOrchestrator {
 
         // Scanner 4.0: Delegates processing to Rust/WASM scanner
         if (this.config.useRustScanner) {
-            await this.processWithRust(noteId, changes);
-            this.changeDetector.clearChanges(noteId);
-            return;
+            const success = await this.processWithRust(noteId, changes);
+            if (success) {
+                this.changeDetector.clearChanges(noteId);
+                return;
+            }
+            // Rust scanner not ready - fall through to TS processing
+            console.log('[Scanner 4.0] Falling back to TypeScript scanner');
         }
 
         console.log(`[Scanner 3.5] Processing ${changes.length} changes for ${noteId}`);
@@ -597,8 +618,15 @@ export class ScannerOrchestrator {
 
     /**
      * Scanner 4.0: Delegates processing to Rust/WASM scanner
+     * @returns true if processing succeeded, false if Rust scanner not ready
      */
-    private async processWithRust(noteId: string, changes: DocumentChange[]): Promise<void> {
+    private async processWithRust(noteId: string, changes: DocumentChange[]): Promise<boolean> {
+        // Guard: Ensure Rust scanner is fully initialized
+        if (!rustScanner.isReady()) {
+            console.warn('[Scanner 4.0] Rust scanner not ready');
+            return false;
+        }
+
         const fullText = changes.map(c => c.text).join('\n\n');
 
         // 1. Hydrate entities
@@ -617,7 +645,7 @@ export class ScannerOrchestrator {
         // We pass empty spans because "strict Rust logic" requires self-sufficiency
         const result = rustScanner.scanImmediate(noteId, fullText, []);
 
-        if (!result) return;
+        if (!result) return true;
 
         // 3. Persist Triples
         if (this.config.enableTriples && result.triples.length > 0) {
@@ -690,7 +718,37 @@ export class ScannerOrchestrator {
             console.log(`[Scanner 4.0] Relationships: ${persistResult.added} added, ${persistResult.failed} failed`);
         }
 
+        // 5. Persist Temporal Mentions
+        if (this.config.enableTemporalExtraction && result.temporal && result.temporal.length > 0) {
+            // Map Rust types to Typescript types
+            const mappedMentions: TemporalMention[] = result.temporal.map((m: RustTemporalMention) => ({
+                kind: m.kind as any, // Cast to TemporalKind union
+                text: m.text,
+                start: m.start,
+                end: m.end,
+                confidence: m.confidence,
+                metadata: m.metadata ? {
+                    weekdayIndex: m.metadata.weekday_index,
+                    monthIndex: m.metadata.month_index,
+                    narrativeNumber: m.metadata.narrative_number,
+                    direction: m.metadata.direction as any,
+                    eraYear: m.metadata.era_year,
+                    eraName: m.metadata.era_name,
+                } : undefined
+            }));
+
+            // Emit event for TemporalMentionPersistence
+            scannerEventBus.emit('temporal:detected', {
+                noteId,
+                mentions: mappedMentions,
+                timestamp: Date.now(),
+                fullText
+            });
+            console.log(`[Scanner 4.0] Temporal: ${mappedMentions.length} mentions emitted`);
+        }
+
         console.log(`[Scanner 4.0] Completed processing for ${noteId}`);
+        return true;
     }
 
     /**

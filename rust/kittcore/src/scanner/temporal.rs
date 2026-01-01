@@ -635,6 +635,63 @@ impl Default for TemporalCortex {
     }
 }
 
+// Native Rust API (not exposed to WASM)
+impl TemporalCortex {
+    /// Scan text for temporal mentions (native Rust API)
+    pub fn scan_native(&self, text: &str) -> TemporalScanResult {
+        let start = instant::Instant::now();
+        
+        let pma = match self.automaton.as_ref() {
+            Some(p) => p,
+            None => return TemporalScanResult {
+                mentions: vec![],
+                stats: TemporalScanStats { patterns_matched: 0, scan_time_ms: 0.0 },
+            },
+        };
+        
+        let lower_text = text.to_lowercase();
+        let mut mentions: Vec<TemporalMention> = Vec::new();
+        
+        for m in pma.leftmost_find_iter(&lower_text) {
+            let meta = &self.pattern_meta[m.value()];
+            let matched_text = &text[m.start()..m.end()];
+            
+            // Extract metadata based on kind
+            let metadata = self.extract_metadata(meta, text, m.end());
+            
+            mentions.push(TemporalMention {
+                kind: meta.kind.as_str().to_string(),
+                text: matched_text.to_string(),
+                start: m.start(),
+                end: m.end(),
+                confidence: meta.kind.confidence(),
+                metadata: if metadata.weekday_index.is_some() 
+                    || metadata.month_index.is_some()
+                    || metadata.narrative_number.is_some()
+                    || metadata.direction.is_some()
+                    || metadata.era_year.is_some()
+                    || metadata.era_name.is_some() 
+                {
+                    Some(metadata)
+                } else {
+                    None
+                },
+            });
+        }
+        
+        // Deduplicate overlapping (keep longer)
+        mentions = self.dedupe_overlapping(mentions);
+        
+        TemporalScanResult {
+            stats: TemporalScanStats {
+                patterns_matched: mentions.len(),
+                scan_time_ms: start.elapsed().as_secs_f64() * 1000.0,
+            },
+            mentions,
+        }
+    }
+}
+
 // ==================== TESTS ====================
 
 #[cfg(test)]
