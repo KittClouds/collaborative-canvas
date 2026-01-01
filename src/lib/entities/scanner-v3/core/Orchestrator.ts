@@ -15,6 +15,7 @@ import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import type { PatternMatchEvent, ScannerConfig } from '../types';
 
 import { triplePersistence } from '../persistence/TriplePersistence';
+import { rustScanner, type ScanResult as RustScanResult } from '../bridge/RustScanner';
 
 // Limits to prevent memory issues
 const MAX_ENTITIES_PER_SCAN = 100;
@@ -47,6 +48,7 @@ export class ScannerOrchestrator {
             useAhoCorasickExtractor: true, // O(n) Aho-Corasick enabled by default
             useAllProfanityMatcher: true, // Scanner 3.5: AllProfanity for implicit matching
             useRelationshipWorker: true, // Scanner 3.5: Web Worker for relationship extraction
+            useRustScanner: false, // Scanner 4.0: Rust/WASM (disabled by default)
             ...config,
         };
         this.changeDetector = new ChangeDetector();
@@ -87,8 +89,19 @@ export class ScannerOrchestrator {
 
         scannerEventBus.on('pattern-matched', this.handlePatternMatch.bind(this));
 
+        // Scanner 4.0: Initialize Rust Scanner
+        if (this.config.useRustScanner) {
+            try {
+                await rustScanner.initialize();
+                console.log('[Scanner 4.0] Rust Scanner initialized');
+            } catch (error) {
+                console.error('[Scanner 4.0] Failed to initialize Rust Scanner, falling back to TS', error);
+                this.config.useRustScanner = false;
+            }
+        }
+
         // Scanner 3.5: Initialize AllProfanity matcher with registered entities
-        if (this.config.useAllProfanityMatcher) {
+        if (this.config.useAllProfanityMatcher && !this.config.useRustScanner) {
             try {
                 const entities = entityRegistry.getAllEntities();
                 allProfanityEntityMatcher.initialize(entities, this.config.allProfanityConfig);
@@ -189,6 +202,13 @@ export class ScannerOrchestrator {
         const overallStart = performance.now();
         const changes = this.changeDetector.getPendingChanges(noteId);
         if (changes.length === 0) return;
+
+        // Scanner 4.0: Delegates processing to Rust/WASM scanner
+        if (this.config.useRustScanner) {
+            await this.processWithRust(noteId, changes);
+            this.changeDetector.clearChanges(noteId);
+            return;
+        }
 
         console.log(`[Scanner 3.5] Processing ${changes.length} changes for ${noteId}`);
 
@@ -573,6 +593,104 @@ export class ScannerOrchestrator {
 
     public setTriplePersistence(fn: (triples: ExtractedTriple[], noteId: string) => Promise<void>) {
         this.persistTriplesHook = fn;
+    }
+
+    /**
+     * Scanner 4.0: Delegates processing to Rust/WASM scanner
+     */
+    private async processWithRust(noteId: string, changes: DocumentChange[]): Promise<void> {
+        const fullText = changes.map(c => c.text).join('\n\n');
+
+        // 1. Hydrate entities
+        const entities = entityRegistry.getAllEntities();
+        // Convert to Rust EntityDefinition types (simple mapping since shapes align)
+        const rustEntities = entities.map(e => ({
+            id: e.id,
+            label: e.label,
+            kind: e.kind,
+            aliases: e.aliases || []
+        }));
+
+        await rustScanner.hydrateEntities(rustEntities);
+
+        // 2. Scan (immediate execution since we are already debounced)
+        // We pass empty spans because "strict Rust logic" requires self-sufficiency
+        const result = rustScanner.scanImmediate(noteId, fullText, []);
+
+        if (!result) return;
+
+        // 3. Persist Triples
+        if (this.config.enableTriples && result.triples.length > 0) {
+            // Map Rust triples to TS ExtractedTriple format
+            const mappedTriples = result.triples.map(t => {
+                const subjectEntity = entities.find(e => e.label === t.source);
+                const objectEntity = entities.find(e => e.label === t.target);
+
+                return {
+                    subject: {
+                        kind: subjectEntity?.kind || 'CONCEPT',
+                        label: t.source,
+                        id: subjectEntity?.id
+                    },
+                    predicate: t.predicate,
+                    object: {
+                        kind: objectEntity?.kind || 'CONCEPT',
+                        label: t.target,
+                        id: objectEntity?.id
+                    },
+                    context: t.raw_text,
+                    confidence: 0.95,
+                    position: t.start
+                };
+            });
+
+            await triplePersistence.persistTriples(mappedTriples, noteId);
+            console.log(`[Scanner 4.0] Persisted ${result.triples.length} triples`);
+        }
+
+        // 4. Persist Relations
+        if (this.config.enableRelationshipInference && result.relations.length > 0) {
+            const relExtractor = getRelationshipExtractor();
+
+            // Map Rust relations to persistence format
+            const forPersistence = result.relations.map(r => {
+                const headEntity = entities.find(e => e.label === r.head_entity);
+                const tailEntity = entities.find(e => e.label === r.tail_entity);
+                if (!headEntity || !tailEntity) return null;
+
+                return {
+                    source: {
+                        entity: headEntity,
+                        text: r.head_entity,
+                        position: r.head_start
+                    },
+                    target: {
+                        entity: tailEntity,
+                        text: r.tail_entity,
+                        position: r.tail_start
+                    },
+                    predicate: r.relation_type,
+                    pattern: r.pattern_matched,
+                    confidence: r.confidence,
+                    context: {
+                        sentence: fullText.substring(Math.max(0, r.pattern_start - 20), Math.min(fullText.length, r.pattern_end + 20)),
+                        sentenceIndex: 0,
+                        verbLemma: r.relation_type,
+                        preposition: ''
+                    },
+                    metadata: {
+                        extractedAt: new Date(),
+                        noteId: noteId
+                    }
+                };
+            }).filter(r => r !== null);
+
+            const deduplicated = relExtractor.deduplicateRelationships(forPersistence as any[]);
+            const persistResult = await relExtractor.persistRelationships(deduplicated);
+            console.log(`[Scanner 4.0] Relationships: ${persistResult.added} added, ${persistResult.failed} failed`);
+        }
+
+        console.log(`[Scanner 4.0] Completed processing for ${noteId}`);
     }
 
     /**

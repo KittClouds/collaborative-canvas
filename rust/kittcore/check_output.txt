@@ -1,0 +1,30 @@
+warning: unused import: `std::collections::HashMap`
+  --> src\scanner.rs:19:5
+   |
+19 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+System.Management.Automation.RemoteException
+warning: unused variable: `static_method_of`
+   --> src\scorer.rs:698:20
+    |
+698 |     #[wasm_bindgen(static_method_of = ResoRankScorer, js_name = fromJSON)]
+    |                    ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_static_method_of`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+System.Management.Automation.RemoteException
+warning: field `original_pattern` is never read
+  --> src\reflex.rs:25:5
+   |
+21 | struct PatternMetadata {
+   |        --------------- field in this struct
+...
+25 |     original_pattern: String, // Preserve original case for output
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `PatternMetadata` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+System.Management.Automation.RemoteException
+warning: `kittcore` (lib) generated 3 warnings (run `cargo fix --lib -p kittcore` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s

@@ -1,0 +1,72 @@
+﻿cargo :     Checking 
+kittcore v0.1.0 (C:\Users\sh
+uga\1kittroot\1code\collabor
+ative-canvas\rust\kittcore)
+At line:1 char:1
++ cargo check 2>&1 | 
+Out-File -FilePath 
+.\cargo_errors.txt 
+-Encoding ut ...
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (    C  
+  hecking ki...\rust\kitt   
+ core):String) [], Remot    
+eException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+error[E0432]: unresolved 
+import `daachorse`
+  --> 
+src\scanner\reflex.rs:12:5
+   |
+12 | use daachorse::{DoubleA
+rrayAhoCorasick, DoubleArray
+AhoCorasickBuilder, 
+MatchKind};
+   |     ^^^^^^^^^ use of 
+undeclared crate or module 
+`daachorse`
+
+error[E0432]: unresolved 
+import `daachorse`
+  --> 
+src\scanner\temporal.rs:16:5
+   |
+16 | use daachorse::{Charwis
+eDoubleArrayAhoCorasick, Cha
+rwiseDoubleArrayAhoCorasickB
+uilder, MatchKind};
+   |     ^^^^^^^^^ use of 
+undeclared crate or module 
+`daachorse`
+
+warning: unused variable: 
+`static_method_of`
+   --> src\resorank\scorer.r
+s:698:20
+    |
+698 |     #[wasm_bindgen(sta
+tic_method_of = 
+ResoRankScorer, js_name = 
+fromJSON)]
+    |                    
+^^^^^^^^^^^^^^^^ help: if 
+this is intentional, prefix 
+it with an underscore: 
+`_static_method_of`
+    |
+    = note: 
+`#[warn(unused_variables)]` 
+on by default
+
+For more information about 
+this error, try `rustc 
+--explain E0432`.
+warning: `kittcore` (lib) 
+generated 1 warning
+error: could not compile 
+`kittcore` (lib) due to 2 
+previous errors; 1 warning 
+emitted

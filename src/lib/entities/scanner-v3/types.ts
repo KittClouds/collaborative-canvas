@@ -50,5 +50,6 @@ export interface ScannerConfig {
     useAllProfanityMatcher: boolean; // Scanner 3.5: AllProfanity for implicit matching
     allProfanityConfig?: AllProfanityMatcherConfig; // AllProfanity options
     useRelationshipWorker: boolean; // Scanner 3.5: Web Worker for relationship extraction
+    useRustScanner: boolean; // Scanner 4.0: Rust/WASM implementation
 }
 

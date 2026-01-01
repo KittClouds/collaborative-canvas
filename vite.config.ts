@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
-    exclude: ["@sqliteai/sqlite-wasm"],
+    exclude: ["@sqliteai/sqlite-wasm", "@kittcore/wasm"],
   },
   worker: {
     format: "es",

@@ -1,0 +1,61 @@
+warning: unused import: `ChangeResult`
+  --> src\scanner\document.rs:16:21
+   |
+16 |     ChangeDetector, ChangeResult,
+   |                     ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: ambiguous glob re-exports
+  --> src\scanner\mod.rs:11:9
+   |
+11 | pub use core::*;
+   |         ^^^^^^^ the name `ScanResult` in the type namespace is first re-exported here
+...
+19 | pub use document::*;
+   |         ----------- but the name `ScanResult` in the type namespace is also re-exported here
+   |
+   = note: `#[warn(ambiguous_glob_reexports)]` on by default
+
+warning: ambiguous glob re-exports
+  --> src\scanner\mod.rs:11:9
+   |
+11 | pub use core::*;
+   |         ^^^^^^^ the name `ScanStats` in the type namespace is first re-exported here
+...
+19 | pub use document::*;
+   |         ----------- but the name `ScanStats` in the type namespace is also re-exported here
+
+warning: unused variable: `static_method_of`
+   --> src\resorank\scorer.rs:698:20
+    |
+698 |     #[wasm_bindgen(static_method_of = ResoRankScorer, js_name = fromJSON)]
+    |                    ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_static_method_of`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: field `original_pattern` is never read
+  --> src\scanner\reflex.rs:25:5
+   |
+21 | struct PatternMetadata {
+   |        --------------- field in this struct
+...
+25 |     original_pattern: String, // Preserve original case for output
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `PatternMetadata` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: field `pattern_text` is never read
+  --> src\scanner\implicit.rs:41:5
+   |
+37 | struct PatternMeta {
+   |        ----------- field in this struct
+...
+41 |     pattern_text: String,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `PatternMeta` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: `kittcore` (lib) generated 6 warnings (run `cargo fix --lib -p kittcore` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.11s

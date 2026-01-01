@@ -1,0 +1,42 @@
+[package]
+name = "kittcore"
+version = "0.1.0"
+edition = "2021"
+authors = ["KittClouds Team"]
+description = "KittCore: Document Scanner + ResoRank Search Engine - Rust/WASM implementation"
+license = "MIT"
+repository = "https://github.com/KittClouds/collaborative-canvas"
+keywords = ["scanner", "search", "bm25", "wasm", "aho-corasick", "nlp"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["console_error_panic_hook"]
+wee_alloc = ["dep:wee_alloc"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = { version = "0.1", optional = true }
+wee_alloc = { version = "0.4", optional = true }
+serde-wasm-bindgen = "0.6.5"
+aho-corasick = "1.1"
+daachorse = "1.0.0"
+regex = "1.12.2"
+chrono = "0.4.42"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+debug = true
