@@ -9,7 +9,7 @@
  */
 
 import { cozoDb } from '../db';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 // ==================== TYPES ====================
 

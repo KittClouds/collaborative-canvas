@@ -15,7 +15,7 @@ import {
     DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { folderSchemaRegistry } from '@/lib/folders/schema-registry';
-import { ENTITY_COLORS, type EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, type EntityKind } from '@/lib/types/entityTypes';
 import type { Folder } from '@/types/noteTypes';
 import {
     User,

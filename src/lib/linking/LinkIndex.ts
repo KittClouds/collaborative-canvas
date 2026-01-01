@@ -1,6 +1,6 @@
 import type { Note } from '@/types/noteTypes';
-import type { EntityKind } from '@/lib/entities/entityTypes';
-import { scanDocument } from '@/lib/entities/documentScanner';
+import type { EntityKind } from '@/lib/types/entityTypes';
+import { scannerFacade } from '@/lib/scanner';
 
 export interface WikiLink {
   sourceNoteId: string;
@@ -193,10 +193,11 @@ export class LinkIndex {
       const links = this.parseNoteLinks(note.id, note.title, note.content);
       this.outgoingLinks.set(note.id, links);
 
-      // Phase 1: Scan for implicit/explicit entities
+      // Phase 1: Scan for implicit/explicit entities using Rust scanner
       try {
         const content = JSON.parse(note.content);
-        scanDocument(note.id, content);
+        const text = this.extractTextFromDoc(content);
+        scannerFacade.scan(note.id, text);
       } catch (error) {
         // Ignore parse errors (handled partially by parseNoteLinks already)
       }

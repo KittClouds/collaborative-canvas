@@ -1,7 +1,7 @@
 import { runNer } from '@/lib/extraction';
 // Removed: UnifiedGraph imports
 import type { UnifiedNode, NodeId } from '@/lib/graph/types';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import { matchVerbPatterns, type EntitySpan } from '@/lib/relationships';
 import { relationshipRegistry } from '@/lib/relationships';
 import { RelationshipSource } from '@/lib/relationships/types';

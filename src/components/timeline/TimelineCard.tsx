@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NarrativeEntity } from '@/types/narrativeEntities';
-import { EntityKind, ENTITY_COLORS, ENTITY_KINDS } from '@/lib/entities/entityTypes';
+import { EntityKind, ENTITY_COLORS, ENTITY_KINDS } from '@/lib/types/entityTypes';
 import cx from 'classnames';
 
 export interface TimelineCardProps {

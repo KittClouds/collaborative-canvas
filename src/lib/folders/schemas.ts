@@ -5,7 +5,7 @@
  * Folder structure = knowledge graph with zero extra user effort.
  */
 
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 /**
  * Relationship created by folder nesting.

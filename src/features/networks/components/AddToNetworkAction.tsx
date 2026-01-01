@@ -35,7 +35,7 @@ import {
     Flag,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type {
     NetworkInstance,
     NetworkSchema,

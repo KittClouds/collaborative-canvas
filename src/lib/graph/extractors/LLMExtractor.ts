@@ -1,6 +1,6 @@
 // Removed: UnifiedGraph imports
 import type { UnifiedNode, UnifiedEdge, NodeId } from '@/lib/graph/types';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import { relationshipRegistry } from '@/lib/relationships';
 import { RelationshipSource } from '@/lib/relationships/types';
 

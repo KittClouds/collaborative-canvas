@@ -13,8 +13,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ENTITY_ICONS, ENTITY_COLORS } from '@/lib/entities/entityTypes';
-import { getDisplayName } from '@/lib/entities/titleParser';
+import { ENTITY_ICONS, ENTITY_COLORS } from '@/lib/types/entityTypes';
+import { getDisplayName } from '@/lib/utils/titleParser';
 
 interface ArboristTreeNodeProps extends NodeRendererProps<ArboristNode> {
     onContextMenu?: (node: ArboristNode, e: React.MouseEvent) => void;

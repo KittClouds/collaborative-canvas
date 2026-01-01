@@ -62,10 +62,14 @@ import { TagMark } from '@/lib/extensions/TagMark';
 import { MentionMarkExt } from '@/lib/extensions/MentionMarkExt';
 import { WikiLinkMark } from '@/lib/extensions/WikiLinkMark';
 import { UnifiedSyntaxHighlighter } from '@/lib/extensions/UnifiedSyntaxHighlighter';
+import { RustSyntaxHighlighter, highlighterBridge } from '@/lib/highlighter';
 import { useNER } from '@/contexts/NERContext';
 
-// Scanner 3.0 - handles entity/triple extraction from pattern matches
-import { scannerOrchestrator } from '@/lib/entities/scanner-v3';
+// A/B Test Flag: Set to true to use Rust highlighter for implicit entities
+const USE_RUST_HIGHLIGHTER = true;
+
+// Scanner 4.0 - Rust-powered scanning via facade
+import { scannerFacade } from '@/lib/scanner';
 
 // Import CSS
 import 'reactjs-tiptap-editor/style.css';
@@ -104,6 +108,19 @@ function convertBase64ToBlob(base64: string) {
     u8arr[n] = bstr.charCodeAt(n);
   }
   return new Blob([u8arr], { type: mime });
+}
+
+/**
+ * Extract plain text from TipTap JSON document for scanner
+ */
+function extractPlainText(node: any): string {
+  if (!node) return '';
+  if (typeof node === 'string') return node;
+  if (node.type === 'text' && node.text) return node.text;
+  if (node.content && Array.isArray(node.content)) {
+    return node.content.map(extractPlainText).join('\n');
+  }
+  return '';
 }
 
 // Create extensions factory function to allow dynamic configuration
@@ -277,6 +294,17 @@ function createExtensions(
       enableScannerEvents: true, // Scanner 3.0: emit pattern-matched events
       currentNoteId: getNoteId,  // Pass getter for dynamic noteId resolution
     }),
+
+    // A/B Test: Rust-powered implicit entity highlighting
+    ...(USE_RUST_HIGHLIGHTER ? [
+      RustSyntaxHighlighter.configure({
+        currentNoteId: getNoteId,
+        logPerformance: true,
+        onImplicitClick: (entityId, entityLabel) => {
+          console.log('[RustHighlighter] Clicked:', entityId, entityLabel);
+        },
+      }),
+    ] : []),
   ];
 }
 
@@ -327,17 +355,25 @@ const RichEditor = ({
     nerEntitiesRef.current = entities;
   }, [entities]);
 
-  // Initialize Scanner 3.0 orchestrator
+  // Initialize Scanner 4.0 (Rust) and Rust highlighter
   useEffect(() => {
     // Use IIFE to properly await async initialization
     (async () => {
-      await scannerOrchestrator.initialize();
-      console.log('[RichEditor] Scanner 3.0 initialized');
+      await scannerFacade.initialize();
+      console.log('[RichEditor] Scanner 4.0 (Rust) initialized');
+
+      // A/B Test: Initialize Rust highlighter if enabled
+      if (USE_RUST_HIGHLIGHTER) {
+        const rustReady = await highlighterBridge.initialize();
+        if (rustReady) {
+          console.log('[RichEditor] Rust highlighter initialized');
+        }
+      }
     })();
 
     return () => {
-      scannerOrchestrator.shutdown();
-      console.log('[RichEditor] Scanner 3.0 shutdown');
+      scannerFacade.shutdown();
+      console.log('[RichEditor] Scanner 4.0 shutdown');
     };
   }, []);
 
@@ -353,10 +389,23 @@ const RichEditor = ({
     }
   }, [selectedNote?.id, selectedNote?.content, initContent]);
 
-  // Trigger autosave when debounced content changes
+  // Trigger autosave and Rust scanner when debounced content changes
   useEffect(() => {
-    if (selectedNote?.id) {
+    if (selectedNote?.id && debouncedContent) {
+      // Autosave
       triggerAutosave();
+
+      // Trigger Rust scanner for entity/relation extraction
+      try {
+        const doc = JSON.parse(debouncedContent);
+        const text = extractPlainText(doc);
+        if (text.length > 0) {
+          scannerFacade.scan(selectedNote.id, text);
+        }
+      } catch (e) {
+        // Non-JSON content, use as-is
+        scannerFacade.scan(selectedNote.id, debouncedContent);
+      }
     }
   }, [debouncedContent, selectedNote?.id, triggerAutosave]);
 

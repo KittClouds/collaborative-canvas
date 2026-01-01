@@ -1,4 +1,4 @@
-import type { EntityKind, NarrativeEntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind, NarrativeEntityKind } from '@/lib/types/entityTypes';
 import type { TemporalPoint, DurationUnit, TimeOfDay } from '@/types/temporal';
 
 // ===== CORE IDS =====

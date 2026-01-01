@@ -1,6 +1,6 @@
 // Static import removed, using dynamic import in initialize() for performance
 import type { NEREntity, NERSpan, ExtractionSpan } from './types';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 type Pipeline = any;
 

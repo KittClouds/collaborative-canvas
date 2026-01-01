@@ -4,7 +4,7 @@
  */
 
 import { addMonths, addWeeks, startOfWeek, endOfWeek, isWithinInterval, parseISO } from 'date-fns';
-import { EntityKind, NarrativeEntityKind, ENTITY_KINDS } from '@/lib/entities/entityTypes';
+import { EntityKind, NarrativeEntityKind, ENTITY_KINDS } from '@/lib/types/entityTypes';
 import { NarrativeEntity } from '@/types/narrativeEntities';
 
 export type TimelineContextType =

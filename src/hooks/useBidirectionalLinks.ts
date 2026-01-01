@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { eventBus } from '@/lib/utils/event-bus';
-import { bidirectionalLinkEngine } from '@/lib/entities/bidirectional-link-engine';
+import { bidirectionalLinkEngine } from '@/lib/linking/bidirectional-link-engine';
 
 interface EntityInNote {
   entityId: string;

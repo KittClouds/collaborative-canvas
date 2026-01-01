@@ -32,7 +32,13 @@ import {
 } from '@/lib/fantasy-calendar/utils';
 import { generateId } from '@/lib/utils/ids';
 import { executeGenesis, clearCalendarTimeUnits } from '@/lib/time';
-import { temporalAhoMatcher } from '@/lib/entities/scanner-v3/extractors/TemporalAhoMatcher';
+
+// Stub for legacy temporalAhoMatcher (now handled by Rust scanner)
+const temporalAhoMatcher = {
+    hydrate: async (_calendarId: string) => {
+        console.log('[CalendarContext] temporalAhoMatcher.hydrate() is deprecated. Use ScannerFacade.hydrateTemporal() instead.');
+    }
+};
 
 // Calendar Atoms
 import {

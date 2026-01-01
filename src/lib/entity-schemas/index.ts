@@ -1,4 +1,4 @@
-import { EntityKind } from '@/lib/entities/entityTypes';
+import { EntityKind } from '@/lib/types/entityTypes';
 import { EntityFactSheetSchema } from '@/types/factSheetTypes';
 import { characterSchema } from './characterSchema';
 import { locationSchema } from './locationSchema';
@@ -19,6 +19,13 @@ export const entitySchemas: Record<EntityKind, EntityFactSheetSchema> = {
   CONCEPT: conceptSchema,
   NPC: npcSchema,
   SCENE: sceneSchema,
+  ARC: conceptSchema,
+  ACT: conceptSchema,
+  CHAPTER: conceptSchema,
+  BEAT: conceptSchema,
+  TIMELINE: eventSchema,
+  NARRATIVE: conceptSchema,
+  NETWORK: conceptSchema,
 };
 
 // Get schema for a specific entity kind

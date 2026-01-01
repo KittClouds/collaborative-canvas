@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { EntityType, RelationshipType } from '@/types/schema';
 import { EntityBlueprint } from '@/types/blueprints';
-import { ENTITY_KINDS, ENTITY_COLORS } from '@/lib/entities/entityTypes';
+import { ENTITY_KINDS, ENTITY_COLORS } from '@/lib/types/entityTypes';
 
 // Default entity types based on existing system
 const DEFAULT_ENTITY_TYPES: EntityType[] = ENTITY_KINDS.map(kind => ({

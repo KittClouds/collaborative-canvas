@@ -64,14 +64,14 @@ export function useRelationshipTypes(versionId: string | null) {
 
       await loadRelationshipTypes();
 
-      // If verb patterns were included, trigger scanner reload
+      // If verb patterns were included, trigger scanner pattern reload
       if (input.verb_patterns && input.verb_patterns.length > 0) {
         try {
-          const { scannerOrchestrator } = await import('@/lib/entities/scanner-v3/core/Orchestrator');
-          await scannerOrchestrator.reloadRelationshipPatterns();
-          console.log('[useRelationshipTypes] Scanner patterns reloaded after creating relationship type with verb patterns');
+          const { refreshScannerPatterns } = await import('@/lib/scanner');
+          refreshScannerPatterns();
+          console.log('[useRelationshipTypes] Scanner patterns refreshed after creating relationship type');
         } catch (error) {
-          console.warn('[useRelationshipTypes] Failed to reload scanner patterns:', error);
+          console.warn('[useRelationshipTypes] Failed to refresh scanner patterns:', error);
         }
       }
 

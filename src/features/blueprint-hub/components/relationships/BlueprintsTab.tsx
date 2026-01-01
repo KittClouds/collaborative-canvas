@@ -9,7 +9,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Search, ArrowRight, ArrowLeftRight, Minus, User, Sparkles } from 'lucide-react';
-import { ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/types/entityTypes';
 import { useEntitySelectionSafe } from '@/contexts/EntitySelectionContext';
 import { cn } from '@/lib/utils';
 import {

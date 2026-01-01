@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Users, ChevronDown, ChevronRight } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ENTITY_COLORS, EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, EntityKind } from '@/lib/types/entityTypes';
 import {
     Collapsible,
     CollapsibleContent,

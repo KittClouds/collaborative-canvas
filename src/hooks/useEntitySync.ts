@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { useCozoContext } from '@/contexts/CozoContext';
 import { entityRegistry } from '@/lib/cozo/graph/adapters';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 interface ExtractedEntity {
     label: string;
@@ -129,7 +129,26 @@ export function useEntitySync(options: UseEntitySyncOptions = {}) {
 
             if (syncedCount > 0) {
                 refreshEntities();
-                console.log(`[useEntitySync] Synced ${syncedCount} notes`);
+
+                // Re-hydrate Rust scanner with updated entities
+                try {
+                    const { scannerFacade } = await import('@/lib/scanner');
+                    const { highlighterBridge } = await import('@/lib/highlighter');
+                    const allEntities = await entityRegistry.getAllEntities();
+                    const entityDefs = allEntities.map(e => ({
+                        id: e.id,
+                        label: e.label,
+                        kind: e.kind,
+                        aliases: e.aliases || [],
+                    }));
+
+                    await scannerFacade.hydrateEntities(entityDefs);
+                    highlighterBridge.hydrateEntities(entityDefs);
+
+                    console.log(`[useEntitySync] Synced ${syncedCount} notes, hydrated scanner/highlighter with ${allEntities.length} entities`);
+                } catch (err) {
+                    console.warn('[useEntitySync] Failed to hydrate scanner/highlighter:', err);
+                }
             }
         } catch (err) {
             console.error('[useEntitySync] Sync failed:', err);

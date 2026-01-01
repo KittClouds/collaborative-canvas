@@ -25,7 +25,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ArrowRight, Trash2, ExternalLink, Loader2 } from 'lucide-react';
-import { ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/types/entityTypes';
 import { relationshipBridgeStore } from '@/lib/relationships/RelationshipBridgeStore';
 import { useEntitySelectionSafe } from '@/contexts/EntitySelectionContext';
 import type { ResolvedRelationshipInstance } from '@/lib/relationships/relationshipBridgeTypes';

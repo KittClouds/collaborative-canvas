@@ -1,0 +1,260 @@
+/**
+ * HighlighterBridge - Bridge to Rust SyntaxCortex and ImplicitCortex
+ * 
+ * Provides high-performance syntax highlighting via WASM:
+ * - Pattern matching (wikilinks, entities, tags, etc.)
+ * - Implicit entity detection (Aho-Corasick)
+ * - Content-hash based caching
+ */
+
+import type { RegisteredEntity } from '@/lib/cozo/graph/adapters/EntityRegistryAdapter';
+
+// ==================== TYPES ====================
+
+export interface HighlightSpan {
+    kind: 'wikilink' | 'backlink' | 'entity' | 'triple' | 'inline_relation' | 'tag' | 'mention' | 'implicit' | 'temporal';
+    start: number;
+    end: number;
+    content: string;
+    label: string;
+    target: string;
+    confidence: number;
+    metadata: SpanMetadata;
+}
+
+export interface SpanMetadata {
+    entityKind?: string;
+    entityId?: string;
+    exists?: boolean;
+    isAlias?: boolean;
+    captures?: Record<string, string>;
+}
+
+export interface HighlightResult {
+    spans: HighlightSpan[];
+    contentHash: string;
+    wasCached: boolean;
+    scanTimeMs: number;
+}
+
+// ==================== BRIDGE CLASS ====================
+
+class HighlighterBridge {
+    private initialized = false;
+    private lastResultByNote = new Map<string, HighlightResult>();
+    private lastHashByNote = new Map<string, string>();
+
+    // Rust cortexes (imported dynamically)
+    private DocumentCortex: any = null;
+    private cortex: any = null;
+
+    /**
+     * Initialize the bridge by loading WASM module
+     */
+    async initialize(): Promise<boolean> {
+        if (this.initialized) return true;
+
+        try {
+            // Dynamic import of the WASM module
+            const kittcore = await import(
+                /* webpackIgnore: true */
+                '@kittcore/wasm'
+            );
+            await kittcore.default();
+
+            this.DocumentCortex = kittcore.DocumentCortex;
+            this.cortex = new this.DocumentCortex();
+            this.initialized = true;
+
+            console.log('[HighlighterBridge] WASM initialized');
+
+            // Hydrate with entities from the registry
+            try {
+                const { entityRegistry } = await import('@/lib/cozo/graph/adapters');
+                const entities = await entityRegistry.getAllEntities();
+                if (entities && entities.length > 0) {
+                    this.hydrateEntities(entities);
+                }
+            } catch (hydrateError) {
+                console.warn('[HighlighterBridge] Entity hydration deferred:', hydrateError);
+            }
+
+            return true;
+        } catch (error) {
+            console.error('[HighlighterBridge] Failed to initialize:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Check if bridge is ready
+     */
+    isReady(): boolean {
+        return this.initialized && this.cortex !== null;
+    }
+
+    /**
+     * Hydrate with entities for implicit matching
+     */
+    hydrateEntities(entities: Array<{ id: string; label: string; kind: string; aliases: string[] }>): void {
+        if (!this.isReady()) {
+            console.warn('[HighlighterBridge] Not initialized, skipping hydration');
+            return;
+        }
+
+        try {
+            const entityDefs = entities.map(e => ({
+                id: e.id,
+                label: e.label,
+                kind: e.kind,
+                aliases: e.aliases || [],
+            }));
+
+            this.cortex.hydrateEntities(entityDefs);
+            console.log(`[HighlighterBridge] Hydrated with ${entities.length} entities`);
+        } catch (error) {
+            console.error('[HighlighterBridge] Failed to hydrate entities:', error);
+        }
+    }
+
+    /**
+     * Compute content hash for change detection
+     */
+    private computeHash(text: string): string {
+        // Simple djb2 hash
+        let hash = 5381;
+        for (let i = 0; i < text.length; i++) {
+            hash = ((hash << 5) + hash) + text.charCodeAt(i);
+            hash = hash >>> 0; // Convert to unsigned 32-bit
+        }
+        return hash.toString(16);
+    }
+
+    /**
+     * Highlight text using Rust scanner
+     * Returns cached result if content unchanged
+     */
+    highlight(text: string, noteId: string): HighlightResult {
+        const start = performance.now();
+
+        // Check cache first
+        const hash = this.computeHash(text);
+        const lastHash = this.lastHashByNote.get(noteId);
+
+        if (lastHash === hash) {
+            const cached = this.lastResultByNote.get(noteId);
+            if (cached) {
+                return { ...cached, wasCached: true };
+            }
+        }
+
+        // Not cached - perform full scan
+        if (!this.isReady()) {
+            return {
+                spans: [],
+                contentHash: hash,
+                wasCached: false,
+                scanTimeMs: performance.now() - start,
+            };
+        }
+
+        try {
+            // Call Rust DocumentCortex.scan() - returns full ScanResult
+            const scanResult = this.cortex.scan(text, []);
+
+            if (!scanResult) {
+                return {
+                    spans: [],
+                    contentHash: hash,
+                    wasCached: false,
+                    scanTimeMs: performance.now() - start,
+                };
+            }
+
+            // Convert Rust results to HighlightSpans
+            const spans: HighlightSpan[] = [];
+
+            // Add implicit mentions
+            if (scanResult.implicit && Array.isArray(scanResult.implicit)) {
+                for (const m of scanResult.implicit) {
+                    spans.push({
+                        kind: 'implicit',
+                        start: m.start,
+                        end: m.end,
+                        content: m.matched_text,
+                        label: m.entity_label,
+                        target: m.entity_id,
+                        confidence: m.confidence ?? (m.is_alias_match ? 0.9 : 1.0),
+                        metadata: {
+                            entityKind: m.entity_kind,
+                            entityId: m.entity_id,
+                            isAlias: m.is_alias_match,
+                        },
+                    });
+                }
+            }
+
+            // Add temporal mentions
+            if (scanResult.temporal && Array.isArray(scanResult.temporal)) {
+                for (const t of scanResult.temporal) {
+                    spans.push({
+                        kind: 'temporal',
+                        start: t.start,
+                        end: t.end,
+                        content: t.text,
+                        label: t.text,
+                        target: t.kind,
+                        confidence: t.confidence ?? 0.9,
+                        metadata: {
+                            captures: t.metadata,
+                        },
+                    });
+                }
+            }
+
+            // Sort by position
+            spans.sort((a, b) => a.start - b.start);
+
+            const result: HighlightResult = {
+                spans,
+                contentHash: hash,
+                wasCached: false,
+                scanTimeMs: performance.now() - start,
+            };
+
+            // Cache result
+            this.lastHashByNote.set(noteId, hash);
+            this.lastResultByNote.set(noteId, result);
+
+            return result;
+        } catch (error) {
+            console.error('[HighlighterBridge] Highlight failed:', error);
+            return {
+                spans: [],
+                contentHash: hash,
+                wasCached: false,
+                scanTimeMs: performance.now() - start,
+            };
+        }
+    }
+
+    /**
+     * Clear cache for a specific note
+     */
+    invalidateCache(noteId: string): void {
+        this.lastHashByNote.delete(noteId);
+        this.lastResultByNote.delete(noteId);
+    }
+
+    /**
+     * Clear all caches
+     */
+    clearAllCaches(): void {
+        this.lastHashByNote.clear();
+        this.lastResultByNote.clear();
+    }
+}
+
+// ==================== SINGLETON ====================
+
+export const highlighterBridge = new HighlighterBridge();

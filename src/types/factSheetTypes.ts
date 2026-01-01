@@ -1,5 +1,5 @@
 import { LucideIcon } from 'lucide-react';
-import { EntityKind } from '@/lib/entities/entityTypes';
+import { EntityKind } from '@/lib/types/entityTypes';
 
 // Field type definitions
 export interface BaseField {

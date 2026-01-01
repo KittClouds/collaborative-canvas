@@ -45,8 +45,8 @@ import {
 import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { generateId } from '@/lib/utils/ids';
 import { cn } from '@/lib/utils';
-import type { EntityKind } from '@/lib/entities/entityTypes';
-import { ENTITY_COLORS, ENTITY_ICONS } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
+import { ENTITY_COLORS, ENTITY_ICONS } from '@/lib/types/entityTypes';
 import type { NetworkKind, NetworkSchema, NetworkRelationshipDef } from '@/lib/networks/types';
 import { NETWORK_COLORS } from '@/lib/networks/types';
 import {

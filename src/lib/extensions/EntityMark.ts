@@ -1,7 +1,7 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '../entities/entityTypes';
+import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '../types/entityTypes';
 
 export interface EntityMarkOptions {
   HTMLAttributes: Record<string, any>;

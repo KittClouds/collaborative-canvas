@@ -1,4 +1,4 @@
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type { RelationshipDirection, RelationshipCardinality } from '../../types';
 
 export interface RelationshipPreset {

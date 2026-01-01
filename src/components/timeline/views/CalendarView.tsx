@@ -13,7 +13,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TimelineItem } from '@/lib/timeline/timelineQueries';
 import { cn } from '@/lib/utils';
-import { ENTITY_COLORS } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS } from '@/lib/types/entityTypes';
 
 interface CalendarViewProps {
     items: TimelineItem[];

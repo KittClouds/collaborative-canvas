@@ -7,7 +7,7 @@
  * - Custom schema registration for extensibility
  */
 
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type { FolderSchema, AllowedSubfolderDefinition, AllowedNoteTypeDefinition } from './schemas';
 
 import {

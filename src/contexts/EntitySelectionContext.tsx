@@ -14,7 +14,7 @@ import {
   clearNarrativeFocusAtom,
   focusModeAtom,
 } from '@/atoms';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 interface EntitySelectionContextType {
   // Selected entity for fact sheet editing

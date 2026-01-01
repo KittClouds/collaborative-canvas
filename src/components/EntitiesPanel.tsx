@@ -3,7 +3,7 @@ import { useCozoContext } from '@/contexts/CozoContext';
 import { useLinkIndex } from '@/hooks/useLinkIndex';
 import { EntityMentionsPanel as EntityList } from '@/components/EntityMentionsPanel';
 import { EntityPanelLoading, EntityPanelError, CreateEntityDialog } from '@/components/entities';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 
 export function EntitiesPanel() {

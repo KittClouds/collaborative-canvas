@@ -1,7 +1,7 @@
 import { useContext } from 'react';
 import { useCozoContext, useCozoEntities, useCozoReady } from '@/contexts/CozoContext';
 import type { RegisteredEntity } from '@/lib/cozo/graph/adapters';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 export function useCozoRegistry() {
     return useCozoContext();

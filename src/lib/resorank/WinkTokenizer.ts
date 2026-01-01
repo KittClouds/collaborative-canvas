@@ -13,8 +13,8 @@
  * - No changes to ResoRank algorithm internals
  */
 
-import { getWinkProcessor } from '@/lib/entities/nlp/WinkProcessor';
-import type { Token } from '@/lib/entities/nlp/WinkProcessor';
+import { getWinkProcessor } from '@/lib/scanner/nlp/WinkProcessor';
+import type { Token } from '@/lib/scanner/nlp/WinkProcessor';
 
 export interface WinkTokenizerOptions {
     lemmatize?: boolean;        // Use lemmas instead of raw text

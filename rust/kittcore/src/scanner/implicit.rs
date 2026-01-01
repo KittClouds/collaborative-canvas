@@ -2,6 +2,9 @@
 //!
 //! Uses Aho-Corasick for O(n) detection of entity names and aliases.
 //! Designed to find implicit mentions like "Frodo" in prose text.
+//! 
+//! **Smart Alias Generation**: Automatically derives searchable aliases from
+//! entity names. "Monkey D. Luffy" → "Luffy" (0.90), "D. Luffy" (0.85).
 
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use serde::{Deserialize, Serialize};
@@ -30,6 +33,8 @@ pub struct ImplicitMention {
     pub start: usize,
     pub end: usize,
     pub is_alias_match: bool,
+    /// Confidence score: 1.0 for exact match, lower for auto-generated aliases
+    pub confidence: f64,
 }
 
 /// Metadata for each pattern in the automaton
@@ -40,6 +45,8 @@ struct PatternMeta {
     entity_kind: String,
     pattern_text: String,
     is_alias: bool,
+    /// Confidence for this pattern (1.0 for primary label, lower for aliases)
+    confidence: f64,
 }
 
 // =============================================================================
@@ -80,14 +87,120 @@ impl ImplicitCortex {
     }
 }
 
+// =============================================================================
+// Smart Alias Generation
+// =============================================================================
+
+/// Minimum length for auto-generated aliases to avoid false positives
+const MIN_ALIAS_LEN: usize = 3;
+
+/// Generate aliases from an entity name based on its kind
+/// Returns (alias, confidence) pairs
+fn generate_aliases(label: &str, kind: &str) -> Vec<(String, f64)> {
+    let parts: Vec<&str> = label.split_whitespace().collect();
+    let mut aliases: Vec<(String, f64)> = Vec::new();
+    
+    // Skip single-word names - no aliases to generate
+    if parts.len() <= 1 {
+        return aliases;
+    }
+    
+    // Kind-specific alias generation
+    match kind.to_uppercase().as_str() {
+        "CHARACTER" | "PERSON" => {
+            // Characters get surname/calling name treatment
+            match parts.len() {
+                2 => {
+                    // "First Last" → "Last" (0.90)
+                    let last = parts[1];
+                    if last.len() >= MIN_ALIAS_LEN && !is_title_or_honorific(last) {
+                        aliases.push((last.to_string(), 0.90));
+                    }
+                }
+                3 => {
+                    // "First Middle Last" → "Last" (0.90), "Middle Last" (0.85)
+                    let last = parts[2];
+                    let middle_last = format!("{} {}", parts[1], parts[2]);
+                    
+                    if last.len() >= MIN_ALIAS_LEN && !is_title_or_honorific(last) {
+                        aliases.push((last.to_string(), 0.90));
+                    }
+                    if middle_last.len() >= MIN_ALIAS_LEN {
+                        aliases.push((middle_last, 0.85));
+                    }
+                }
+                _ => {
+                    // Longer names: last word, last two words
+                    let last = parts[parts.len() - 1];
+                    let last_two = format!("{} {}", parts[parts.len() - 2], last);
+                    
+                    if last.len() >= MIN_ALIAS_LEN && !is_title_or_honorific(last) {
+                        aliases.push((last.to_string(), 0.85));
+                    }
+                    if last_two.len() >= MIN_ALIAS_LEN {
+                        aliases.push((last_two, 0.80));
+                    }
+                }
+            }
+        }
+        "FACTION" | "ORGANIZATION" | "GROUP" => {
+            // Factions: last word if descriptive, acronyms
+            let last = parts[parts.len() - 1];
+            if last.len() >= MIN_ALIAS_LEN && !is_common_word(last) {
+                aliases.push((last.to_string(), 0.75));
+            }
+            
+            // Generate acronym if 3+ words
+            if parts.len() >= 3 {
+                let acronym: String = parts.iter()
+                    .filter(|p| !is_common_word(p))
+                    .filter_map(|p| p.chars().next())
+                    .collect::<String>()
+                    .to_uppercase();
+                if acronym.len() >= 2 {
+                    aliases.push((acronym, 0.70));
+                }
+            }
+        }
+        _ => {
+            // Default: just the last word for multi-word names
+            let last = parts[parts.len() - 1];
+            if last.len() >= MIN_ALIAS_LEN && !is_common_word(last) {
+                aliases.push((last.to_string(), 0.80));
+            }
+        }
+    }
+    
+    aliases
+}
+
+/// Check if a word is a common title/honorific that shouldn't be an alias
+fn is_title_or_honorific(word: &str) -> bool {
+    matches!(
+        word.to_lowercase().as_str(),
+        "mr" | "mrs" | "ms" | "dr" | "prof" | "sir" | "lord" | "lady" 
+        | "king" | "queen" | "prince" | "princess" | "captain" | "general"
+        | "the" | "of" | "and" | "jr" | "sr" | "ii" | "iii" | "iv"
+    )
+}
+
+/// Check if a word is too common to be a useful alias
+fn is_common_word(word: &str) -> bool {
+    matches!(
+        word.to_lowercase().as_str(),
+        "the" | "of" | "and" | "or" | "a" | "an" | "in" | "on" | "at" | "to" | "for"
+        | "is" | "are" | "was" | "were" | "be" | "been" | "being"
+    )
+}
+
 impl ImplicitCortex {
-    /// Hydrate with entity definitions
+    /// Hydrate with entity definitions (auto-generates aliases)
     pub fn hydrate(&mut self, entities: Vec<EntityDefinition>) {
         self.pattern_meta.clear();
         self.pending_patterns.clear();
 
         for entity in entities {
-            // Add primary label
+            // Add primary label (confidence 1.0)
             let label_lower = entity.label.to_lowercase();
             self.pattern_meta.push(PatternMeta {
                 entity_id: entity.id.clone(),
@@ -95,10 +208,11 @@ impl ImplicitCortex {
                 entity_kind: entity.kind.clone(),
                 pattern_text: label_lower.clone(),
                 is_alias: false,
+                confidence: 1.0,
             });
             self.pending_patterns.push(label_lower);
 
-            // Add aliases
+            // Add explicitly provided aliases (confidence 0.95)
             for alias in &entity.aliases {
                 let alias_lower = alias.to_lowercase();
                 self.pattern_meta.push(PatternMeta {
@@ -107,8 +221,27 @@ impl ImplicitCortex {
                     entity_kind: entity.kind.clone(),
                     pattern_text: alias_lower.clone(),
                     is_alias: true,
+                    confidence: 0.95,
                 });
                 self.pending_patterns.push(alias_lower);
+            }
+            
+            // Auto-generate additional aliases based on name structure
+            let auto_aliases = generate_aliases(&entity.label, &entity.kind);
+            for (alias, confidence) in auto_aliases {
+                let alias_lower = alias.to_lowercase();
+                // Avoid duplicates
+                if !self.pending_patterns.contains(&alias_lower) {
+                    self.pattern_meta.push(PatternMeta {
+                        entity_id: entity.id.clone(),
+                        entity_label: entity.label.clone(),
+                        entity_kind: entity.kind.clone(),
+                        pattern_text: alias_lower.clone(),
+                        is_alias: true,
+                        confidence,
+                    });
+                    self.pending_patterns.push(alias_lower);
+                }
             }
         }
 
@@ -157,6 +290,7 @@ impl ImplicitCortex {
                     start: mat.start(),
                     end: mat.end(),
                     is_alias_match: meta.is_alias,
+                    confidence: meta.confidence,
                 });
             }
         }
@@ -200,6 +334,7 @@ impl ImplicitCortex {
             entity_kind: entity.kind.clone(),
             pattern_text: label_lower.clone(),
             is_alias: false,
+            confidence: 1.0,
         });
         self.pending_patterns.push(label_lower);
 
@@ -211,8 +346,27 @@ impl ImplicitCortex {
                 entity_kind: entity.kind.clone(),
                 pattern_text: alias_lower.clone(),
                 is_alias: true,
+                confidence: 0.95,
             });
             self.pending_patterns.push(alias_lower);
+        }
+
+        // Auto-generate additional aliases based on name structure
+        let auto_aliases = generate_aliases(&entity.label, &entity.kind);
+        for (alias, confidence) in auto_aliases {
+            let alias_lower = alias.to_lowercase();
+            // Avoid duplicates
+            if !self.pending_patterns.contains(&alias_lower) {
+                self.pattern_meta.push(PatternMeta {
+                    entity_id: entity.id.clone(),
+                    entity_label: entity.label.clone(),
+                    entity_kind: entity.kind.clone(),
+                    pattern_text: alias_lower.clone(),
+                    is_alias: true,
+                    confidence,
+                });
+                self.pending_patterns.push(alias_lower);
+            }
         }
 
         self.needs_rebuild = true;
@@ -417,5 +571,95 @@ mod tests {
         assert_eq!(cortex.pattern_count(), 0);
         let mentions = cortex.find_mentions("Frodo");
         assert!(mentions.is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // Requirement 11: Smart alias generation - "Monkey D. Luffy" → "Luffy"
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_smart_alias_luffy() {
+        let mut cortex = ImplicitCortex::new();
+        cortex.hydrate(vec![entity("char_001", "Monkey D. Luffy", "CHARACTER", vec![])]);
+        cortex.build().unwrap();
+
+        // Should find "Luffy" as an auto-generated alias
+        let mentions = cortex.find_mentions("Luffy defeated Kaido");
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(mentions[0].entity_id, "char_001");
+        assert_eq!(mentions[0].entity_label, "Monkey D. Luffy");
+        assert_eq!(mentions[0].matched_text, "Luffy");
+        assert!(mentions[0].is_alias_match);
+        assert!(mentions[0].confidence < 1.0); // Auto-generated alias has lower confidence
+    }
+
+    // -------------------------------------------------------------------------
+    // Requirement 12: Smart alias includes middle-last pattern
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_smart_alias_middle_last() {
+        let mut cortex = ImplicitCortex::new();
+        cortex.hydrate(vec![entity("char_001", "Monkey D. Luffy", "CHARACTER", vec![])]);
+        cortex.build().unwrap();
+
+        // Should also find "D. Luffy"
+        let mentions = cortex.find_mentions("D. Luffy is the future king");
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(mentions[0].entity_label, "Monkey D. Luffy");
+        assert_eq!(mentions[0].matched_text, "D. Luffy");
+    }
+
+    // -------------------------------------------------------------------------
+    // Requirement 13: Two-word names generate surname alias
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_smart_alias_two_word_name() {
+        let mut cortex = ImplicitCortex::new();
+        cortex.hydrate(vec![entity("char_001", "Tony Chopper", "CHARACTER", vec![])]);
+        cortex.build().unwrap();
+
+        // Should find "Chopper" as an auto-generated alias
+        let mentions = cortex.find_mentions("Chopper is a reindeer");
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(mentions[0].entity_label, "Tony Chopper");
+        assert_eq!(mentions[0].matched_text, "Chopper");
+        assert!(mentions[0].is_alias_match);
+    }
+
+    // -------------------------------------------------------------------------
+    // Requirement 14: Faction acronym generation
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_smart_alias_faction_acronym() {
+        let mut cortex = ImplicitCortex::new();
+        cortex.hydrate(vec![entity("fac_001", "Straw Hat Pirates", "FACTION", vec![])]);
+        cortex.build().unwrap();
+
+        // Should find "SHP" as an auto-generated acronym
+        let mentions = cortex.find_mentions("SHP is the best crew");
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(mentions[0].entity_label, "Straw Hat Pirates");
+        assert_eq!(mentions[0].matched_text, "SHP");
+    }
+
+    // -------------------------------------------------------------------------
+    // Requirement 15: Confidence scores are correct
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_confidence_scores() {
+        let mut cortex = ImplicitCortex::new();
+        cortex.hydrate(vec![entity("char_001", "Monkey D. Luffy", "CHARACTER", vec!["Straw Hat"])]);
+        cortex.build().unwrap();
+
+        // Full name = 1.0
+        let full = cortex.find_mentions("Monkey D. Luffy");
+        assert_eq!(full[0].confidence, 1.0);
+
+        // Explicit alias = 0.95
+        let explicit = cortex.find_mentions("Straw Hat");
+        assert_eq!(explicit[0].confidence, 0.95);
+
+        // Auto-generated surname = 0.90
+        let auto = cortex.find_mentions("Luffy");
+        assert!((auto[0].confidence - 0.90).abs() < 0.01);
     }
 }

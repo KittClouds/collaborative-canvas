@@ -2,7 +2,7 @@
  * Story entity types extending the base entity system for temporal storytelling
  */
 
-import { EntityKind } from '@/lib/entities/entityTypes';
+import { EntityKind } from '@/lib/types/entityTypes';
 import { TemporalSpan, MediaReference } from './temporal';
 
 /**
@@ -38,18 +38,18 @@ export type EventImportance = 'critical' | 'major' | 'minor' | 'background';
 export interface SceneEntity extends BaseStoryEntity {
   kind: 'SCENE';
   temporal: TemporalSpan;
-  
+
   // Nested sub-events
   events: EventEntity[];
-  
+
   // Participants (characters, locations)
   participants: EntityReference[];
-  
+
   // Story context
   povCharacterId?: string;
   location?: string;
   mood?: string;
-  
+
   // Timeline rendering
   cardTitle: string;
   cardSubtitle?: string;
@@ -63,23 +63,23 @@ export interface SceneEntity extends BaseStoryEntity {
 export interface EventEntity extends BaseStoryEntity {
   kind: 'EVENT';
   temporal: TemporalSpan;
-  
+
   // Event hierarchy
   parentSceneId?: string;
   subEvents?: EventEntity[];
-  
+
   // Causal relationships
   triggeredBy?: string[];
   triggers?: string[];
-  
+
   // Participants
   actors: EntityReference[];
   affectedEntities: EntityReference[];
-  
+
   // Narrative significance
   importance: EventImportance;
   tags: string[];
-  
+
   // Timeline rendering
   cardTitle?: string;
   description?: string;

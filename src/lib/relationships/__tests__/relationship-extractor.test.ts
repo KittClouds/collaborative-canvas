@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
-import { RelationshipExtractor } from '../../entities/scanner-v3/extractors/RelationshipExtractor';
+import { RelationshipExtractor } from '../../scanner/legacy-v3/extractors/RelationshipExtractor';
 import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import type { RegisteredEntity } from '@/lib/cozo/graph/adapters/EntityRegistryAdapter';
 

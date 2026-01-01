@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { entityRegistry, type RegisteredEntity } from '@/lib/cozo/graph/adapters';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 interface EntityStats {
     entityKind: EntityKind;

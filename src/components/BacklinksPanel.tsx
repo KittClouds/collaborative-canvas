@@ -4,8 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Link2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BacklinkInfo } from '@/lib/linking/LinkIndex';
-import { getDisplayName, parseEntityFromTitle } from '@/lib/entities/titleParser';
-import { ENTITY_COLORS, EntityKind } from '@/lib/entities/entityTypes';
+import { getDisplayName, parseEntityFromTitle } from '@/lib/utils/titleParser';
+import { ENTITY_COLORS, EntityKind } from '@/lib/types/entityTypes';
 
 interface BacklinksPanelProps {
   backlinks: BacklinkInfo[];

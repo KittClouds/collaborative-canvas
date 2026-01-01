@@ -29,7 +29,7 @@ import { useLinkIndex } from '@/hooks/useLinkIndex';
 import { useEntitySync } from '@/hooks/useEntitySync';
 import { RightSidebar, RightSidebarProvider, RightSidebarTrigger } from '@/components/RightSidebar';
 import { TemporalHighlightProvider, useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
-import { formatEntityTitle, getDisplayName } from '@/lib/entities/titleParser';
+import { formatEntityTitle, getDisplayName } from '@/lib/utils/titleParser';
 import type { WikiLink } from '@/lib/linking/LinkIndex';
 import {
   AlertDialog,

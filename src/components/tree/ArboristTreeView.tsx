@@ -4,7 +4,7 @@ import { ArboristNode } from '@/lib/arborist/types';
 import { ArboristTreeNode } from './ArboristTreeNode';
 import { buildArboristTree } from '@/lib/arborist/adapter';
 import { TypedFolderMenu } from './TypedFolderMenu';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 import {
     DropdownMenu,

@@ -1,6 +1,6 @@
 import { ArboristNode, ArboristTree } from './types';
 import type { Folder, Note, FolderWithChildren } from '@/types/noteTypes';
-import { ENTITY_COLORS } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS } from '@/lib/types/entityTypes';
 
 const DEFAULT_COLORS = [
     "#10b981", "#3b82f6", "#8b5cf6", "#ec4899",

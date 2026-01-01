@@ -49,7 +49,7 @@ import {
 } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/types/entityTypes';
 import { FactSheetCard } from './FactSheetCard';
 import { RelationshipDetailsPanel } from './RelationshipDetailsPanel';
 import { useEntityRelationships } from '@/hooks/useEntityRelationships';

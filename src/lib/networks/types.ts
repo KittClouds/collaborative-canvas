@@ -11,7 +11,7 @@
  * - NetworkRelationshipInstance: An actual relationship between entities
  */
 
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type { NodeId } from '@/lib/graph/types';
 
 // ===== NETWORK KINDS =====

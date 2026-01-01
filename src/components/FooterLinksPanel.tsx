@@ -8,7 +8,7 @@ import OutgoingLinksPanel from './OutgoingLinksPanel';
 import { EntityMentionsPanel } from './EntityMentionsPanel';
 import type { BacklinkInfo, WikiLink } from '@/lib/linking/LinkIndex';
 import type { Note } from '@/types/noteTypes';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import { cn } from '@/lib/utils';
 
 interface EntityStats {

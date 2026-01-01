@@ -1,5 +1,5 @@
 import type { CozoEntity, CozoMention } from '../types';
-import { ENTITY_KINDS } from '@/lib/entities/entityTypes';
+import { ENTITY_KINDS } from '@/lib/types/entityTypes';
 import { generateId } from '@/lib/utils/ids';
 
 export interface EntityMatch {

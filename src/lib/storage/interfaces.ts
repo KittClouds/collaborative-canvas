@@ -1,4 +1,4 @@
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type {
   BlueprintMeta,
   BlueprintVersion,
@@ -169,48 +169,48 @@ export interface IMentionStore {
 
 export interface IBlueprintStore {
   initialize(): Promise<void>;
-  
+
   getBlueprintMetaById(id: string): Promise<BlueprintMeta | null>;
   createBlueprintMeta(input: CreateBlueprintMetaInput): Promise<BlueprintMeta>;
   updateBlueprintMeta(id: string, updates: Partial<CreateBlueprintMetaInput>): Promise<BlueprintMeta>;
   getAllBlueprintMetas(): Promise<BlueprintMeta[]>;
   deleteBlueprintMeta(id: string): Promise<void>;
-  
+
   getVersionById(id: string): Promise<BlueprintVersion | null>;
   getVersionsByBlueprintId(blueprintId: string): Promise<BlueprintVersion[]>;
   createVersion(input: CreateVersionInput): Promise<BlueprintVersion>;
   updateVersionStatus(id: string, status: VersionStatus): Promise<void>;
   deleteVersion(id: string): Promise<void>;
-  
+
   getEntityTypeById(id: string): Promise<EntityTypeDef | null>;
   getEntityTypesByVersionId(versionId: string): Promise<EntityTypeDef[]>;
   createEntityType(input: CreateEntityTypeInput): Promise<EntityTypeDef>;
   updateEntityType(id: string, updates: Partial<CreateEntityTypeInput>): Promise<EntityTypeDef>;
   deleteEntityType(id: string): Promise<void>;
-  
+
   getFieldById(id: string): Promise<FieldDef | null>;
   getFieldsByEntityTypeId(entityTypeId: string): Promise<FieldDef[]>;
   createField(input: CreateFieldInput): Promise<FieldDef>;
   updateField(id: string, updates: Partial<CreateFieldInput>): Promise<FieldDef>;
   deleteField(id: string): Promise<void>;
-  
+
   getRelationshipTypeById(id: string): Promise<RelationshipTypeDef | null>;
   getRelationshipTypesByVersionId(versionId: string): Promise<RelationshipTypeDef[]>;
   createRelationshipType(input: CreateRelationshipTypeInput): Promise<RelationshipTypeDef>;
   updateRelationshipType(id: string, updates: Partial<CreateRelationshipTypeInput>): Promise<RelationshipTypeDef>;
   deleteRelationshipType(id: string): Promise<void>;
-  
+
   getRelationshipAttributeById(id: string): Promise<RelationshipAttributeDef | null>;
   getRelationshipAttributesByTypeId(relationshipTypeId: string): Promise<RelationshipAttributeDef[]>;
   createRelationshipAttribute(input: CreateRelationshipAttributeInput): Promise<RelationshipAttributeDef>;
   deleteRelationshipAttribute(id: string): Promise<void>;
-  
+
   getViewTemplateById(id: string): Promise<ViewTemplateDef | null>;
   getViewTemplatesByVersionId(versionId: string): Promise<ViewTemplateDef[]>;
   createViewTemplate(input: CreateViewTemplateInput): Promise<ViewTemplateDef>;
   updateViewTemplate(id: string, updates: Partial<CreateViewTemplateInput>): Promise<ViewTemplateDef>;
   deleteViewTemplate(id: string): Promise<void>;
-  
+
   getMOCById(id: string): Promise<MOCDef | null>;
   getMOCsByVersionId(versionId: string): Promise<MOCDef[]>;
   createMOC(input: CreateMOCInput): Promise<MOCDef>;

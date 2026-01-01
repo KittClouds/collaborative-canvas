@@ -15,16 +15,38 @@ export { relationshipRegistry } from '@/lib/cozo/graph/adapters';
 // Export bridge store (Phase 7D - unified Fact Sheet + Blueprint Hub + Networks)
 export { relationshipBridgeStore } from './RelationshipBridgeStore';
 
-// Export unified extractor (Phase 7C - consolidated)
-export {
-    getRelationshipExtractor,
-    RelationshipExtractor,
-    matchVerbPatterns,
-    refreshPatternsFromStorage,
-    getActivePatterns,
-    getPatternCategories,
-    type ExtractedRelationship,
-    type EntitySpan,
-    type RelationshipPattern,
-} from '@/lib/entities/scanner-v3/extractors/RelationshipExtractor';
+// Export unified extractor types (implementation now in Rust)
+// TODO: Phase 3 - Port these type definitions to lib/scanner/types.ts
+export interface ExtractedRelationship {
+    headEntity: string;
+    tailEntity: string;
+    relationType: string;
+    confidence: number;
+    patternMatched: string;
+}
 
+export interface EntitySpan {
+    label: string;
+    start: number;
+    end: number;
+    kind?: string;
+    entityId?: string;
+}
+
+export interface RelationshipPattern {
+    id: string;
+    type: string;
+    pattern: string;
+    confidence: number;
+}
+
+// Stub functions for API compatibility (Rust handles extraction now)
+export function getRelationshipExtractor() {
+    console.warn('[relationships] getRelationshipExtractor() is deprecated. Use Rust scanner.');
+    return null;
+}
+
+export function matchVerbPatterns() { return []; }
+export function refreshPatternsFromStorage() { return Promise.resolve(); }
+export function getActivePatterns() { return []; }
+export function getPatternCategories() { return []; }

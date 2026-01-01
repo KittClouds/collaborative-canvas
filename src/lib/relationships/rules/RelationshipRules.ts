@@ -5,7 +5,7 @@
  * Uses entity kind constraints for disambiguation.
  */
 
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 // ==================== RELATIONSHIP TYPE DEFINITIONS ====================
 

@@ -2,15 +2,48 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, Selection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '../entities/entityTypes';
+import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '@/lib/types/entityTypes';
 import type { NEREntity } from '../extraction';
 import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import { patternRegistry, type PatternDefinition, type RefKind } from '../refs';
-import { mentionEventQueue } from '../entities/mention-event-queue';
+import { mentionEventQueue } from '@/lib/scanner/mention-event-queue';
 import type { EntityMentionEvent, PositionType } from '../cozo/types';
-import { scannerEventBus, type PatternMatchEvent } from '@/lib/entities/scanner-v3';
-import { computeContentHash } from '@/lib/entities/scanner-v3/core/ChangeDetector';
-import { allProfanityEntityMatcher } from '@/lib/entities/scanner-v3/extractors/AllProfanityEntityMatcher';
+
+// Legacy scanner-v3 stubs (Rust scanner handles this now)
+// This extension is deprecated - use RustSyntaxHighlighter instead
+interface PatternMatchEvent {
+  kind: string;
+  fullMatch: string;
+  position: number;
+  length: number;
+  captures: Record<string, string>;
+  patternId: string;
+  noteId: string;
+  timestamp: number;
+  context: string;
+}
+const scannerEventBus = {
+  emit: (_event: string, _data: any) => { },
+  on: (_event: string, _handler: any) => { },
+};
+function computeContentHash(text: string): string {
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+  return hash.toString(16);
+}
+const allProfanityEntityMatcher = {
+  isInitialized: () => false,
+  findMentions: (_text: string) => [] as Array<{
+    position: number;
+    length: number;
+    entityId: string;
+    kind: string;
+    entity: { id: string; kind: string; label: string };
+  }>,
+  search: (_text: string) => [] as any[],
+};
 
 // Cache for tracking last emitted content hash per note
 // Prevents redundant scanner events when returning to unchanged notes

@@ -1,0 +1,332 @@
+﻿cargo : warning: unused 
+import: `ChangeResult`
+At line:1 char:1
++ cargo test 2>&1 | 
+Out-File -FilePath 
+test_error.txt -Encoding 
+utf8; G ...
++ ~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (warni  
+  ng: unused import: `Cha   
+ ngeResult`:String) [],     
+RemoteException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+  --> src\scanner\document.r
+s:16:21
+   |
+16 |     ChangeDetector, 
+ChangeResult,
+   |                     
+^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(unused_imports)]` 
+on by default
+
+warning: ambiguous glob 
+re-exports
+  --> 
+src\scanner\mod.rs:11:9
+   |
+11 | pub use core::*;
+   |         ^^^^^^^ the 
+name `ScanResult` in the 
+type namespace is first 
+re-exported here
+...
+19 | pub use document::*;
+   |         ----------- 
+but the name `ScanResult` 
+in the type namespace is 
+also re-exported here
+   |
+   = note: `#[warn(ambiguous
+_glob_reexports)]` on by 
+default
+
+warning: ambiguous glob 
+re-exports
+  --> 
+src\scanner\mod.rs:11:9
+   |
+11 | pub use core::*;
+   |         ^^^^^^^ the 
+name `ScanStats` in the 
+type namespace is first 
+re-exported here
+...
+19 | pub use document::*;
+   |         ----------- 
+but the name `ScanStats` in 
+the type namespace is also 
+re-exported here
+
+warning: unused variable: 
+`static_method_of`
+   --> src\resorank\scorer.r
+s:698:20
+    |
+698 |     #[wasm_bindgen(sta
+tic_method_of = 
+ResoRankScorer, js_name = 
+fromJSON)]
+    |                    
+^^^^^^^^^^^^^^^^ help: if 
+this is intentional, prefix 
+it with an underscore: 
+`_static_method_of`
+    |
+    = note: 
+`#[warn(unused_variables)]` 
+on by default
+
+warning: field 
+`original_pattern` is never 
+read
+  --> 
+src\scanner\reflex.rs:25:5
+   |
+21 | struct PatternMetadata 
+{
+   |        --------------- 
+field in this struct
+...
+25 |     original_pattern: 
+String, // Preserve 
+original case for output
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`PatternMetadata` has 
+derived impls for the 
+traits `Debug` and `Clone`, 
+but these are intentionally 
+ignored during dead code 
+analysis
+   = note: 
+`#[warn(dead_code)]` on by 
+default
+
+warning: field 
+`pattern_text` is never read
+  --> 
+src\scanner\implicit.rs:41:5
+   |
+37 | struct PatternMeta {
+   |        ----------- 
+field in this struct
+...
+41 |     pattern_text: 
+String,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `PatternMeta` 
+has derived impls for the 
+traits `Clone` and `Debug`, 
+but these are intentionally 
+ignored during dead code 
+analysis
+
+warning: `kittcore` (lib) 
+generated 6 warnings (run 
+`cargo fix --lib -p 
+kittcore` to apply 1 
+suggestion)
+warning: unused variable: 
+`result`
+   --> 
+src\scanner\syntax.rs:355:22
+    |
+355 |     fn 
+parse_matches(result: 
+JsValue) -> 
+Vec<SyntaxMatch> {
+    |                      
+^^^^^^ help: if this is 
+intentional, prefix it with 
+an underscore: `_result`
+
+warning: function 
+`parse_matches` is never 
+used
+   --> 
+src\scanner\syntax.rs:355:8
+    |
+355 |     fn 
+parse_matches(result: 
+JsValue) -> 
+Vec<SyntaxMatch> {
+    |        ^^^^^^^^^^^^^
+
+warning: `kittcore` (lib 
+test) generated 8 warnings 
+(6 duplicates)
+    Finished `test` profile 
+[unoptimized + debuginfo] 
+target(s) in 0.12s
+     Running unittests 
+src\lib.rs (target\debug\dep
+s\kittcore-43c26ba22c6e2780.
+exe)
+
+running 122 tests
+test resorank::config::tests::test_capacity_estimate ... ok
+test resorank::config::tests::test_corpus_size_classification ... ok
+test resorank::config::tests::test_default_config ... ok
+test resorank::math::tests::test_adaptive_alpha ... ok
+test resorank::math::tests::test_calculate_idf ... ok
+test resorank::incremental::tests::test_reset ... ok
+test resorank::entropy::tests::test_entropy_cache_basic ... ok
+test resorank::entropy::tests::test_query_entropy_stats ... ok
+test resorank::entropy::tests::test_entropy_cache_lru_eviction ... ok
+test resorank::math::tests::test_adaptive_segment_count ... ok
+test resorank::incremental::tests::test_incremental_multi_term ... ok
+test resorank::incremental::tests::test_incremental_single_term ... ok
+test resorank::math::tests::test_normalized_term_frequency ... ok
+test resorank::math::tests::test_pop_count ... ok
+test resorank::math::tests::test_saturate ... ok
+test resorank::math::tests::test_sigmoid ... ok
+test resorank::proximity::tests::test_global_proximity ... ok
+test resorank::proximity::tests::test_global_proximity_no_overlap ... ok
+test resorank::proximity::tests::test_idf_weighted_proximity ... ok
+test resorank::proximity::tests::test_pairwise_proximity ... ok
+test resorank::proximity::tests::test_phrase_detection ... ok
+test resorank::scorer::tests::test_explain_score ... ok
+test resorank::scorer::tests::test_index_and_score ... ok
+test resorank::scorer::tests::test_multi_term_query ... ok
+test resorank::scorer::tests::test_remove_document ... ok
+test resorank::types::tests::test_document_metadata ... ok
+test resorank::scorer::tests::test_search ... ok
+test resorank::types::tests::test_token_metadata ... ok
+test scanner::change::tests::test_check_result ... ok
+test scanner::change::tests::test_different_content_changed ... ok
+test scanner::change::tests::test_empty_text ... ok
+test scanner::change::tests::test_first_check_returns_changed ... ok
+test scanner::change::tests::test_hash_deterministic ... ok
+test scanner::change::tests::test_reset ... ok
+test scanner::change::tests::test_same_content_unchanged ... ok
+test scanner::change::tests::test_skip_count ... ok
+test scanner::change::tests::test_skip_rate ... ok
+test scanner::change::tests::test_whitespace_matters ... ok
+test scanner::core::tests::test_calendar_data_parsing ... ok
+test scanner::core::tests::test_config_defaults ... ok
+test scanner::core::tests::test_entity_data_parsing ... ok
+test scanner::document::tests::test_reset_clears_cache ... ok
+test scanner::document::tests::test_content_hash_returned ... ok
+test scanner::document::tests::test_scan_self_sufficiency_sibling ... ok
+test scanner::document::tests::test_scan_extracts_triples ... ok
+test scanner::document::tests::test_basic_scan_returns_result ... ok
+test scanner::document::tests::test_scan_detects_changes ... ok
+test scanner::document::tests::test_all_timings_populated ... ok
+test scanner::implicit::tests::test_case_insensitive_matching ... ok
+test scanner::implicit::tests::test_add_entity_incremental ... ok
+test scanner::implicit::tests::test_alias_matching ... ok
+test scanner::implicit::tests::test_hydrate_and_find_single_entity ... ok
+test scanner::implicit::tests::test_multiple_entities_same_text ... ok
+test scanner::implicit::tests::test_clear ... ok
+test scanner::implicit::tests::test_empty_text ... ok
+test scanner::implicit::tests::test_no_match ... ok
+test scanner::document::tests::test_scan_extracts_implicit_mentions ... ok
+test scanner::document::tests::test_scan_self_sufficiency ... ok
+test scanner::reflex::tests::test_case_insensitive ... ok
+test scanner::implicit::tests::test_overlapping_keeps_longer ... ok
+test scanner::reflex::tests::test_exact_match ... ok
+test scanner::reflex::tests::test_leftmost_longest ... ok
+test scanner::reflex::tests::test_contains_any ... ok
+test scanner::reflex::tests::test_alias_matching ... ok
+test scanner::implicit::tests::test_pattern_count ... ok
+test scanner::document::tests::test_scan_extracts_relations ... ok
+test scanner::document::tests::test_scan_skips_unchanged ... ok
+test scanner::reflex::tests::test_multiple_matches ... ok
+test scanner::relation::tests::test_bidirectional_custom_pattern ... ok
+test scanner::relation::tests::test_bidirectional_sibling_both_directions ... ok
+test scanner::relation::tests::test_mega_dictionary_family ... ok
+test scanner::relation::tests::test_mega_dictionary_scifi ... ok
+test scanner::relation::tests::test_custom_patterns ... ok
+test scanner::relation::tests::test_bidirectional_spouse_symmetric ... ok
+test scanner::relation::tests::test_basic_extraction ... ok
+test scanner::relation::tests::test_mega_dictionary_fantasy ... ok
+test scanner::document::tests::test_skip_rate_tracked ... ok
+test scanner::relation::tests::test_type_constraint_rejects_mismatched ... ok
+test scanner::relation::tests::test_non_bidirectional_single_direction ... ok
+test scanner::relation::tests::test_no_relations_when_far_apart ... ok
+test scanner::relation::tests::test_type_constraint_allows_no_kind ... ok
+test scanner::relation::tests::test_type_constraint_case_insensitive ... ok
+test scanner::relation::tests::test_type_constraint_filters_correctly ... ok
+test scanner::relation::tests::test_pattern_count ... ok
+test scanner::syntax::tests::test_entity_mixed_case_kind ... ok
+test scanner::syntax::tests::test_entity_lowercase_kind ... ok
+test scanner::syntax::tests::test_entity_bang_prefix_pipe ... ok
+test scanner::syntax::tests::test_entity_hash_prefix_pipe_separator ... ok
+test scanner::syntax::tests::test_entity_with_hyphen_in_kind ... ok
+test scanner::syntax::tests::test_entity_at_prefix ... ok
+test scanner::syntax::tests::test_backlink ... ok
+test scanner::syntax::tests::test_entity_with_subtype ... ok
+test scanner::syntax::tests::test_entity_pipe_separator_with_subtype ... ok
+test scanner::syntax::tests::test_inline_relation ... ok
+test scanner::syntax::tests::test_inline_relation_at_prefix ... ok
+test scanner::syntax::tests::test_entity_syntax ... ok
+test scanner::syntax::tests::test_tag_not_html_entity ... ok
+test scanner::syntax::tests::test_inline_relation_flexible ... ok
+test scanner::temporal::tests::test_dictionary_stats ... ok
+test scanner::syntax::tests::test_triple_flexible_syntax ... ok
+test scanner::syntax::tests::test_tags ... ok
+test scanner::syntax::tests::test_mentions ... ok
+test scanner::temporal::tests::test_connector_direction ... ok
+test scanner::temporal::tests::test_era_marker ... ok
+test scanner::document::tests::test_combined_extraction ... FAILED
+test scanner::triple::tests::test_basic_triple_extraction ... ok
+test scanner::temporal::tests::test_narrative_marker ... ok
+test scanner::temporal::tests::test_weekday_detection ... ok
+test scanner::syntax::tests::test_triple_lowercase_kinds ... ok
+test scanner::triple::tests::test_empty_text ... ok
+test scanner::temporal::tests::test_relative_phrase ... ok
+test scanner::triple::tests::test_case_preserved ... ok
+test scanner::triple::tests::test_malformed_triples_ignored ... ok
+test scanner::triple::tests::test_multi_word_entities ... ok
+test scanner::triple::tests::test_no_triples ... ok
+test scanner::triple::tests::test_multiple_triples ... ok
+test scanner::triple::tests::test_position_tracking ... ok
+test scanner::triple::tests::test_whitespace_around_components ... ok
+test scanner::triple::tests::test_raw_text_preserved ... ok
+test scanner::syntax::tests::test_wikilink_simple ... ok
+test scanner::syntax::tests::test_triple_syntax ... ok
+test scanner::syntax::tests::test_wikilink_with_label ... ok
+
+failures:
+
+---- scanner::document::tests::test_combined_extraction stdout ----
+thread 'scanner::document::tests::test_combined_extraction' panicked at src\scanner\document.rs:509:9:
+assertion `left == right` failed
+  left: 4
+ right: 2
+stack backtrace:
+   0: std::panicking::begin_panic_handler
+             at /rustc/9fc6b43126469e3858e2fe86cafb4f0fd5068869\library/std\src\panicking.rs:665
+   1: core::panicking::panic_fmt
+             at /rustc/9fc6b43126469e3858e2fe86cafb4f0fd5068869\library/core\src\panicking.rs:76
+   2: core::panicking::assert_failed_inner
+             at /rustc/9fc6b43126469e3858e2fe86cafb4f0fd5068869\library/core\src\panicking.rs:413
+   3: core::panicking::assert_failed<usize,usize>
+             at /rustc/9fc6b43126469e3858e2fe86cafb4f0fd5068869\library\core\src\panicking.rs:373
+   4: kittcore::scanner::document::tests::test_combined_extraction
+             at .\src\scanner\document.rs:509
+   5: kittcore::scanner::document::tests::test_combined_extraction::closure$0
+             at .\src\scanner\document.rs:491
+   6: core::ops::function::FnOnce::call_once<kittcore::scanner::document::tests::test_combined_extraction::closure_env$0,tuple$<> >
+             at /rustc/9fc6b43126469e3858e2fe86cafb4f0fd5068869\library\core\src\ops\function.rs:250
+   7: core::ops::function::FnOnce::call_once
+             at /rustc/9fc6b43126469e3858e2fe86cafb4f0fd5068869\library/core\src\ops\function.rs:250
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    scanner::document::tests::test_combined_extraction
+
+test result: FAILED. 121 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+error: test failed, to 
+rerun pass `--lib`

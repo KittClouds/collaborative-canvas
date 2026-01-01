@@ -1,6 +1,6 @@
-import { EntityRegistryAdapterAdapter } from '@/lib/cozo/graph/adapters/EntityRegistryAdapterAdapter';
+import { EntityRegistryAdapter } from '@/lib/cozo/graph/adapters/EntityRegistryAdapter';
 import { unifiedRegistry } from '@/lib/cozo/graph/UnifiedRegistry';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 export interface MigrationResult {
   success: boolean;
@@ -103,10 +103,11 @@ export async function migrateEntityRegistryAdapterToCozo(
         const registryData = {
           entities: allEntities.map(e => ({
             ...e,
+            ...e,
             mentionsByNote: Object.fromEntries(e.mentionsByNote),
-            noteAppearances: Array.from(e.noteAppearances),
-            firstMentionDate: e.firstMentionDate?.toISOString(),
-            lastSeenDate: e.lastSeenDate?.toISOString(),
+            noteAppearances: Array.from(e.mentionsByNote.keys()),
+            firstMentionDate: e.createdAt.toISOString(),
+            lastSeenDate: e.lastSeenDate.toISOString(),
           })),
           exportedAt: new Date().toISOString(),
         };
@@ -132,14 +133,14 @@ export async function migrateEntityRegistryAdapterToCozo(
     for (const entity of allEntities) {
       try {
         const kind = mapEntityKind(entity.kind);
-        const noteId = entity.firstMentionNoteId || 'unknown';
+        const noteId = entity.firstNote || 'unknown';
 
         await unifiedRegistry.registerEntity(entity.label, kind, noteId, {
           subtype: entity.subtype,
           aliases: entity.aliases,
           metadata: {
-            ...entity.metadata,
             ...entity.attributes,
+            ...(entity.attributes || {}),
             migratedFrom: 'entity-registry',
             migrationDate: new Date().toISOString(),
             originalTotalMentions: entity.totalMentions,
@@ -192,7 +193,7 @@ export async function getBackupList(): Promise<Array<{ id: string; createdAt: st
 
     request.onsuccess = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      
+
       if (!db.objectStoreNames.contains(BACKUP_STORE_NAME)) {
         db.close();
         resolve([]);

@@ -8,7 +8,7 @@
 
 import { atom, type WritableAtom } from 'jotai';
 import type { FantasyDate } from '@/lib/fantasy-calendar/types';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 // ============================================
 // TYPES

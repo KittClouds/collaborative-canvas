@@ -76,8 +76,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { FolderWithChildren, Note } from "@/types/noteTypes";
-import { ENTITY_COLORS, ENTITY_SUBTYPES, EntityKind, ENTITY_ICONS, getSubtypesForKind } from "@/lib/entities/entityTypes";
-import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName, formatSubtypeFolderName } from "@/lib/entities/titleParser";
+import { ENTITY_COLORS, ENTITY_SUBTYPES, EntityKind, ENTITY_ICONS, getSubtypesForKind } from "@/lib/types/entityTypes";
+import { getDisplayName, parseEntityFromTitle, parseFolderEntityFromName, formatSubtypeFolderName } from "@/lib/utils/titleParser";
 import { useBlueprintHub } from "@/features/blueprint-hub/hooks/useBlueprintHub";
 // useJotaiNotes is already imported below or we should keep one
 import { useJotaiNotes } from "@/hooks/useJotaiNotes";

@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus, Loader2 } from 'lucide-react';
-import { ENTITY_KINDS, ENTITY_COLORS, type EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_KINDS, ENTITY_COLORS, type EntityKind } from '@/lib/types/entityTypes';
 import { entityRegistry } from '@/lib/cozo/graph/adapters';
 
 interface CreateEntityDialogProps {

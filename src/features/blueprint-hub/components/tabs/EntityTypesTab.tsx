@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, ChevronDown, ArrowLeft } from 'lucide-react';
-import { ENTITY_KINDS, ENTITY_COLORS } from '@/lib/entities/entityTypes';
+import { ENTITY_KINDS, ENTITY_COLORS } from '@/lib/types/entityTypes';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 

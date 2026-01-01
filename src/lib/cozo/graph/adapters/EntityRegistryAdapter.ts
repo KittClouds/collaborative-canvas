@@ -9,7 +9,7 @@
  */
 
 import { unifiedRegistry, type CozoEntity } from '../UnifiedRegistry';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 // ==================== LEGACY TYPES (from old EntityRegistry) ====================
 

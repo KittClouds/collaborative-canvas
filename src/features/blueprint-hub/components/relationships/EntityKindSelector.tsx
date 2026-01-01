@@ -5,7 +5,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ENTITY_KINDS, ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_KINDS, ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/types/entityTypes';
 
 interface EntityKindSelectorProps {
   value: string;

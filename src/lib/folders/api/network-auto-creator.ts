@@ -15,7 +15,7 @@ import { NETWORK_INSTANCE_QUERIES } from '@/lib/cozo/schema/layer2-network-insta
 import { NETWORK_MEMBERSHIP_QUERIES } from '@/lib/cozo/schema/layer2-network-membership';
 import { NETWORK_RELATIONSHIP_QUERIES } from '@/lib/cozo/schema/layer2-network-relationship';
 import { FOLDER_HIERARCHY_QUERIES } from '@/lib/cozo/schema/layer2-folder-hierarchy';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 // Generate UUID v7 for new entities
 function generateId(): string {

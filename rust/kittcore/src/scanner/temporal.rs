@@ -99,6 +99,52 @@ pub struct TemporalMention {
     pub metadata: Option<TemporalMetadata>,
 }
 
+/// Check if a match is at word boundaries (not inside a larger word)
+/// Returns true if the match should be kept, false if it's inside a word
+fn is_word_boundary(text: &str, start: usize, end: usize) -> bool {
+    let text_chars: Vec<char> = text.chars().collect();
+    
+    // Convert byte positions to char positions
+    let mut byte_pos = 0;
+    let mut start_char_idx = None;
+    let mut end_char_idx = None;
+    
+    for (i, c) in text_chars.iter().enumerate() {
+        if byte_pos == start {
+            start_char_idx = Some(i);
+        }
+        if byte_pos == end {
+            end_char_idx = Some(i);
+        }
+        byte_pos += c.len_utf8();
+    }
+    // Handle end at text boundary
+    if end == text.len() {
+        end_char_idx = Some(text_chars.len());
+    }
+    
+    let start_char = start_char_idx.unwrap_or(0);
+    let end_char = end_char_idx.unwrap_or(text_chars.len());
+    
+    // Check character before start (if exists)
+    if start_char > 0 {
+        let before = text_chars[start_char - 1];
+        if before.is_alphanumeric() {
+            return false; // Inside a word
+        }
+    }
+    
+    // Check character after end (if exists)
+    if end_char < text_chars.len() {
+        let after = text_chars[end_char];
+        if after.is_alphanumeric() {
+            return false; // Inside a word
+        }
+    }
+    
+    true
+}
+
 /// Scan result with statistics
 #[derive(Serialize, Deserialize)]
 pub struct TemporalScanResult {
@@ -485,17 +531,26 @@ impl TemporalCortex {
         let mut mentions: Vec<TemporalMention> = Vec::new();
         
         for m in pma.leftmost_find_iter(&lower_text) {
+            let start_pos = m.start();
+            let end_pos = m.end();
+            
+            // Word boundary validation: prevent matching inside words
+            // e.g., "Mon" in "Monkey" or "Part" in "PARTICIPATES"
+            if !is_word_boundary(&lower_text, start_pos, end_pos) {
+                continue;
+            }
+            
             let meta = &self.pattern_meta[m.value()];
-            let matched_text = &text[m.start()..m.end()];
+            let matched_text = &text[start_pos..end_pos];
             
             // Extract metadata based on kind
-            let metadata = self.extract_metadata(meta, text, m.end());
+            let metadata = self.extract_metadata(meta, text, end_pos);
             
             mentions.push(TemporalMention {
                 kind: meta.kind.as_str().to_string(),
                 text: matched_text.to_string(),
-                start: m.start(),
-                end: m.end(),
+                start: start_pos,
+                end: end_pos,
                 confidence: meta.kind.confidence(),
                 metadata: if metadata.weekday_index.is_some() 
                     || metadata.month_index.is_some()
@@ -653,17 +708,25 @@ impl TemporalCortex {
         let mut mentions: Vec<TemporalMention> = Vec::new();
         
         for m in pma.leftmost_find_iter(&lower_text) {
+            let start_pos = m.start();
+            let end_pos = m.end();
+            
+            // Word boundary validation: prevent matching inside words
+            if !is_word_boundary(&lower_text, start_pos, end_pos) {
+                continue;
+            }
+            
             let meta = &self.pattern_meta[m.value()];
-            let matched_text = &text[m.start()..m.end()];
+            let matched_text = &text[start_pos..end_pos];
             
             // Extract metadata based on kind
-            let metadata = self.extract_metadata(meta, text, m.end());
+            let metadata = self.extract_metadata(meta, text, end_pos);
             
             mentions.push(TemporalMention {
                 kind: meta.kind.as_str().to_string(),
                 text: matched_text.to_string(),
-                start: m.start(),
-                end: m.end(),
+                start: start_pos,
+                end: end_pos,
                 confidence: meta.kind.confidence(),
                 metadata: if metadata.weekday_index.is_some() 
                     || metadata.month_index.is_some()

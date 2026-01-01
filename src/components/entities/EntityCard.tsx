@@ -7,7 +7,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ENTITY_COLORS, EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, EntityKind } from '@/lib/types/entityTypes';
 import type { NEREntity } from '@/lib/extraction';
 
 interface EntityCardProps {

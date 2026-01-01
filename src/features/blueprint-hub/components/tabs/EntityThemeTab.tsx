@@ -1,5 +1,5 @@
 import { useEntityTheme } from "@/contexts/EntityThemeContext";
-import { ENTITY_KINDS, EntityKind } from "@/lib/entities/entityTypes";
+import { ENTITY_KINDS, EntityKind } from '@/lib/types/entityTypes';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

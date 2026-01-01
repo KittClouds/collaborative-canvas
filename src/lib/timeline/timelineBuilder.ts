@@ -10,7 +10,7 @@ import {
   TimelineItemModel
 } from '@/types/storyEntities';
 import { TemporalPoint, TemporalSpan } from '@/types/temporal';
-import { ENTITY_COLORS } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS } from '@/lib/types/entityTypes';
 
 /**
  * Format a TemporalPoint for display (moved from TimeParser to avoid dependency)

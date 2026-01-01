@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ENTITY_COLORS, type EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, type EntityKind } from '@/lib/types/entityTypes';
 import type {
   RelationshipDirection,
   RelationshipCardinality,

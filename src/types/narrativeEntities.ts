@@ -3,7 +3,7 @@
  * These entities power the timeline and story organization features.
  */
 
-import type { EntityKind, NarrativeEntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind, NarrativeEntityKind } from '@/lib/types/entityTypes';
 import type { TemporalPoint, TemporalSpan, TimeOfDay, DurationUnit } from './temporal';
 
 /**

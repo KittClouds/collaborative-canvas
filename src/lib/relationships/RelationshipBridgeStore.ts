@@ -12,7 +12,7 @@
 import { generateId } from '@/lib/utils/ids';
 import { RelationshipSource } from '@/lib/relationships/types';
 import type { UnifiedRelationship, RelationshipProvenance } from '@/lib/relationships/types';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type {
     RelationshipInstanceInput,
     RelationshipInstanceUpdate,

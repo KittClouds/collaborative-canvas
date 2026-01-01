@@ -11,7 +11,7 @@
  */
 
 import { v4 as generateId } from 'uuid';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type { RelationshipTypeDef } from '@/features/blueprint-hub/types';
 import type {
     NetworkSchema,

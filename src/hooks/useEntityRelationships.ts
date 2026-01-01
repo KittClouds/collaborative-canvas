@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type { ParsedEntity } from '@/types/factSheetTypes';
 import { RelationshipSource } from '@/lib/relationships/types';
 import type {

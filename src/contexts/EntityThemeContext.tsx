@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ENTITY_COLORS, EntityKind, ENTITY_KINDS } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, EntityKind, ENTITY_KINDS } from '@/lib/types/entityTypes';
 
 // Type for the theme mapping
 export type EntityTheme = Record<EntityKind, string>;

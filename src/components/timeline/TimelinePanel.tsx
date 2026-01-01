@@ -11,7 +11,7 @@ import { TimelineQueryEngine, TimelineQuery, TimelineItem } from '@/lib/timeline
 import { TimelineViewMode, TimelineViewModeSelector } from './TimelineViewModeSelector';
 import { TimelineContent } from './TimelineContent';
 import { NarrativeEntity } from '@/types/narrativeEntities';
-import { EntityKind } from '@/lib/entities/entityTypes';
+import { EntityKind } from '@/lib/types/entityTypes';
 import { generateId } from '@/lib/utils/ids';
 
 export function TimelinePanel() {

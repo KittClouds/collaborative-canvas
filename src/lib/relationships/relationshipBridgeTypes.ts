@@ -5,7 +5,7 @@
  * Bridges Fact Sheets ↔ Blueprint Hub ↔ Networks ↔ SQLite/CozoDB.
  */
 
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type { RelationshipSource } from '@/lib/relationships/types';
 import type { RelationshipDirection, RelationshipCardinality } from '@/features/blueprint-hub/types';
 import type { NetworkKind } from '@/lib/networks/types';

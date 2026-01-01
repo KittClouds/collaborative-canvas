@@ -7,7 +7,8 @@
 
 import { cozoDb } from '../db';
 import { TEMPORAL_MENTION_QUERIES } from '../schema/layer2-temporal-mentions';
-import type { TemporalKind } from '@/lib/entities/scanner-v3/extractors/TemporalAhoMatcher';
+// Temporal kind type (matches Rust TemporalKind)
+type TemporalKind = 'NARRATIVE_MARKER' | 'RELATIVE' | 'CONNECTOR' | 'WEEKDAY' | 'MONTH' | 'TIME_OF_DAY' | 'ERA';
 
 // ==================== TYPES ====================
 

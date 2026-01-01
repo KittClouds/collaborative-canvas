@@ -2,7 +2,7 @@
  * Timeline Relationship Extractor
  * 
  * Extracts temporal relationships (PRECEDES/FOLLOWS/CONCURRENT) from:
- * - Aho-Corasick temporal pattern detection (replaces chrono-node)
+ * - Rust scanner temporal results (replaces TS Aho-Corasick)
  * - Sequential markers (Chapter/Act/Scene)
  * - Relative time expressions
  * - Timeline folder sibling ordering
@@ -10,7 +10,26 @@
  * Supports custom temporal relationship types via Blueprint Hub integration.
  */
 
-import { temporalAhoMatcher, type TemporalMention, type TemporalKind } from '@/lib/entities/scanner-v3/extractors/TemporalAhoMatcher';
+// Temporal detection now happens in Rust. This is a compatibility stub.
+export type TemporalKind = 'NARRATIVE_MARKER' | 'RELATIVE' | 'CONNECTOR' | 'WEEKDAY' | 'MONTH' | 'TIME_OF_DAY' | 'ERA';
+
+export interface TemporalMention {
+    kind: TemporalKind;
+    text: string;
+    start: number;
+    end: number;
+    confidence: number;
+    metadata?: Record<string, any>;
+}
+
+// Stub matcher - actual detection is in Rust DocumentCortex
+const temporalAhoMatcher = {
+    findMentions(_content: string): TemporalMention[] {
+        console.warn('[timeline-extractor] temporalAhoMatcher.findMentions is deprecated. Use Rust scanner results.');
+        return [];
+    }
+};
+
 import { relationshipRegistry, RelationshipSource, type RelationshipInput, type RelationshipProvenance } from '@/lib/relationships';
 import type { TemporalPoint, TimeGranularity, TemporalSpan } from '@/types/temporal';
 import type { Folder, Note } from '@/types/noteTypes';

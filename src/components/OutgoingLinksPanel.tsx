@@ -5,7 +5,7 @@ import { ArrowRight, FileQuestion } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { WikiLink } from '@/lib/linking/LinkIndex';
 import type { Note } from '@/types/noteTypes';
-import { ENTITY_COLORS } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS } from '@/lib/types/entityTypes';
 
 interface OutgoingLinksPanelProps {
   outgoingLinks: WikiLink[];

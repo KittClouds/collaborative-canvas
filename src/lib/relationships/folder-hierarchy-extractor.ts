@@ -10,7 +10,7 @@
 import { folderSchemaRegistry } from '@/lib/folders/schema-registry';
 import { generateId } from '@/lib/utils/ids';
 import type { Folder, Note } from '@/types/noteTypes';
-import type { EntityKind } from '@/lib/entities/entityTypes';
+import type { EntityKind } from '@/lib/types/entityTypes';
 import type { UnifiedRelationship, RelationshipProvenance } from './types';
 import { RelationshipSource } from './types';
 
@@ -26,7 +26,7 @@ export class FolderHierarchyExtractor {
         for (const folder of folders) {
             if (!folder.entityKind) continue;
 
-            const schema = folderSchemaRegistry.getSchema(folder.entityKind, folder.entitySubtype);
+            const schema = folderSchemaRegistry.getSchema(folder.entityKind as EntityKind, folder.entitySubtype);
 
             const childFolders = folders.filter(f => f.parentId === folder.id);
             for (const child of childFolders) {
@@ -55,7 +55,7 @@ export class FolderHierarchyExtractor {
         if (!child.entityKind) return null;
 
         const subfolderDef = schema?.allowedSubfolders.find(
-            sf => sf.entityKind === child.entityKind &&
+            sf => sf.entityKind === (child.entityKind as EntityKind) &&
                 (sf.subtype === undefined || sf.subtype === child.entitySubtype)
         );
 
@@ -113,7 +113,7 @@ export class FolderHierarchyExtractor {
         if (!note.isEntity || !note.entityKind) return null;
 
         const noteTypeDef = schema?.allowedNoteTypes?.find(
-            nt => nt.entityKind === note.entityKind &&
+            nt => nt.entityKind === (note.entityKind as EntityKind) &&
                 (nt.subtype === undefined || nt.subtype === note.entitySubtype)
         );
 
@@ -191,9 +191,9 @@ export class FolderHierarchyExtractor {
     inferInheritedKind(item: Note | Folder, ancestorFolders: Folder[]): EntityKind | undefined {
         for (const ancestor of ancestorFolders) {
             if (ancestor.entityKind) {
-                const schema = folderSchemaRegistry.getSchema(ancestor.entityKind);
+                const schema = folderSchemaRegistry.getSchema(ancestor.entityKind as EntityKind);
                 if (schema?.propagateKindToChildren) {
-                    return ancestor.entityKind;
+                    return ancestor.entityKind as EntityKind;
                 }
             }
         }

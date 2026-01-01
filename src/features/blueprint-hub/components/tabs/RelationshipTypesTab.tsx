@@ -37,7 +37,7 @@ import { useEntitySelectionSafe } from '@/contexts/EntitySelectionContext';
 import { useEntityRelationships } from '@/hooks/useEntityRelationships';
 import { useRelationshipTypes } from '../../hooks/useRelationshipTypes';
 import { useBlueprintHubContext } from '../../context/BlueprintHubContext';
-import { ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/entities/entityTypes';
+import { ENTITY_COLORS, ENTITY_ICONS, type EntityKind } from '@/lib/types/entityTypes';
 import type { ParsedEntity } from '@/types/factSheetTypes';
 import type {
   GroupedRelationships,

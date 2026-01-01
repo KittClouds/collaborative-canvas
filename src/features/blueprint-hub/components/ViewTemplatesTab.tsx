@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, ArrowLeft } from 'lucide-react';
-import { ENTITY_KINDS } from '@/lib/entities/entityTypes';
+import { ENTITY_KINDS } from '@/lib/types/entityTypes';
 
 interface ViewTemplatesTabProps {
   isLoading: boolean;
