@@ -189,8 +189,11 @@ export const RustSyntaxHighlighter = Extension.create<RustSyntaxOptions>({
                     },
 
                     apply(tr, oldDecorations, oldState, newState) {
-                        // CRITICAL: Only re-highlight on content change, not cursor movement
-                        if (!tr.docChanged) {
+                        // Check for forced rescan (e.g., after entity hydration)
+                        const forceRescan = tr.getMeta('entityHydration') || tr.getMeta('forceRescan');
+
+                        // CRITICAL: Only re-highlight on content change OR forced rescan
+                        if (!tr.docChanged && !forceRescan) {
                             return oldDecorations.map(tr.mapping, tr.doc);
                         }
 
@@ -200,12 +203,19 @@ export const RustSyntaxHighlighter = Extension.create<RustSyntaxOptions>({
 
                         const text = extractDocText(newState.doc);
 
-                        // Skip if text hasn't changed (can happen with non-text changes)
-                        if (text === lastDocText) {
+                        // Skip if text hasn't changed AND this isn't a forced rescan
+                        if (text === lastDocText && !forceRescan) {
                             return oldDecorations.map(tr.mapping, tr.doc);
                         }
 
                         lastDocText = text;
+
+                        // Invalidate cache on forced rescan to get fresh entity matches
+                        if (forceRescan) {
+                            const noteId = resolveNoteId(options.currentNoteId);
+                            highlighterBridge.invalidateCache(noteId);
+                        }
+
                         const noteId = resolveNoteId(options.currentNoteId);
                         const result = highlighterBridge.highlight(text, noteId);
 

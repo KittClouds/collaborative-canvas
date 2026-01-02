@@ -20,16 +20,27 @@ export type {
 } from './bridge';
 
 // Import the actual Rust bridge
-import { rustScanner, type ScanResult, type EntityDefinition } from './bridge';
+import {
+    conductorBridge,
+    type ScanResult,
+    type EntityDefinition
+} from './bridge';
 
 // Persistence layers
 import { persistTemporalMentions, clearTemporalMentions } from './temporal-persistence';
+
+import { regexEntityParser } from '@/lib/utils/regex-entity-parser';
+import type { DocumentConnections, EntityReference, Triple } from '@/lib/types/entityTypes';
 
 // Track last scanned text for context extraction
 const lastScannedText = new Map<string, string>();
 
 class ScannerFacade {
     private initialized = false;
+
+    private get activeScanner() {
+        return conductorBridge;
+    }
 
     /**
      * Initialize the Rust scanner and wire up persistence
@@ -38,7 +49,7 @@ class ScannerFacade {
         if (this.initialized) return;
 
         // Initialize WASM
-        await rustScanner.initialize();
+        await this.activeScanner.initialize();
 
         // Hydrate with registered entities
         const entities = await entityRegistry.getAllEntities();
@@ -48,10 +59,10 @@ class ScannerFacade {
             kind: e.kind,
             aliases: e.aliases || [],
         }));
-        await rustScanner.hydrateEntities(defs);
+        await this.activeScanner.hydrateEntities(defs);
 
         // Wire up persistence handlers
-        rustScanner.onResult(async (noteId, result) => {
+        this.activeScanner.onResult(async (noteId, result) => {
             if (result.stats.was_skipped) return;
 
             // Persist temporal mentions
@@ -94,7 +105,7 @@ class ScannerFacade {
             }
 
             // Log all extraction results
-            console.log(`[ScannerFacade] Scan complete:`, {
+            console.log(`[ScannerFacade] Scan complete (Mode: Conductor):`, {
                 implicit: result.stats.implicit_found,
                 relations: result.stats.relations_found,
                 triples: result.stats.triples_found,
@@ -111,7 +122,7 @@ class ScannerFacade {
         });
 
         this.initialized = true;
-        console.log('[ScannerFacade] Initialized with', defs.length, 'entities');
+        console.log(`[ScannerFacade] Initialized with ${defs.length} entities (Mode: Conductor)`);
     }
 
     /**
@@ -122,7 +133,7 @@ class ScannerFacade {
             console.warn('[ScannerFacade] Not initialized, cannot hydrate entities');
             return;
         }
-        await rustScanner.hydrateEntities(entities);
+        await this.activeScanner.hydrateEntities(entities);
         console.log(`[ScannerFacade] Re-hydrated with ${entities.length} entities`);
     }
 
@@ -132,7 +143,7 @@ class ScannerFacade {
     async hydrateTemporal(calendarId: string): Promise<void> {
         if (!this.initialized) return;
         const dictionary = TimeRegistry.getCalendarDictionary(calendarId);
-        await rustScanner.hydrateCalendar(dictionary);
+        await this.activeScanner.hydrateCalendar(dictionary);
     }
 
     /**
@@ -144,7 +155,7 @@ class ScannerFacade {
             return;
         }
         lastScannedText.set(noteId, text);
-        rustScanner.scan(noteId, text, []);
+        this.activeScanner.scan(noteId, text, []);
     }
 
     /**
@@ -153,28 +164,28 @@ class ScannerFacade {
     scanImmediate(noteId: string, text: string): ScanResult | null {
         if (!this.initialized) return null;
         lastScannedText.set(noteId, text);
-        return rustScanner.scanImmediate(noteId, text, []);
+        return this.activeScanner.scanImmediate(noteId, text, []);
     }
 
     /**
      * Register a result handler
      */
     onResult(handler: (noteId: string, result: ScanResult) => void): () => void {
-        return rustScanner.onResult(handler);
+        return this.activeScanner.onResult(handler);
     }
 
     /**
      * Check if ready
      */
     isReady(): boolean {
-        return this.initialized && rustScanner.isReady();
+        return this.initialized && this.activeScanner.isReady();
     }
 
     /**
      * Shutdown
      */
     shutdown(): void {
-        rustScanner.shutdown();
+        this.activeScanner.shutdown();
         this.initialized = false;
         console.log('[ScannerFacade] Shutdown');
     }
@@ -182,3 +193,105 @@ class ScannerFacade {
 
 // Singleton
 export const scannerFacade = new ScannerFacade();
+
+// =============================================================================
+// Legacy Utilities (Migrated)
+// =============================================================================
+
+/**
+ * Parse connections (tags, mentions, links) from a document
+ * Uses ScannerFacade (Rust) + RegexEntityParser (Utils)
+ */
+export function parseNoteConnectionsFromDocument(content: any): DocumentConnections {
+    const text = extractText(content);
+    const noteId = 'temp'; // We just want the connections
+
+    const entities: EntityReference[] = [];
+    const triples: Triple[] = [];
+    const wikilinks: string[] = [];
+    const tags: string[] = [];
+    const mentions: string[] = [];
+
+    // 1. Explicit Entities ([KIND|Label])
+    const explicitEntities = regexEntityParser.parseFromText(text);
+    for (const entity of explicitEntities) {
+        entities.push({
+            kind: entity.kind,
+            label: entity.label,
+            subtype: entity.subtype,
+            attributes: entity.metadata
+        });
+    }
+
+    // 2. Implicit Entities & Triples (Rust Scanner)
+    // Safe fallback: Only run if scanner is ready. If not, we just return explicit entities.
+    if (scannerFacade.isReady()) {
+        const scanResult = scannerFacade.scanImmediate(noteId, text);
+        if (scanResult) {
+            // Implicit Mentions
+            for (const mention of scanResult.implicit) {
+                // Avoid duplicates with explicit entities
+                const exists = entities.some(e => e.label === mention.entity_label && e.kind === mention.entity_kind);
+                if (!exists) {
+                    entities.push({
+                        kind: mention.entity_kind as any,
+                        label: mention.entity_label,
+                    });
+                }
+            }
+
+            // Triples
+            for (const triple of scanResult.triples) {
+                triples.push({
+                    subject: { label: triple.source, kind: 'CONCEPT' },
+                    predicate: triple.predicate,
+                    object: { label: triple.target, kind: 'CONCEPT' }
+                });
+            }
+        }
+    }
+
+    // 3. Regex for WikiLinks, Tags, Mentions (Legacy patterns)
+    const linkRegex = /\[\[([^\]]+)\]\]/g;
+    const tagRegex = /#([\w-]+)/g;
+    const mentionRegex = /@([\w-]+)/g;
+
+    let match;
+    while ((match = linkRegex.exec(text)) !== null) {
+        wikilinks.push(match[1]);
+    }
+    while ((match = tagRegex.exec(text)) !== null) {
+        tags.push(match[1]);
+    }
+    while ((match = mentionRegex.exec(text)) !== null) {
+        mentions.push(match[1]);
+    }
+
+    return {
+        tags,
+        mentions,
+        links: [],
+        wikilinks,
+        entities,
+        triples,
+        backlinks: []
+    };
+}
+
+/**
+ * Extract plain text from TipTap JSONContent
+ */
+function extractText(node: any): string {
+    if (!node) return '';
+    if (typeof node === 'string') return node;
+
+    if (node.type === 'text' && node.text) {
+        return node.text;
+    }
+
+    if (node.content && Array.isArray(node.content)) {
+        return node.content.map(extractText).join('\n');
+    }
+
+    return '';
+}

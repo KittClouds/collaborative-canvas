@@ -7,6 +7,7 @@ pub mod implicit;
 pub mod triple;
 pub mod change;
 pub mod document;
+pub mod conductor;
 
 pub use core::*;
 pub use reflex::*;
@@ -17,6 +18,7 @@ pub use implicit::*;
 pub use triple::*;
 pub use change::*;
 pub use document::*;
+pub use conductor::*;
 
 
 

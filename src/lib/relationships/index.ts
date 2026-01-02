@@ -41,10 +41,6 @@ export interface RelationshipPattern {
 }
 
 // Stub functions for API compatibility (Rust handles extraction now)
-export function getRelationshipExtractor() {
-    console.warn('[relationships] getRelationshipExtractor() is deprecated. Use Rust scanner.');
-    return null;
-}
 
 export function matchVerbPatterns() { return []; }
 export function refreshPatternsFromStorage() { return Promise.resolve(); }

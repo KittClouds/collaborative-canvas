@@ -149,80 +149,118 @@ const DEFAULT_CONFIG: RustScannerConfig = {
 };
 
 // =============================================================================
-// RustScanner Class
+// ConductorBridge - Wrapper for Rust ScanConductor
 // =============================================================================
 
 /**
- * Thin bridge to Rust DocumentCortex
+ * ConductorBridge - Wrapper for Rust ScanConductor
+ * 
+ * Key differences from RustScanner:
+ * 1. Built-in ready-signal: `scan()` returns null until hydrated
+ * 2. `onReady()` callback fires when init + hydration complete
+ * 3. State machine: Uninitialized → Initialized → Ready
  */
-export class RustScanner {
-    private cortex: any | null = null; // Will be DocumentCortex when WASM is loaded
-    private isInitialized = false;
+export class ConductorBridge {
+    private conductor: any = null; // Will be ScanConductor when WASM loaded
+    private ready = false;
+    private readyCallbacks: Array<() => void> = [];
     private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    private config: RustScannerConfig;
     private resultHandlers: Array<(noteId: string, result: ScanResult) => void> = [];
+    private config: RustScannerConfig;
 
     constructor(config: Partial<RustScannerConfig> = {}) {
         this.config = { ...DEFAULT_CONFIG, ...config };
     }
 
     /**
-     * Initialize WASM and create DocumentCortex instance
+     * Initialize WASM and create ScanConductor instance
      */
     async initialize(): Promise<void> {
-        if (this.isInitialized) return;
+        if (this.conductor) return;
 
         try {
-            // Dynamic import of WASM module
             const wasm = await import(
                 /* webpackIgnore: true */
                 '@kittcore/wasm'
             );
-            await wasm.default(); // Initialize WASM
-            this.cortex = new wasm.DocumentCortex();
-            this.isInitialized = true;
-            console.log('[RustScanner] Initialized');
+            await wasm.default();
+            this.conductor = new wasm.ScanConductor();
+            this.conductor.init();
+            console.log('[ConductorBridge] Initialized, state:', this.conductor.stateName());
         } catch (error) {
-            console.error('[RustScanner] Failed to initialize WASM:', error);
+            console.error('[ConductorBridge] Failed to initialize:', error);
             throw error;
         }
     }
 
     /**
-     * Check if scanner is ready
+     * Check if fully ready (initialized + hydrated)
      */
     isReady(): boolean {
-        return this.isInitialized && this.cortex !== null;
+        return this.ready && this.conductor?.isReady();
     }
 
     /**
-     * Hydrate with entities for implicit mention detection
+     * Get current state name
+     */
+    getStateName(): string {
+        return this.conductor?.stateName() ?? 'not-initialized';
+    }
+
+    /**
+     * Subscribe to ready event (fires once after first hydration)
+     */
+    onReady(callback: () => void): () => void {
+        if (this.ready) {
+            // Already ready, fire immediately
+            callback();
+        } else {
+            this.readyCallbacks.push(callback);
+        }
+        return () => {
+            const idx = this.readyCallbacks.indexOf(callback);
+            if (idx >= 0) this.readyCallbacks.splice(idx, 1);
+        };
+    }
+
+    /**
+     * Hydrate entities. Marks conductor as Ready and fires onReady callbacks.
      */
     async hydrateEntities(entities: EntityDefinition[]): Promise<void> {
-        if (!this.cortex) throw new Error('RustScanner not initialized');
+        if (!this.conductor) {
+            await this.initialize();
+        }
         try {
-            this.cortex.hydrateEntities(entities);
+            this.conductor.hydrateEntities(entities);
+            console.log(`[ConductorBridge] Hydrated ${entities.length} entities, state:`, this.conductor.stateName());
+
+            if (!this.ready && this.conductor.isReady()) {
+                this.ready = true;
+                for (const cb of this.readyCallbacks) {
+                    try { cb(); } catch (e) { console.warn('[ConductorBridge] Ready callback error:', e); }
+                }
+                this.readyCallbacks = [];
+            }
         } catch (error) {
-            console.error('[RustScanner] Failed to hydrate entities:', error);
+            console.error('[ConductorBridge] Hydration failed:', error);
             throw error;
         }
     }
 
     /**
-     * Hydrate with calendar data for custom temporal patterns
+     * Hydrate calendar patterns
      */
     async hydrateCalendar(dictionary: CalendarDictionary): Promise<void> {
-        if (!this.cortex) throw new Error('RustScanner not initialized');
+        if (!this.conductor) await this.initialize();
         try {
-            this.cortex.hydrateCalendar(dictionary.months, dictionary.weekdays, dictionary.eras);
+            this.conductor.hydrateCalendar(dictionary.months, dictionary.weekdays, dictionary.eras);
         } catch (error) {
-            console.error('[RustScanner] Failed to hydrate calendar:', error);
-            throw error;
+            console.error('[ConductorBridge] Calendar hydration failed:', error);
         }
     }
 
     /**
-     * Register a result handler (called after each scan)
+     * Register result handler
      */
     onResult(handler: (noteId: string, result: ScanResult) => void): () => void {
         this.resultHandlers.push(handler);
@@ -233,9 +271,14 @@ export class RustScanner {
     }
 
     /**
-     * Scan a document (debounced)
+     * Scan (debounced). Returns early if not ready.
      */
     scan(noteId: string, text: string, entitySpans: EntitySpan[] = []): void {
+        if (!this.ready) {
+            console.log('[ConductorBridge] Scan skipped - not ready');
+            return;
+        }
+
         const existing = this.debounceTimers.get(noteId);
         if (existing) clearTimeout(existing);
 
@@ -248,66 +291,55 @@ export class RustScanner {
     }
 
     /**
-     * Execute scan immediately (bypasses debounce)
+     * Immediate scan (bypasses debounce)
      */
     scanImmediate(noteId: string, text: string, entitySpans: EntitySpan[] = []): ScanResult | null {
         return this.executeScan(noteId, text, entitySpans);
     }
 
-    /**
-     * Internal scan execution
-     */
     private executeScan(noteId: string, text: string, entitySpans: EntitySpan[]): ScanResult | null {
-        if (!this.cortex) return null;
+        if (!this.conductor) return null;
 
         try {
-            const result = this.cortex.scan(text, entitySpans) as ScanResult;
+            // ScanConductor.scan returns null if not ready
+            const result = this.conductor.scan(text, entitySpans) as ScanResult | null;
 
-            if (!result || !result.stats) {
-                console.warn('[RustScanner] WASM returned null result');
+            if (!result) {
+                console.log('[ConductorBridge] Scan returned null (not ready)');
                 return null;
             }
 
             if (this.config.logPerformance && !result.stats.was_skipped) {
                 const totalMs = result.stats.timings.total_us / 1000;
                 if (totalMs > this.config.slowScanThresholdMs) {
-                    console.warn(`[RustScanner] Slow scan: ${totalMs.toFixed(1)}ms`);
+                    console.warn(`[ConductorBridge] Slow scan: ${totalMs.toFixed(1)}ms`);
                 }
             }
 
             for (const handler of this.resultHandlers) {
-                try {
-                    handler(noteId, result);
-                } catch (e) {
-                    console.error('[RustScanner] Handler error:', e);
-                }
+                try { handler(noteId, result); }
+                catch (e) { console.error('[ConductorBridge] Handler error:', e); }
             }
 
             return result;
         } catch (error) {
-            console.error('[RustScanner] Scan failed:', error);
+            console.error('[ConductorBridge] Scan error:', error);
             return null;
         }
     }
 
     /**
-     * Use skipRate from Rust
-     */
-    getSkipRate(): number {
-        return this.cortex?.skipRate() ?? 0;
-    }
-
-    /**
-     * Shutdown scanner
+     * Shutdown
      */
     shutdown(): void {
         for (const timer of this.debounceTimers.values()) clearTimeout(timer);
         this.debounceTimers.clear();
         this.resultHandlers = [];
-        this.cortex = null;
-        this.isInitialized = false;
+        this.conductor?.reset();
+        this.ready = false;
     }
 }
 
-/** Singleton RustScanner instance */
-export const rustScanner = new RustScanner();
+/** Singleton ConductorBridge instance (only used when USE_CONDUCTOR = true) */
+export const conductorBridge = new ConductorBridge();
+

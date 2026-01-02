@@ -146,6 +146,23 @@ export function useEntitySync(options: UseEntitySyncOptions = {}) {
                     highlighterBridge.hydrateEntities(entityDefs);
 
                     console.log(`[useEntitySync] Synced ${syncedCount} notes, hydrated scanner/highlighter with ${allEntities.length} entities`);
+
+                    // Trigger immediate scan on synced notes now that entities are hydrated
+                    for (const note of state.notes) {
+                        if (syncedNotesRef.current.has(note.id)) {
+                            let plainText = '';
+                            try {
+                                const doc = JSON.parse(note.content);
+                                plainText = extractText(doc);
+                            } catch {
+                                plainText = note.content;
+                            }
+                            if (plainText.length > 0) {
+                                console.log('[useEntitySync] Immediate scan after hydration:', note.id);
+                                scannerFacade.scanImmediate(note.id, plainText);
+                            }
+                        }
+                    }
                 } catch (err) {
                     console.warn('[useEntitySync] Failed to hydrate scanner/highlighter:', err);
                 }

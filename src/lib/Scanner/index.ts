@@ -23,16 +23,14 @@ export type {
     EntitySpan,
 } from './bridge';
 
+// Low-level bridges (for advanced use / A/B testing)
+export {
+    conductorBridge,
+    ConductorBridge,
+} from './bridge';
+
 // Persistence
 export { persistTemporalMentions, clearTemporalMentions } from './temporal-persistence';
-
-// Controller (for scan + persist workflow)
-export {
-    ScannerController,
-    scannerController,
-    type PersistenceResult,
-    type ScanPersistOptions,
-} from './ScannerController';
 
 // Pattern Bridge (for loading relation patterns)
 export {
@@ -42,11 +40,3 @@ export {
     refreshScannerPatterns,
 } from './pattern-bridge';
 
-// React Hooks
-export {
-    useKittCoreScanner,
-    useScannerPipeline,
-    type ScannerStatus,
-    type EntityMatch,
-    type SyntaxMatch,
-} from './hooks';

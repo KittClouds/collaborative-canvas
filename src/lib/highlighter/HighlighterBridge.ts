@@ -43,6 +43,7 @@ class HighlighterBridge {
     private initialized = false;
     private lastResultByNote = new Map<string, HighlightResult>();
     private lastHashByNote = new Map<string, string>();
+    private hydrationCallbacks: Array<() => void> = [];
 
     // Rust cortexes (imported dynamically)
     private DocumentCortex: any = null;
@@ -112,9 +113,35 @@ class HighlighterBridge {
 
             this.cortex.hydrateEntities(entityDefs);
             console.log(`[HighlighterBridge] Hydrated with ${entities.length} entities`);
+
+            // Clear all caches so fresh highlight happens
+            this.clearAllCaches();
+
+            // Notify subscribers that entities were hydrated
+            for (const callback of this.hydrationCallbacks) {
+                try {
+                    callback();
+                } catch (err) {
+                    console.warn('[HighlighterBridge] Hydration callback error:', err);
+                }
+            }
         } catch (error) {
             console.error('[HighlighterBridge] Failed to hydrate entities:', error);
         }
+    }
+
+    /**
+     * Subscribe to hydration events (for triggering editor rescan)
+     * Returns unsubscribe function
+     */
+    onHydration(callback: () => void): () => void {
+        this.hydrationCallbacks.push(callback);
+        return () => {
+            const idx = this.hydrationCallbacks.indexOf(callback);
+            if (idx >= 0) {
+                this.hydrationCallbacks.splice(idx, 1);
+            }
+        };
     }
 
     /**

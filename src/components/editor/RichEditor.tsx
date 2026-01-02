@@ -65,9 +65,6 @@ import { UnifiedSyntaxHighlighter } from '@/lib/extensions/UnifiedSyntaxHighligh
 import { RustSyntaxHighlighter, highlighterBridge } from '@/lib/highlighter';
 import { useNER } from '@/contexts/NERContext';
 
-// A/B Test Flag: Set to true to use Rust highlighter for implicit entities
-const USE_RUST_HIGHLIGHTER = true;
-
 // Scanner 4.0 - Rust-powered scanning via facade
 import { scannerFacade } from '@/lib/scanner';
 
@@ -295,16 +292,14 @@ function createExtensions(
       currentNoteId: getNoteId,  // Pass getter for dynamic noteId resolution
     }),
 
-    // A/B Test: Rust-powered implicit entity highlighting
-    ...(USE_RUST_HIGHLIGHTER ? [
-      RustSyntaxHighlighter.configure({
-        currentNoteId: getNoteId,
-        logPerformance: true,
-        onImplicitClick: (entityId, entityLabel) => {
-          console.log('[RustHighlighter] Clicked:', entityId, entityLabel);
-        },
-      }),
-    ] : []),
+    // Rust-powered implicit entity highlighting
+    RustSyntaxHighlighter.configure({
+      currentNoteId: getNoteId,
+      logPerformance: true,
+      onImplicitClick: (entityId, entityLabel) => {
+        console.log('[RustHighlighter] Clicked:', entityId, entityLabel);
+      },
+    }),
   ];
 }
 
@@ -355,27 +350,55 @@ const RichEditor = ({
     nerEntitiesRef.current = entities;
   }, [entities]);
 
+  // Ref to track if we've done initial scan for this note
+  const initialScanDoneRef = useRef<string | null>(null);
+
   // Initialize Scanner 4.0 (Rust) and Rust highlighter
   useEffect(() => {
+    let cancelled = false;
+
     // Use IIFE to properly await async initialization
     (async () => {
       await scannerFacade.initialize();
+      if (cancelled) return;
       console.log('[RichEditor] Scanner 4.0 (Rust) initialized');
 
-      // A/B Test: Initialize Rust highlighter if enabled
-      if (USE_RUST_HIGHLIGHTER) {
-        const rustReady = await highlighterBridge.initialize();
-        if (rustReady) {
-          console.log('[RichEditor] Rust highlighter initialized');
+      // Initialize Scanner 4.0 (Rust) and Rust highlighter
+      await scannerFacade.initialize();
+      if (cancelled) return;
+      console.log('[RichEditor] Scanner 4.0 (Rust) initialized');
+
+      // Initialize Rust highlighter
+      const rustReady = await highlighterBridge.initialize();
+      if (rustReady && !cancelled) {
+        console.log('[RichEditor] Rust highlighter initialized');
+      }
+
+      // Immediate scan on note open (after scanner is ready)
+      if (selectedNote?.id && selectedNote.content && initialScanDoneRef.current !== selectedNote.id) {
+        try {
+          const doc = JSON.parse(selectedNote.content);
+          const text = extractPlainText(doc);
+          if (text.length > 0) {
+            console.log('[RichEditor] Immediate scan on note open:', selectedNote.id);
+            scannerFacade.scan(selectedNote.id, text);
+            initialScanDoneRef.current = selectedNote.id;
+          }
+        } catch {
+          if (selectedNote.content.length > 0) {
+            scannerFacade.scan(selectedNote.id, selectedNote.content);
+            initialScanDoneRef.current = selectedNote.id;
+          }
         }
       }
     })();
 
     return () => {
+      cancelled = true;
       scannerFacade.shutdown();
       console.log('[RichEditor] Scanner 4.0 shutdown');
     };
-  }, []);
+  }, [selectedNote?.id]);
 
   // Initialize content when note is selected
   useEffect(() => {
@@ -388,6 +411,7 @@ const RichEditor = ({
       previousContentRef.current = initialContent; // Reset change tracking
     }
   }, [selectedNote?.id, selectedNote?.content, initContent]);
+
 
   // Trigger autosave and Rust scanner when debounced content changes
   useEffect(() => {
@@ -526,6 +550,19 @@ const RichEditor = ({
       editor.view.dispatch(editor.state.tr.setMeta('nerUpdate', true));
     }
   }, [entities, editor]);
+
+  // Force highlighter rescan when entities are hydrated (from useEntitySync)
+  useEffect(() => {
+    if (!editor?.view) return;
+
+    const unsubscribe = highlighterBridge.onHydration(() => {
+      console.log('[RichEditor] Entity hydration detected, triggering highlighter rescan');
+      editor.view.dispatch(editor.state.tr.setMeta('entityHydration', true));
+    });
+
+    return unsubscribe;
+  }, [editor]);
+
 
   // Delay bubble menu rendering until editor is fully ready
   const [editorReady, setEditorReady] = useState(false);

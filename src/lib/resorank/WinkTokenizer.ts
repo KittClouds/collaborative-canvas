@@ -8,13 +8,13 @@
  * - Noun phrase detection for multi-word concepts
  * 
  * ARCHITECTURE:
- * - Uses existing WinkProcessor singleton (zero duplication)
+ * - Uses shared Winky singleton (zero duplication)
  * - Drop-in replacement for naive regex tokenization
  * - No changes to ResoRank algorithm internals
  */
 
-import { getWinkProcessor } from '@/lib/scanner/nlp/WinkProcessor';
-import type { Token } from '@/lib/scanner/nlp/WinkProcessor';
+import { getWinkProcessor } from '@/lib/scanner/wink-utils';
+import type { Token } from '@/lib/scanner/wink-utils';
 
 export interface WinkTokenizerOptions {
     lemmatize?: boolean;        // Use lemmas instead of raw text
