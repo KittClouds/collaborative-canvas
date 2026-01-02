@@ -257,6 +257,7 @@ impl ImplicitCortex {
 
         let automaton = AhoCorasickBuilder::new()
             .match_kind(MatchKind::LeftmostLongest)
+            .ascii_case_insensitive(true)  // Match case-insensitively without allocating
             .build(&self.pending_patterns)
             .map_err(|e| format!("Failed to build automaton: {}", e))?;
 
@@ -276,10 +277,10 @@ impl ImplicitCortex {
             return vec![];
         }
 
-        let text_lower = text.to_lowercase();
+        // Automaton is case-insensitive, no lowercase allocation needed
         let mut mentions: Vec<ImplicitMention> = Vec::new();
 
-        for mat in automaton.find_iter(&text_lower) {
+        for mat in automaton.find_iter(text) {
             let pattern_id = mat.pattern().as_usize();
             if let Some(meta) = self.pattern_meta.get(pattern_id) {
                 mentions.push(ImplicitMention {

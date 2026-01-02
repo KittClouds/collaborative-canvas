@@ -138,6 +138,7 @@ impl ScanConductor {
     }
 
     /// Reset conductor to initialized state (clears entities, keeps cortex)
+    /// Also clears incremental state via cortex.reset()
     pub fn reset(&mut self) {
         self.cortex.reset();
         if self.state == State::Ready {
@@ -225,6 +226,12 @@ impl ScanConductor {
     #[wasm_bindgen(js_name = "entityCount")]
     pub fn js_entity_count(&self) -> usize {
         self.entity_count()
+    }
+
+    /// Get incremental stats (JS binding)
+    #[wasm_bindgen(js_name = "incrementalStats")]
+    pub fn js_incremental_stats(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(self.cortex.incremental_stats()).unwrap_or(JsValue::NULL)
     }
 
     /// Reset conductor (JS binding)

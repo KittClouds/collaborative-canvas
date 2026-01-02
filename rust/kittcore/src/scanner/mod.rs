@@ -6,6 +6,7 @@ pub mod relation;
 pub mod implicit;
 pub mod triple;
 pub mod change;
+pub mod incremental;
 pub mod document;
 pub mod conductor;
 

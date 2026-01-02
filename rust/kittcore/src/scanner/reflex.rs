@@ -9,7 +9,7 @@
 //! - Hybrid case-insensitivity (ASCII fast path, Unicode-aware when needed)
 //! - Position-accurate results for highlighting
 
-use daachorse::{DoubleArrayAhoCorasick, DoubleArrayAhoCorasickBuilder, MatchKind};
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
@@ -64,11 +64,11 @@ pub struct ReflexStats {
 /// ReflexCortex - Entity name matching cortex
 /// 
 /// Detects registered entity names and aliases in O(n) time using
-/// Double-Array Aho-Corasick automaton with LeftmostLongest matching.
+/// Aho-Corasick automaton with LeftmostLongest matching.
 #[wasm_bindgen]
 pub struct ReflexCortex {
     /// The built automaton (None until build() is called)
-    automaton: Option<DoubleArrayAhoCorasick<usize>>,
+    automaton: Option<AhoCorasick>,
     
     /// Metadata for each pattern (indexed by pattern value)
     pattern_meta: Vec<PatternMetadata>,
@@ -107,11 +107,6 @@ impl ReflexCortex {
     }
 
     /// Add an entity with optional aliases
-    /// 
-    /// # Arguments
-    /// * `entity_id` - Unique identifier for the entity
-    /// * `label` - Primary entity label
-    /// * `aliases` - Comma-separated aliases (empty string for none)
     #[wasm_bindgen(js_name = addEntity)]
     pub fn add_entity(&mut self, entity_id: &str, label: &str, aliases: &str) {
         // Skip very short labels (high false positive rate)
@@ -143,14 +138,15 @@ impl ReflexCortex {
         match_type: MatchType,
         confidence: f64,
     ) {
+        // Normalize for deduplication only - but we can pass original to builder
+        // if we rely on ascii_case_insensitive
         let normalized = if self.case_insensitive {
             pattern.to_lowercase()
         } else {
             pattern.to_string()
         };
 
-        // Deduplicate: if we've seen this normalized pattern, skip
-        // (or update if new match has higher confidence)
+        // Deduplicate
         if let Some(&existing_idx) = self.seen_patterns.get(&normalized) {
             let existing = &self.pending_meta[existing_idx];
             if confidence > existing.confidence {
@@ -166,6 +162,8 @@ impl ReflexCortex {
         }
 
         let idx = self.pending_patterns.len();
+        // For case-insensitive build, we can pass the normalized (lowercase) pattern
+        // The builder will handle it correctly when we enable ascii_case_insensitive
         self.pending_patterns.push(normalized.clone());
         self.pending_meta.push(PatternMetadata {
             entity_id: entity_id.to_string(),
@@ -177,18 +175,15 @@ impl ReflexCortex {
     }
 
     /// Build the automaton with LeftmostLongest matching
-    /// 
-    /// Must be called after adding all entities and before scanning.
     #[wasm_bindgen(js_name = build)]
     pub fn build(&mut self) -> Result<(), JsValue> {
         if self.pending_patterns.is_empty() {
             return Err(JsValue::from_str("No patterns to build. Add entities first."));
         }
 
-        // Build with LeftmostLongest to prefer longer matches
-        // e.g., "Frodo Baggins" wins over "Frodo" at position 0
-        let pma = DoubleArrayAhoCorasickBuilder::new()
+        let pma = AhoCorasickBuilder::new()
             .match_kind(MatchKind::LeftmostLongest)
+            .ascii_case_insensitive(self.case_insensitive)
             .build(&self.pending_patterns)
             .map_err(|e| JsValue::from_str(&format!("ReflexCortex Build Error: {}", e)))?;
 
@@ -205,8 +200,6 @@ impl ReflexCortex {
     }
 
     /// Scan text for entity mentions
-    /// 
-    /// Returns a JsValue containing an array of EntityMatch objects.
     #[wasm_bindgen(js_name = scan)]
     pub fn scan(&self, text: &str) -> Result<JsValue, JsValue> {
         let pma = self
@@ -214,17 +207,12 @@ impl ReflexCortex {
             .as_ref()
             .ok_or_else(|| JsValue::from_str("Automaton not built. Call build() first."))?;
 
-        let search_text = if self.case_insensitive {
-            text.to_lowercase()
-        } else {
-            text.to_string()
-        };
-
-        // Use leftmost_find_iter for non-overlapping, longest matches
+        // NO ALLOCATION: Scan original text directly!
         let matches: Vec<EntityMatch> = pma
-            .leftmost_find_iter(&search_text)
+            .find_iter(text)
             .map(|m| {
-                let meta = &self.pattern_meta[m.value()];
+                let pattern_id = m.pattern().as_usize();
+                let meta = &self.pattern_meta[pattern_id];
                 EntityMatch {
                     entity_id: meta.entity_id.clone(),
                     start: m.start(),
@@ -249,13 +237,7 @@ impl ReflexCortex {
             None => return false,
         };
 
-        let search_text = if self.case_insensitive {
-            text.to_lowercase()
-        } else {
-            text.to_string()
-        };
-
-        pma.leftmost_find_iter(&search_text).next().is_some()
+        pma.find_iter(text).next().is_some()
     }
 
     /// Get statistics about the cortex
@@ -292,16 +274,12 @@ mod tests {
         fn scan_native(&self, text: &str) -> Option<Vec<EntityMatch>> {
             let pma = self.automaton.as_ref()?;
             
-            let search_text = if self.case_insensitive {
-                text.to_lowercase()
-            } else {
-                text.to_string()
-            };
-
+            // NO ALLOCATION: Scan directly
             let matches: Vec<EntityMatch> = pma
-                .leftmost_find_iter(&search_text)
+                .find_iter(text)
                 .map(|m| {
-                    let meta = &self.pattern_meta[m.value()];
+                    let pattern_id = m.pattern().as_usize();
+                    let meta = &self.pattern_meta[pattern_id];
                     EntityMatch {
                         entity_id: meta.entity_id.clone(),
                         start: m.start(),
@@ -322,8 +300,9 @@ mod tests {
                 return Err("No patterns to build".to_string());
             }
 
-            let pma = DoubleArrayAhoCorasickBuilder::new()
+            let pma = AhoCorasickBuilder::new()
                 .match_kind(MatchKind::LeftmostLongest)
+                .ascii_case_insensitive(self.case_insensitive)
                 .build(&self.pending_patterns)
                 .map_err(|e| format!("Build error: {}", e))?;
 

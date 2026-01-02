@@ -1,6 +1,6 @@
 //! TemporalCortex - Temporal pattern detection via Aho-Corasick
 //!
-//! Detects temporal expressions in O(n) time using CharwiseDoubleArrayAhoCorasick
+//! Detects temporal expressions in O(n) time using Aho-Corasick
 //! for Unicode-safe matching. Supports custom calendar integration (fantasy months,
 //! weekdays, eras) via hydration.
 //!
@@ -13,7 +13,7 @@
 //! - CONNECTOR: before, after, during, etc.
 //! - ERA: "third age", ad, bc, stardate, etc.
 
-use daachorse::{CharwiseDoubleArrayAhoCorasick, CharwiseDoubleArrayAhoCorasickBuilder, MatchKind};
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -284,11 +284,11 @@ const ERA_MARKERS: &[&str] = &[
 
 /// TemporalCortex - Temporal expression detector
 ///
-/// Uses CharwiseDoubleArrayAhoCorasick for Unicode-safe O(n) matching.
+/// Uses AhoCorasick for Unicode-safe O(n) matching.
 /// Supports calendar hydration for fantasy temporal terms.
 #[wasm_bindgen]
 pub struct TemporalCortex {
-    automaton: Option<CharwiseDoubleArrayAhoCorasick<usize>>,
+    automaton: Option<AhoCorasick>,
     pattern_meta: Vec<PatternMeta>,
     
     // Pending patterns before build
@@ -418,6 +418,8 @@ impl TemporalCortex {
         month_idx: Option<u8>,
         direction: Option<String>,
     ) {
+        // We can keep lowercasing here for consistency in storage,
+        // but the builder will handle case insensitivity during matching.
         self.pending_patterns.push(pattern.to_lowercase());
         self.pending_meta.push(PatternMeta {
             kind,
@@ -434,8 +436,9 @@ impl TemporalCortex {
         }
         
         // Use LeftmostLongest for longer phrase matches
-        let pma = CharwiseDoubleArrayAhoCorasickBuilder::new()
+        let pma = AhoCorasickBuilder::new()
             .match_kind(MatchKind::LeftmostLongest)
+            .ascii_case_insensitive(true)
             .build(&self.pending_patterns)
             .expect("Failed to build TemporalCortex automaton");
         
@@ -444,11 +447,6 @@ impl TemporalCortex {
     }
     
     /// Hydrate with custom calendar terms (months, weekdays, eras)
-    ///
-    /// # Arguments
-    /// * `months` - JSON array of month names (ordered)
-    /// * `weekdays` - JSON array of weekday names (ordered)
-    /// * `eras` - JSON array of era names
     #[wasm_bindgen(js_name = hydrateCalendar)]
     pub fn hydrate_calendar(
         &mut self,
@@ -522,25 +520,24 @@ impl TemporalCortex {
     /// Scan text for temporal mentions
     #[wasm_bindgen(js_name = scan)]
     pub fn scan(&self, text: &str) -> Result<JsValue, JsValue> {
-        let start = js_sys::Date::now();
-        
         let pma = self.automaton.as_ref()
             .ok_or_else(|| JsValue::from_str("Automaton not built"))?;
         
-        let lower_text = text.to_lowercase();
+        // NO ALLOCATION: Scan original text directly!
         let mut mentions: Vec<TemporalMention> = Vec::new();
         
-        for m in pma.leftmost_find_iter(&lower_text) {
+        for m in pma.find_iter(text) {
             let start_pos = m.start();
             let end_pos = m.end();
             
-            // Word boundary validation: prevent matching inside words
-            // e.g., "Mon" in "Monkey" or "Part" in "PARTICIPATES"
-            if !is_word_boundary(&lower_text, start_pos, end_pos) {
+            // Word boundary validation checks alphanumeric status of surrounding chars
+            // This works correctly on mixed-case text
+            if !is_word_boundary(text, start_pos, end_pos) {
                 continue;
             }
             
-            let meta = &self.pattern_meta[m.value()];
+            let pattern_id = m.pattern().as_usize();
+            let meta = &self.pattern_meta[pattern_id];
             let matched_text = &text[start_pos..end_pos];
             
             // Extract metadata based on kind
@@ -569,10 +566,10 @@ impl TemporalCortex {
         // Deduplicate overlapping (keep longer)
         mentions = self.dedupe_overlapping(mentions);
         
-        let result = TemporalScanResult {
+        let mut result = TemporalScanResult {
             stats: TemporalScanStats {
                 patterns_matched: mentions.len(),
-                scan_time_ms: js_sys::Date::now() - start,
+                scan_time_ms: 0.0, // Scan time not computed in WASM version to save calls
             },
             mentions,
         };
@@ -602,7 +599,8 @@ impl TemporalCortex {
         
         // Look for narrative number (e.g., "Chapter 5" -> 5)
         if meta.kind == TemporalKind::NarrativeMarker {
-            let after = &text[end_pos..std::cmp::min(end_pos + 15, text.len())];
+            let limit = std::cmp::min(end_pos + 15, text.len());
+            let after = &text[end_pos..limit];
             if let Some(cap) = self.number_re.captures(after) {
                 if let Some(num) = cap.get(1) {
                     if let Ok(n) = num.as_str().parse::<u32>() {
@@ -614,7 +612,8 @@ impl TemporalCortex {
         
         // Look for era year (e.g., "Third Age 3019" -> 3019)
         if meta.kind == TemporalKind::Era {
-            let after = &text[end_pos..std::cmp::min(end_pos + 20, text.len())];
+            let limit = std::cmp::min(end_pos + 20, text.len());
+            let after = &text[end_pos..limit];
             if let Some(cap) = self.number_re.captures(after) {
                 if let Some(num) = cap.get(1) {
                     if let Ok(n) = num.as_str().parse::<f64>() {
@@ -704,19 +703,21 @@ impl TemporalCortex {
             },
         };
         
-        let lower_text = text.to_lowercase();
+        // NO ALLOCATION: Scan original text directly!
         let mut mentions: Vec<TemporalMention> = Vec::new();
         
-        for m in pma.leftmost_find_iter(&lower_text) {
+        for m in pma.find_iter(text) {
             let start_pos = m.start();
             let end_pos = m.end();
             
-            // Word boundary validation: prevent matching inside words
-            if !is_word_boundary(&lower_text, start_pos, end_pos) {
+            // Word boundary validation checks alphanumeric status of surrounding chars
+            // This works correctly on mixed-case text
+            if !is_word_boundary(text, start_pos, end_pos) {
                 continue;
             }
             
-            let meta = &self.pattern_meta[m.value()];
+            let pattern_id = m.pattern().as_usize();
+            let meta = &self.pattern_meta[pattern_id];
             let matched_text = &text[start_pos..end_pos];
             
             // Extract metadata based on kind
@@ -769,7 +770,7 @@ mod tests {
         // Manual test of pattern matching
         let pma = cortex.automaton.as_ref().unwrap();
         let text = "on monday we meet";
-        let matches: Vec<_> = pma.leftmost_find_iter(text).collect();
+        let matches: Vec<_> = pma.find_iter(text).collect();
         
         assert_eq!(matches.len(), 1);
         assert_eq!(&text[matches[0].start()..matches[0].end()], "monday");
@@ -780,7 +781,7 @@ mod tests {
         let cortex = TemporalCortex::new();
         let pma = cortex.automaton.as_ref().unwrap();
         let text = "later that day the hero arrived";
-        let matches: Vec<_> = pma.leftmost_find_iter(text).collect();
+        let matches: Vec<_> = pma.find_iter(text).collect();
         
         assert!(matches.iter().any(|m| &text[m.start()..m.end()] == "later that day"));
     }
@@ -790,7 +791,7 @@ mod tests {
         let cortex = TemporalCortex::new();
         let pma = cortex.automaton.as_ref().unwrap();
         let text = "chapter 5 begins here";
-        let matches: Vec<_> = pma.leftmost_find_iter(text).collect();
+        let matches: Vec<_> = pma.find_iter(text).collect();
         
         assert!(matches.iter().any(|m| &text[m.start()..m.end()] == "chapter"));
     }
@@ -800,7 +801,7 @@ mod tests {
         let cortex = TemporalCortex::new();
         let pma = cortex.automaton.as_ref().unwrap();
         let text = "in the third age 3019";
-        let matches: Vec<_> = pma.leftmost_find_iter(text).collect();
+        let matches: Vec<_> = pma.find_iter(text).collect();
         
         assert!(matches.iter().any(|m| &text[m.start()..m.end()] == "third age"));
     }
@@ -822,7 +823,7 @@ mod tests {
         let cortex = TemporalCortex::new();
         let stats = &cortex.stats;
         
-        assert!(stats.total_patterns >= 100); // Should have 100+ patterns
+        assert!(stats.total_patterns >= 100); 
         assert_eq!(stats.weekdays, 14);
         assert!(stats.months >= 20);
         assert!(stats.relative_phrases >= 40);
