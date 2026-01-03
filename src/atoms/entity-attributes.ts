@@ -6,9 +6,9 @@
  */
 
 import { atom } from 'jotai';
-import { atomFamily } from 'jotai/utils';
 import { dbClient } from '@/lib/db/client/db-client';
 import { generateId } from '@/lib/utils/ids';
+import { atomFamily } from '@/atoms/utils/atomFamily';
 
 // ============================================
 // TYPES

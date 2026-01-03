@@ -695,6 +695,7 @@ impl ResoRankScorer {
     }
 
     /// Deserialize from JSON object
+    #[allow(unused_variables)] // static_method_of is wasm_bindgen attribute syntax, not a variable
     #[wasm_bindgen(static_method_of = ResoRankScorer, js_name = fromJSON)]
     pub fn js_from_json(json_val: JsValue) -> Result<ResoRankScorer, JsValue> {
         let scorer: ResoRankScorer = serde_wasm_bindgen::from_value(json_val)?;

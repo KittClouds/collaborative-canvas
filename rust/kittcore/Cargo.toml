@@ -35,6 +35,21 @@ unicode-segmentation = "1.10"
 petgraph = "0.6"
 lasso = { version = "0.7", features = ["multi-threaded"] }
 
+# Embeddings module (Rust-native ONNX inference for WASM)
+tract-onnx = { version = "0.21", default-features = false }
+tract-core = { version = "0.21", default-features = false }
+ndarray = "0.16"
+# Tokenizers for BERT-style models (Rust port of HuggingFace tokenizers)
+# NOTE: Not using onig feature as it requires C compilation, incompatible with WASM
+tokenizers = { version = "0.19", default-features = false, features = ["unstable_wasm"] }
+# WASM RNG support (required by tokenizers and tract via rand)
+getrandom = { version = "0.2", features = ["js"] }
+
+
+# RAG Pipeline (Phase 1)
+# NOTE: micro-hnsw-wasm requires no_std panic=abort, conflicts with our std usage
+# Using brute-force cosine similarity for now (fast enough for 10k chunks)
+
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
 

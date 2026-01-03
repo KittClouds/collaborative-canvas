@@ -1,4 +1,4 @@
-export type EmbeddingProvider = 'local' | 'gemini' | 'huggingface';
+export type EmbeddingProvider = 'local' | 'gemini' | 'huggingface' | 'rust';
 
 export interface EmbeddingModelDefinition {
     id: string;
@@ -31,19 +31,20 @@ export class EmbeddingModelRegistry {
             'modernbert-base',
             {
                 id: 'modernbert-base',
-                name: 'ModernBERT Base',
+                name: 'MiniLM-L6-v2 (Local)',
                 provider: 'local',
-                dimensions: 768,
-                maxTokens: 8192,
+                dimensions: 384,
+                maxTokens: 512,
                 speed: 'fast',
                 quality: 'high',
                 costPer1kTokens: 0,
                 localModel: {
-                    modelId: 'answerdotai/ModernBERT-base',
+                    // Use Xenova's converted ONNX model for Transformers.js compatibility
+                    modelId: 'Xenova/all-MiniLM-L6-v2',
                     quantization: 'q8',
-                    memoryMB: 150,
+                    memoryMB: 90,
                 },
-                description: 'State-of-the-art local model. Best quality for in-browser.',
+                description: 'all-MiniLM-L6-v2 via Transformers.js (ONNX converted).',
             },
         ],
         [
@@ -95,6 +96,44 @@ export class EmbeddingModelRegistry {
                 description: 'OpenAI embeddings via OpenRouter.',
             },
         ],
+
+        // ===== RUST/WASM MODELS (A/B Testing) =====
+        [
+            'bge-small-rust',
+            {
+                id: 'bge-small-rust',
+                name: 'BGE Small EN v1.5 (Rust)',
+                provider: 'rust' as EmbeddingProvider,
+                dimensions: 384,
+                maxTokens: 512,
+                speed: 'fast',
+                quality: 'high',
+                costPer1kTokens: 0,
+                localModel: {
+                    modelId: 'BAAI/bge-small-en-v1.5',
+                    memoryMB: 130,
+                },
+                description: 'BGE Small via Rust/WASM ONNX (A/B test alternative to TS)',
+            },
+        ],
+        [
+            'modernbert-rust',
+            {
+                id: 'modernbert-rust',
+                name: 'ModernBERT Base (Rust)',
+                provider: 'rust' as EmbeddingProvider,
+                dimensions: 768,
+                maxTokens: 8192,
+                speed: 'medium',
+                quality: 'high',
+                costPer1kTokens: 0,
+                localModel: {
+                    modelId: 'nomic-ai/modernbert-embed-base',
+                    memoryMB: 350,
+                },
+                description: 'ModernBERT via Rust/WASM ONNX (A/B test alternative to TS)',
+            },
+        ],
     ]);
 
     static getModel(id: string): EmbeddingModelDefinition | undefined {
@@ -105,8 +144,12 @@ export class EmbeddingModelRegistry {
         return Array.from(this.models.values()).filter(m => m.provider === 'local');
     }
 
+    static getRustModels(): EmbeddingModelDefinition[] {
+        return Array.from(this.models.values()).filter(m => m.provider === 'rust');
+    }
+
     static getCloudModels(): EmbeddingModelDefinition[] {
-        return Array.from(this.models.values()).filter(m => m.provider !== 'local');
+        return Array.from(this.models.values()).filter(m => m.provider !== 'local' && m.provider !== 'rust');
     }
 
     static getByDimension(dim: number): EmbeddingModelDefinition[] {

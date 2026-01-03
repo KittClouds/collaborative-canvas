@@ -566,7 +566,7 @@ impl TemporalCortex {
         // Deduplicate overlapping (keep longer)
         mentions = self.dedupe_overlapping(mentions);
         
-        let mut result = TemporalScanResult {
+        let result = TemporalScanResult {
             stats: TemporalScanStats {
                 patterns_matched: mentions.len(),
                 scan_time_ms: 0.0, // Scan time not computed in WASM version to save calls

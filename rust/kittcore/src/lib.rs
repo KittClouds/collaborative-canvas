@@ -1,4 +1,4 @@
-//! KittCore: Document Scanner + ResoRank Search Engine
+//! KittCore: Document Scanner + ResoRank Search Engine + Embeddings
 //!
 //! A Rust/WASM implementation of the KittClouds document analysis pipeline.
 //!
@@ -19,9 +19,14 @@
 //! - `types.rs` - Core data structures (TokenMetadata, DocumentMetadata, etc.)
 //! - `scorer.rs` - Main ResoRankScorer implementation
 //!
+//! ## Embeddings (A/B Testing Pipeline)
+//! - `embeddings/` - Rust-native ONNX inference for A/B testing against TypeScript
+//! - Uses tract-onnx for pure Rust WASM-compatible inference
+//! - Supports BGESmallENV15, ModernBERTBase, AllMiniLML6V2
+//!
 //! # Usage (WASM)
 //! ```javascript,ignore
-//! import init, { DocumentCortex } from 'kittcore';
+//! import init, { DocumentCortex, EmbedCortex } from 'kittcore';
 //!
 //! await init();
 //!
@@ -39,22 +44,65 @@
 //!   [{ label: 'Frodo', start: 0, end: 5 }, { label: 'Sam', start: 20, end: 23 }]
 //! );
 //!
-//! // Result contains: relations, triples, implicit mentions, timings
-//! console.log(result.relations);  // Bidirectional: Frodo<->Sam
-//! console.log(result.triples);    // Frodo->OWNS->Ring
-//! console.log(result.implicit);   // Frodo mentions
-//! console.log(result.stats);      // Timing per phase
+//! // === Embeddings (A/B Testing) ===
+//! const embedder = new EmbedCortex();
+//! await embedder.loadModel(modelBytes, tokenizerJson);
+//! const embedding = embedder.embedText("Hello world");
 //! ```
 
 // Scanner modules (Entity System 5.0)
 pub mod scanner;
 pub mod resorank;
+pub mod reality;
+pub mod embeddings;
+pub mod rag;
+pub mod hnsw;
 
-// Public exports - Scanner
-pub use scanner::*;
+// Public exports - Scanner (explicit to avoid incremental collision with resorank)
+pub use scanner::{
+    // Core types
+    document::{DocumentCortex, ScanResult, ScanStats, ScanTimings, ScanError},
+    // Cortex modules
+    reflex::{ReflexCortex, EntityMatch, MatchType, ReflexStats},
+    syntax::{SyntaxCortex, SyntaxMatch, SyntaxKind},
+    temporal::{TemporalCortex, TemporalMention, TemporalScanResult, TemporalScanStats, TemporalKind},
+    relation::{RelationCortex, ExtractedRelation, EntitySpan},
+    implicit::{ImplicitCortex, ImplicitMention, EntityDefinition},
+    triple::{TripleCortex, ExtractedTriple},
+    change::ChangeDetector,
+    conductor::ScanConductor,
+    chunker::{Chunker, Chunk, ChunkKind, ChunkResult, ChunkStats},
+    attacher::{Attacher, Dependency, DependencyGraph, DependencyKind},
+    resolver::{Resolver, NarrativeContext, MentionChain, Gender},
+    dialogue::{DialogueAttributor, QuotePosition},
+    narrative::{NarrativeGraph, NarrativeResult, NarrativeStats},
+};
 
 // Public exports - ResoRank
 pub use resorank::*;
+
+// Public exports - Reality (Semantic Graph Engine)
+pub use reality::{
+    api::RealityCortex,
+    engine::RealityEngine,
+    graph::{ConceptGraph, ConceptNode, ConceptEdge},
+    synapse::SynapseBridge,
+};
+
+// Public exports - Embeddings (A/B Testing Pipeline)
+pub use embeddings::{
+    EmbedCortex,
+    EmbedConfig, OnnxModel, PoolingStrategy, SplittingStrategy,
+    EmbedModel, EmbedResult,
+    TextChunker, Chunk as EmbedChunk,
+};
+
+// Public exports - RAG Pipeline (Phase 1)
+pub use rag::{
+    RagPipeline,
+    RagChunker, Chunk as RagChunk,
+    VectorIndex, SearchResult as VectorSearchResult,
+};
 
 use wasm_bindgen::prelude::*;
 

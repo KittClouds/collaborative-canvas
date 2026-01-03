@@ -48,7 +48,12 @@ export type WorkerMessageType =
   | 'COZO_BULK_INSERT'
   | 'COZO_GET_TABLE_DATA'
   | 'COZO_GET_TABLES'
-  | 'COZO_CLEAR_TABLE';
+  | 'COZO_CLEAR_TABLE'
+  // RAG Chunk operations
+  | 'SAVE_RAG_CHUNKS'
+  | 'GET_RAG_CHUNKS'
+  | 'DELETE_RAG_CHUNKS_BY_NOTE'
+  | 'CLEAR_RAG_CHUNKS';
 
 export interface WorkerMessage {
   id: string;
@@ -408,4 +413,33 @@ export interface CozoBulkInsertPayload {
   table: string;
   columns: string[];
   rows: unknown[][];
+}
+
+// ============================================
+// RAG CHUNK TYPES
+// ============================================
+
+export interface RagChunkRecord {
+  id: string;                // "noteId_chunkIndex"
+  note_id: string;
+  chunk_index: number;
+  text: string;
+  embedding: Uint8Array;     // Float32Array as bytes
+  note_title: string;
+  start: number;
+  end: number;
+  model: string;             // "bge-small" | "modernbert-base"
+  created_at: number;
+}
+
+export interface RagChunkInput {
+  id: string;
+  note_id: string;
+  chunk_index: number;
+  text: string;
+  embedding: ArrayBuffer;    // Will be converted to Uint8Array
+  note_title: string;
+  start: number;
+  end: number;
+  model: string;
 }

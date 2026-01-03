@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import { atomFamily } from 'jotai/utils';
+import { atomFamily } from '@/atoms/utils/atomFamily';
 import { foldersAtom, notesAtom } from '@/atoms/notes';
 
 /**

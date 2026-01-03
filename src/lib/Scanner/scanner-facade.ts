@@ -130,8 +130,7 @@ class ScannerFacade {
      */
     async hydrateEntities(entities: EntityDefinition[]): Promise<void> {
         if (!this.initialized) {
-            console.warn('[ScannerFacade] Not initialized, cannot hydrate entities');
-            return;
+            return;  // Silent return - will be called again when ready
         }
         await this.activeScanner.hydrateEntities(entities);
         console.log(`[ScannerFacade] Re-hydrated with ${entities.length} entities`);
@@ -151,8 +150,7 @@ class ScannerFacade {
      */
     scan(noteId: string, text: string): void {
         if (!this.initialized) {
-            console.warn('[ScannerFacade] Not initialized, skipping scan');
-            return;
+            return;  // Silent return - will be called again when ready
         }
         lastScannedText.set(noteId, text);
         this.activeScanner.scan(noteId, text, []);

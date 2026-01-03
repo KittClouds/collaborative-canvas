@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import { atomFamily } from 'jotai/utils';
+import { atomFamily } from '@/atoms/utils/atomFamily';
 import type { Note } from '@/types/noteTypes';
 
 // Base storage (internal only) - map of Note ID to Note object

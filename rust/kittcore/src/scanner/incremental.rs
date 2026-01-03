@@ -318,7 +318,7 @@ pub fn compute_delta(old_chunks: &[Chunk], new_text: &str) -> Delta {
     // Compare chunks by hash
     let mut old_idx = 0;
     let mut new_idx = 0;
-    let mut cumulative_shift: i64 = 0;
+    let _cumulative_shift: i64 = 0;
     
     while new_idx < new_chunks.len() {
         let new_chunk = &new_chunks[new_idx];
@@ -328,8 +328,8 @@ pub fn compute_delta(old_chunks: &[Chunk], new_text: &str) -> Delta {
         if old_idx < old_chunks.len() {
             let old_chunk = &old_chunks[old_idx];
             
-            if old_chunk.hash == new_chunk.hash {
-                // Matching chunk: advance both
+            if old_chunk.hash == new_chunk.hash && old_chunk.len() == new_chunk.len() {
+                // Matching chunk (hash + length verification for skip hint)
                 found_match = true;
                 old_idx += 1;
             }
@@ -689,5 +689,42 @@ mod tests {
             ..Default::default()
         };
         assert!(!delta.should_use_incremental(), "11 dirty chunks exceeds threshold");
+    }
+
+    #[test]
+    fn test_compute_delta_hash_collision_with_different_lengths() {
+        // Manually construct a scenario where new text produces a chunk with
+        // SAME hash as old chunk, but DIFFERENT length.
+        
+        let old_text = "Short";
+        let mut old_chunks = chunk_text(old_text);
+        
+        // Assert initial state
+        assert_eq!(old_chunks.len(), 1);
+        let _real_hash = old_chunks[0].hash;
+        
+        // MANUALLY modify the old chunk to have the same hash as "LongerString"
+        // but keep its length as "Short".len() (5).
+        // This simulates a hash collision (two different strings, different lengths, same hash).
+        
+        let new_text = "LongerString"; // Length 12
+        let new_chunks_ref = chunk_text(new_text);
+        let target_hash = new_chunks_ref[0].hash;
+        
+        // Set old chunk to have the SAME hash as the new text's chunk
+        old_chunks[0].hash = target_hash;
+        
+        // Verify setup: Hashes match, Lengths differ
+        assert_eq!(old_chunks[0].hash, target_hash);
+        assert_ne!(old_chunks[0].len(), new_chunks_ref[0].len());
+        
+        // Compute delta
+        let delta = compute_delta(&old_chunks, new_text);
+        
+        // EXPECTATION: 
+        // If we ONLY check hash, this will return found_match = true -> 0 dirty chunks.
+        // If we check hash + len, this will mismatch -> 1 dirty chunk.
+        
+        assert_eq!(delta.dirty_chunks, 1, "Should detect change due to length mismatch despite hash collision");
     }
 }

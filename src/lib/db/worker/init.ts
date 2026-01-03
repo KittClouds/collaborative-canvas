@@ -24,7 +24,11 @@ export async function initializeSQLite(): Promise<SQLite3Database> {
 
   sqlite3Instance = await sqlite3InitModule({
     print: console.log,
-    printErr: console.error,
+    // Filter out the harmless wasm init message that looks like an error
+    printErr: (msg: string) => {
+      if (msg.includes('sqlite3_wasm_extra_init')) return;
+      console.error(msg);
+    },
   });
 
   console.log(`[SQLite Worker] SQLite3 version: ${sqlite3Instance.version.libVersion}`);

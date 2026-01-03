@@ -35,6 +35,7 @@ import {
   Sparkles,
   Boxes,
   Settings,
+  Cpu,
 } from "lucide-react";
 import {
   Select,
@@ -44,6 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SemanticSearchPanel } from "@/components/search/SemanticSearchPanel";
+import { RustSearchPanel } from "@/components/search/RustSearchPanel";
 import { EntitiesPanel } from "@/components/EntitiesPanel";
 import { SettingsPanel } from "@/components/settings";
 import { ArboristTreeView } from '@/components/tree/ArboristTreeView';
@@ -603,6 +605,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <span>Entities</span>
               </div>
             </SelectItem>
+            <SelectItem value="rust">
+              <div className="flex items-center gap-2">
+                <Cpu className="h-4 w-4 text-orange-500" />
+                <span className="text-orange-400">🦀 Rust</span>
+              </div>
+            </SelectItem>
           </SelectContent>
         </Select>
       </SidebarHeader>
@@ -665,6 +673,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SemanticSearchPanel />
         ) : activeTab === 'entities' ? (
           <EntitiesPanel />
+        ) : activeTab === 'rust' ? (
+          <RustSearchPanel />
         ) : null}
       </SidebarContent>
 

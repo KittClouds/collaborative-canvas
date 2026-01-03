@@ -12,6 +12,8 @@ import type {
   FTSSearchOptions,
   FTSSearchResult,
   ResoRankCacheEntry,
+  RagChunkInput,
+  RagChunkRecord,
 } from './types';
 import { float32ToBlob } from './types';
 import type { Delta, TransactionResult } from '../sync/types';
@@ -285,6 +287,39 @@ class DBClient {
   async cozoClearTable(table: string): Promise<void> {
     await this.send('COZO_CLEAR_TABLE', table);
   }
+
+  // ============================================
+  // RAG CHUNK PERSISTENCE METHODS
+  // ============================================
+
+  /**
+   * Save RAG chunks to SQLite for persistence
+   */
+  async saveRagChunks(chunks: RagChunkInput[]): Promise<{ saved: number }> {
+    return this.send<{ saved: number }>('SAVE_RAG_CHUNKS', chunks);
+  }
+
+  /**
+   * Get all RAG chunks from SQLite for hydration
+   */
+  async getRagChunks(): Promise<RagChunkRecord[]> {
+    return this.send<RagChunkRecord[]>('GET_RAG_CHUNKS', null);
+  }
+
+  /**
+   * Delete RAG chunks for a specific note
+   */
+  async deleteRagChunksByNote(noteId: string): Promise<void> {
+    await this.send('DELETE_RAG_CHUNKS_BY_NOTE', noteId);
+  }
+
+  /**
+   * Clear all RAG chunks
+   */
+  async clearRagChunks(): Promise<void> {
+    await this.send('CLEAR_RAG_CHUNKS', null);
+  }
 }
 
 export const dbClient = new DBClient();
+

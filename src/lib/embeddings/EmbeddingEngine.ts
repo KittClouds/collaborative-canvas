@@ -7,8 +7,8 @@ import { SettingsManager } from '@/lib/settings/SettingsManager';
 /**
  * Unified Embedding Engine
  * 
- * Provides embeddings from local models (Transformers.js) or cloud APIs (Gemini, HuggingFace)
- * Automatically selects provider based on user settings
+ * Provides embeddings from local models (Transformers.js), cloud APIs (Gemini, HuggingFace),
+ * or Rust/WASM models (via kittcore) for A/B testing.
  */
 export class EmbeddingEngine {
     private static providers: Map<string, IEmbeddingProvider> = new Map();
@@ -44,6 +44,12 @@ export class EmbeddingEngine {
                 case 'gemini':
                     provider = new GeminiEmbeddingProvider(targetModelId);
                     break;
+                case 'rust': {
+                    // Lazy import to avoid loading WASM unless needed
+                    const { RustEmbeddingProvider } = await import('./providers/RustEmbeddingProvider');
+                    provider = new RustEmbeddingProvider(targetModelId);
+                    break;
+                }
                 default:
                     throw new Error(`Unsupported provider: ${model.provider}`);
             }

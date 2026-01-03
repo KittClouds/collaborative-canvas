@@ -22,7 +22,7 @@ struct PatternMetadata {
     entity_id: String,
     match_type: MatchType,
     confidence: f64,
-    original_pattern: String, // Preserve original case for output
+    _original_pattern: String, // Preserved for potential future "show original case" feature
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -155,7 +155,7 @@ impl ReflexCortex {
                     entity_id: entity_id.to_string(),
                     match_type,
                     confidence,
-                    original_pattern: pattern.to_string(),
+                    _original_pattern: pattern.to_string(),
                 };
             }
             return;
@@ -169,7 +169,7 @@ impl ReflexCortex {
             entity_id: entity_id.to_string(),
             match_type,
             confidence,
-            original_pattern: pattern.to_string(),
+            _original_pattern: pattern.to_string(),
         });
         self.seen_patterns.insert(normalized, idx);
     }

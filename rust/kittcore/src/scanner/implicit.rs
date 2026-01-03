@@ -43,7 +43,7 @@ struct PatternMeta {
     entity_id: String,
     entity_label: String,
     entity_kind: String,
-    pattern_text: String,
+    _pattern_text: String,
     is_alias: bool,
     /// Confidence for this pattern (1.0 for primary label, lower for aliases)
     confidence: f64,
@@ -206,7 +206,7 @@ impl ImplicitCortex {
                 entity_id: entity.id.clone(),
                 entity_label: entity.label.clone(),
                 entity_kind: entity.kind.clone(),
-                pattern_text: label_lower.clone(),
+                _pattern_text: label_lower.clone(),
                 is_alias: false,
                 confidence: 1.0,
             });
@@ -219,7 +219,7 @@ impl ImplicitCortex {
                     entity_id: entity.id.clone(),
                     entity_label: entity.label.clone(),
                     entity_kind: entity.kind.clone(),
-                    pattern_text: alias_lower.clone(),
+                    _pattern_text: alias_lower.clone(),
                     is_alias: true,
                     confidence: 0.95,
                 });
@@ -236,7 +236,7 @@ impl ImplicitCortex {
                         entity_id: entity.id.clone(),
                         entity_label: entity.label.clone(),
                         entity_kind: entity.kind.clone(),
-                        pattern_text: alias_lower.clone(),
+                        _pattern_text: alias_lower.clone(),
                         is_alias: true,
                         confidence,
                     });
@@ -333,7 +333,7 @@ impl ImplicitCortex {
             entity_id: entity.id.clone(),
             entity_label: entity.label.clone(),
             entity_kind: entity.kind.clone(),
-            pattern_text: label_lower.clone(),
+            _pattern_text: label_lower.clone(),
             is_alias: false,
             confidence: 1.0,
         });
@@ -345,7 +345,7 @@ impl ImplicitCortex {
                 entity_id: entity.id.clone(),
                 entity_label: entity.label.clone(),
                 entity_kind: entity.kind.clone(),
-                pattern_text: alias_lower.clone(),
+                _pattern_text: alias_lower.clone(),
                 is_alias: true,
                 confidence: 0.95,
             });
@@ -362,7 +362,7 @@ impl ImplicitCortex {
                     entity_id: entity.id.clone(),
                     entity_label: entity.label.clone(),
                     entity_kind: entity.kind.clone(),
-                    pattern_text: alias_lower.clone(),
+                    _pattern_text: alias_lower.clone(),
                     is_alias: true,
                     confidence,
                 });

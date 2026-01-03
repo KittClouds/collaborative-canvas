@@ -99,8 +99,7 @@ class HighlighterBridge {
      */
     hydrateEntities(entities: Array<{ id: string; label: string; kind: string; aliases: string[] }>): void {
         if (!this.isReady()) {
-            console.warn('[HighlighterBridge] Not initialized, skipping hydration');
-            return;
+            return;  // Silent return - will be called again when ready
         }
 
         try {

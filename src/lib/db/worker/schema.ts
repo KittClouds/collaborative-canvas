@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_STATEMENTS: string[] = [
   // ============================================
@@ -134,6 +134,25 @@ export const SCHEMA_STATEMENTS: string[] = [
     idf REAL NOT NULL,
     computed_at INTEGER NOT NULL
   )`,
+
+  // ============================================
+  // RAG CHUNKS TABLE - Vector embeddings for search
+  // ============================================
+  `CREATE TABLE IF NOT EXISTS rag_chunks (
+    id TEXT PRIMARY KEY,
+    note_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    embedding BLOB NOT NULL,
+    note_title TEXT,
+    start INTEGER,
+    end INTEGER,
+    model TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(note_id, chunk_index)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_rag_chunks_note ON rag_chunks(note_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rag_chunks_model ON rag_chunks(model)`,
 
   // ============================================
   // FTS5 VIRTUAL TABLE - Full-text search

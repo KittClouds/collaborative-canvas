@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@kittcore/wasm": path.resolve(__dirname, "./rust/kittcore/pkg"),
     },
   },
   optimizeDeps: {

@@ -828,6 +828,98 @@ function handleCozoClearTable(table: string): { cleared: boolean } {
 }
 
 // ============================================
+// RAG CHUNK OPERATIONS
+// ============================================
+
+interface RagChunkInput {
+  id: string;
+  note_id: string;
+  chunk_index: number;
+  text: string;
+  embedding: ArrayBuffer;
+  note_title: string;
+  start: number;
+  end: number;
+  model: string;
+}
+
+interface RagChunkRecord {
+  id: string;
+  note_id: string;
+  chunk_index: number;
+  text: string;
+  embedding: Uint8Array;
+  note_title: string;
+  start: number;
+  end: number;
+  model: string;
+  created_at: number;
+}
+
+function handleSaveRagChunks(chunks: RagChunkInput[]): { saved: number } {
+  const db = getDatabase();
+  const now = Date.now();
+
+  if (chunks.length === 0) {
+    return { saved: 0 };
+  }
+
+  db.exec('BEGIN TRANSACTION');
+  try {
+    for (const chunk of chunks) {
+      const embeddingBlob = new Uint8Array(chunk.embedding);
+
+      db.exec({
+        sql: `INSERT OR REPLACE INTO rag_chunks 
+              (id, note_id, chunk_index, text, embedding, note_title, start, end, model, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        bind: [
+          chunk.id,
+          chunk.note_id,
+          chunk.chunk_index,
+          chunk.text,
+          embeddingBlob,
+          chunk.note_title,
+          chunk.start,
+          chunk.end,
+          chunk.model,
+          now,
+        ],
+      });
+    }
+    db.exec('COMMIT');
+    return { saved: chunks.length };
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+function handleGetRagChunks(): RagChunkRecord[] {
+  const db = getDatabase();
+  return db.exec({
+    sql: 'SELECT * FROM rag_chunks ORDER BY note_id, chunk_index',
+    returnValue: 'resultRows',
+    rowMode: 'object',
+  }) as unknown as RagChunkRecord[];
+}
+
+function handleDeleteRagChunksByNote(noteId: string): { deleted: boolean } {
+  const db = getDatabase();
+  db.exec({
+    sql: 'DELETE FROM rag_chunks WHERE note_id = ?',
+    bind: [noteId],
+  });
+  return { deleted: true };
+}
+
+function handleClearRagChunks(): { cleared: boolean } {
+  const db = getDatabase();
+  db.exec('DELETE FROM rag_chunks');
+  return { cleared: true };
+}
+
+// ============================================
 // MESSAGE HANDLER
 // ============================================
 
@@ -975,6 +1067,20 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         break;
       case 'COZO_CLEAR_TABLE':
         result = handleCozoClearTable(payload as string);
+        break;
+
+      // RAG Chunk operations
+      case 'SAVE_RAG_CHUNKS':
+        result = handleSaveRagChunks(payload as RagChunkInput[]);
+        break;
+      case 'GET_RAG_CHUNKS':
+        result = handleGetRagChunks();
+        break;
+      case 'DELETE_RAG_CHUNKS_BY_NOTE':
+        result = handleDeleteRagChunksByNote(payload as string);
+        break;
+      case 'CLEAR_RAG_CHUNKS':
+        result = handleClearRagChunks();
         break;
 
       default:

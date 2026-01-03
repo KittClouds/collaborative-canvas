@@ -9,8 +9,14 @@ pub mod change;
 pub mod incremental;
 pub mod document;
 pub mod conductor;
+pub mod chunker;
+pub mod attacher;
+pub mod resolver;
+pub mod dialogue;
+pub mod narrative;
 
-pub use core::*;
+// Note: core::* removed to avoid ambiguous ScanResult/ScanStats re-export with document::*
+// Use scanner::core::DocumentScanner directly if needed
 pub use reflex::*;
 pub use syntax::*;
 pub use temporal::*;

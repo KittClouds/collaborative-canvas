@@ -1,0 +1,46 @@
+src/components/ai/AgentSidebar.tsx(3,10): error TS2724: '"ai"' has no exported member named 'Message'. Did you mean 'UIMessage'?
+src/components/ai/AgentSidebar.tsx(3,19): error TS2724: '"ai"' has no exported member named 'ToolInvocation'. Did you mean 'UIToolInvocation'?
+src/components/ai/AgentSidebar.tsx(91,51): error TS2339: Property 'textDelta' does not exist on type '{ type: "text-delta"; id: string; providerMetadata?: SharedV2ProviderMetadata; text: string; }'.
+src/components/ai/AgentSidebar.tsx(96,24): error TS2339: Property 'args' does not exist on type '({ type: "tool-call"; } & DynamicToolCall) | ({ type: "tool-call"; } & { type: "tool-call"; toolCallId: string; toolName: string; input: unknown; providerExecuted?: boolean; dynamic?: false; invalid?: false; error?: never; providerMetadata?: SharedV2ProviderMetadata; })'.
+  Property 'args' does not exist on type '{ type: "tool-call"; } & DynamicToolCall'.
+src/components/ai/AgentSidebar.tsx(108,58): error TS2339: Property 'result' does not exist on type '({ type: "tool-result"; } & DynamicToolResult) | ({ type: "tool-result"; } & { type: "tool-result"; toolCallId: string; toolName: string; input: unknown; output: unknown; providerExecuted?: boolean; providerMetadata?: SharedV2ProviderMetadata; dynamic?: false; preliminary?: boolean; })'.
+  Property 'result' does not exist on type '{ type: "tool-result"; } & DynamicToolResult'.
+src/components/editor/RichEditor.tsx(424,32): error TS2345: Argument of type 'SetStateAction<string>' is not assignable to parameter of type 'string'.
+  Type '(prev: string) => string' is not assignable to type 'string'.
+src/components/editor/RichEditor.tsx(431,45): error TS2345: Argument of type 'SetStateAction<string>' is not assignable to parameter of type 'string'.
+  Type '(prev: string) => string' is not assignable to type 'string'.
+src/components/fact-sheets/blocks/FieldGroupBlock.tsx(56,12): error TS2678: Type '"richtext"' is not comparable to type 'FieldDataType'.
+src/components/graph/GraphControls.tsx(2,33): error TS2307: Cannot find module '../../lib/graph/projections/types' or its corresponding type declarations.
+src/features/blueprint-hub/hooks/useExtractionProfile.ts(116,11): error TS2353: Object literal may only specify known properties, and 'profile_id' does not exist in type 'CreateExtractionProfileInput'.
+src/features/blueprint-hub/hooks/useExtractionProfile.ts(159,11): error TS2353: Object literal may only specify known properties, and 'mapping_id' does not exist in type 'CreateLabelMappingInput'.
+src/features/blueprint-hub/services/validator.ts(81,10): error TS2678: Type '"richtext"' is not comparable to type 'FieldDataType'.
+src/lib/cozo/index.ts(7,1): error TS2308: Module './types' has already exported a member named 'CozoEntity'. Consider explicitly re-exporting to resolve the ambiguity.
+src/lib/cozo/index.ts(13,1): error TS2308: Module './graph' has already exported a member named 'EntityStats'. Consider explicitly re-exporting to resolve the ambiguity.
+src/lib/cozo/migration/index.ts(2,3): error TS2724: '"./registryMigration"' has no exported member named 'migrateEntityRegistryToCozo'. Did you mean 'migrateEntityRegistryAdapterToCozo'?
+src/lib/cozo/migration/runMigration.ts(1,46): error TS2307: Cannot find module '@/lib/cozo/graph/adapters/EntityRegistryAdapterAdapter' or its corresponding type declarations.
+src/lib/cozo/migration/runMigration.ts(13,16): error TS2304: Cannot find name 'EntityRegistryAdapter'.
+src/lib/embeddings/healthTracker.ts(85,29): error TS2552: Cannot find name 'getEmbeddingForNote'. Did you mean 'getEmbeddingStore'?
+src/lib/graph/ConceptGraphBuilder.ts(8,47): error TS2307: Cannot find module '../entities/nlp/ConceptExtractor' or its corresponding type declarations.
+src/lib/graph/graphInstance.ts(3,52): error TS2307: Cannot find module './integration/RelationshipOrchestrator' or its corresponding type declarations.
+src/lib/graph/graphInstance.ts(11,42): error TS2307: Cannot find module './integration/RelationshipOrchestrator' or its corresponding type declarations.
+src/lib/refs/parser.ts(12,33): error TS2307: Cannot find module '../entities/entityTypes' or its corresponding type declarations.
+src/lib/refs/patterns/defaults.ts(9,31): error TS2307: Cannot find module '../../entities/entityTypes' or its corresponding type declarations.
+src/lib/refs/projections.ts(20,33): error TS2307: Cannot find module '../entities/entityTypes' or its corresponding type declarations.
+src/lib/refs/types.ts(8,33): error TS2307: Cannot find module '../entities/entityTypes' or its corresponding type declarations.
+src/lib/relationships/__tests__/relationship-extractor.test.ts(2,39): error TS2307: Cannot find module '../../scanner/legacy-v3/extractors/RelationshipExtractor' or its corresponding type declarations.
+src/lib/relationships/core/index.ts(5,33): error TS2307: Cannot find module './DocumentContext' or its corresponding type declarations.
+src/lib/relationships/core/index.ts(12,8): error TS2307: Cannot find module './DocumentContext' or its corresponding type declarations.
+src/lib/relationships/core/index.ts(14,39): error TS2307: Cannot find module './EntityMentionResolver' or its corresponding type declarations.
+src/lib/relationships/unified/CoOccurrenceExtractor.ts(8,53): error TS2307: Cannot find module '../core/DocumentContext' or its corresponding type declarations.
+src/lib/relationships/unified/CoOccurrenceExtractor.ts(9,42): error TS2307: Cannot find module '@/lib/relationships/unified-types' or its corresponding type declarations.
+src/lib/relationships/unified/index.ts(14,8): error TS2307: Cannot find module './UnifiedRelationshipEngine' or its corresponding type declarations.
+src/lib/relationships/unified/PossessionExtractor.ts(9,60): error TS2307: Cannot find module '../core/DocumentContext' or its corresponding type declarations.
+src/lib/relationships/unified/PossessionExtractor.ts(10,44): error TS2307: Cannot find module '@/lib/relationships/unified-types' or its corresponding type declarations.
+src/lib/relationships/unified/PrepExtractor.ts(11,69): error TS2307: Cannot find module '../core/DocumentContext' or its corresponding type declarations.
+src/lib/relationships/unified/PrepExtractor.ts(12,44): error TS2307: Cannot find module '@/lib/relationships/unified-types' or its corresponding type declarations.
+src/lib/relationships/unified/SVOExtractor.ts(11,69): error TS2307: Cannot find module '../core/DocumentContext' or its corresponding type declarations.
+src/lib/relationships/unified/SVOExtractor.ts(12,44): error TS2307: Cannot find module '@/lib/relationships/unified-types' or its corresponding type declarations.
+src/lib/scanner/nlp/ContextualDisambiguator.ts(147,27): error TS2339: Property 'normalizedLabel' does not exist on type 'RegisteredEntity'.
+src/lib/scanner/nlp/ContextualDisambiguator.ts(172,35): error TS2339: Property 'normalizedLabel' does not exist on type 'RegisteredEntity'.
+src/lib/scanner/pattern-bridge.ts(14,43): error TS2307: Cannot find module './workers/ScannerWorker' or its corresponding type declarations.
+src/lib/timeline/index.ts(7,40): error TS2307: Cannot find module './timeParser' or its corresponding type declarations.

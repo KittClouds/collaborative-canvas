@@ -1,0 +1,220 @@
+﻿node.exe : [INFO]: Checking for the Wasm 
+target...
+At C:\Users\shuga\AppData\Roaming\npm\wasm-p
+ack.ps1:24 char:5
++     & "node$exe"  
+"$basedir/node_modules/wasm-pack/run.js" 
+$args
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: 
+    ([INFO]: Checking for the Wasm target.  
+  ..:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommand 
+   Error
+ 
+[INFO]: Compiling to Wasm...
+   Compiling serde v1.0.228
+   Compiling regex-automata v0.4.13
+   Compiling getrandom v0.2.16
+   Compiling darling_macro v0.20.11
+   Compiling prost-derive v0.11.9
+   Compiling 
+macro_rules_attribute-proc_macro v0.2.2
+   Compiling bytes v1.11.0
+   Compiling base64 v0.13.1
+   Compiling serde_json v1.0.148
+   Compiling thiserror v1.0.69
+   Compiling monostate v0.1.18
+   Compiling rand_core v0.6.4
+   Compiling esaxx-rs v0.1.10
+   Compiling rand_chacha v0.3.1
+   Compiling rayon-cond v0.3.0
+   Compiling darling v0.20.11
+   Compiling macro_rules_attribute v0.2.2
+   Compiling web-sys v0.3.83
+   Compiling kstring v2.0.2
+   Compiling string-interner v0.15.0
+   Compiling rand v0.8.5
+   Compiling derive_builder_core v0.20.2
+   Compiling spm_precompiled v0.1.4
+   Compiling 
+unicode-normalization-alignments v0.1.12
+   Compiling memmap2 v0.9.9
+   Compiling unicode_categories v0.1.1
+   Compiling liquid-core v0.26.8
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling wasm-bindgen-futures v0.4.56
+   Compiling chrono v0.4.42
+   Compiling rand_distr v0.4.3
+   Compiling console_error_panic_hook v0.1.7
+   Compiling prost v0.11.9
+   Compiling derive_builder_macro v0.20.2
+   Compiling derive_builder v0.20.2
+   Compiling liquid-lib v0.26.8
+   Compiling instant v0.1.13
+   Compiling regex v1.12.2
+   Compiling fancy-regex v0.13.0
+   Compiling scan_fmt v0.2.6
+   Compiling tract-data v0.21.13
+   Compiling tokenizers v0.19.1
+   Compiling liquid v0.26.8
+   Compiling tract-linalg v0.21.13
+   Compiling tract-core v0.21.13
+   Compiling tract-nnef v0.21.13
+   Compiling tract-hir v0.21.13
+   Compiling tract-onnx-opl v0.21.13
+   Compiling tract-onnx v0.21.13
+   Compiling kittcore v0.1.0 (C:\Users\shuga
+\1kittroot\1code\collaborative-canvas\rust\k
+ittcore)
+warning: unused import: `ChunkResult`
+  --> src\scanner\attacher.rs:21:49
+   |
+21 | use crate::scanner::chunker::{Chunk, 
+ChunkKind, ChunkResult};
+   |                                        
+         ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by 
+default
+
+warning: unused import: `ChunkResult`
+  --> src\scanner\dialogue.rs:10:49
+   |
+10 | use crate::scanner::chunker::{Chunk, 
+ChunkKind, ChunkResult};
+   |                                        
+         ^^^^^^^^^^^
+
+warning: unused import: `NarrativeContext`
+  --> src\scanner\dialogue.rs:11:32
+   |
+11 | use crate::scanner::resolver::{Narrativ
+eContext, EntityId, Resolver};
+   |                                
+^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Deserialize` and 
+`Serialize`
+  --> src\scanner\dialogue.rs:13:13
+   |
+13 | use serde::{Deserialize, Serialize};
+   |             ^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: 
+`tract_core::tract_data::TractResult`
+ --> src\embeddings\model.rs:8:5
+  |
+8 | use tract_core::tract_data::TractResult;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`unicode_segmentation::UnicodeSegmentation`
+ --> src\embeddings\chunker.rs:6:5
+  |
+6 | use 
+unicode_segmentation::UnicodeSegmentation;
+  |     
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: value assigned to `head_idx` is 
+never read
+   --> src\scanner\chunker.rs:480:17
+    |
+480 |         let mut head_idx = None;
+    |                 ^^^^^^^^
+    |
+    = help: maybe it is overwritten before 
+being read?
+    = note: `#[warn(unused_assignments)]` 
+on by default
+
+warning: unused variable: `resolver`
+  --> src\scanner\dialogue.rs:74:49
+   |
+74 |     fn find_speaker_in_chunks(chunks: 
+&[Chunk], resolver: &mut Resolver) -> 
+Option<EntityId> {
+   |                                        
+         ^^^^^^^^ help: if this is 
+intentional, prefix it with an underscore: 
+`_resolver`
+   |
+   = note: `#[warn(unused_variables)]` on 
+by default
+
+warning: unused variable: `quote_pos`
+  --> src\scanner\dialogue.rs:97:9
+   |
+97 |         quote_pos: QuotePosition,
+   |         ^^^^^^^^^ help: if this is 
+intentional, prefix it with an underscore: 
+`_quote_pos`
+
+warning: unused variable: `batch_size`
+   --> src\embeddings\model.rs:108:13
+    |
+108 |         let batch_size = padded.len();
+    |             ^^^^^^^^^^ help: if this 
+is intentional, prefix it with an 
+underscore: `_batch_size`
+
+warning: unused variable: `start`
+   --> src\embeddings\chunker.rs:103:18
+    |
+103 |             let (start, end, 
+sentence) = sentences[sentence_idx];
+    |                  ^^^^^ help: if this 
+is intentional, prefix it with an 
+underscore: `_start`
+
+warning: unused variable: `end`
+   --> src\embeddings\chunker.rs:103:25
+    |
+103 |             let (start, end, 
+sentence) = sentences[sentence_idx];
+    |                         ^^^ help: if 
+this is intentional, prefix it with an 
+underscore: `_end`
+
+warning: field `semantic_weight` is never 
+read
+  --> src\scanner\attacher.rs:89:5
+   |
+86 | pub struct Attacher {
+   |            -------- field in this 
+struct
+...
+89 |     semantic_weight: f64,
+   |     ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by 
+default
+
+warning: field `attributor` is never read
+   --> src\scanner\narrative.rs:111:5
+    |
+107 | pub struct NarrativeGraph {
+    |            -------------- field in 
+this struct
+...
+111 |     attributor: DialogueAttributor,
+    |     ^^^^^^^^^^
+
+warning: `kittcore` (lib) generated 14 
+warnings (run `cargo fix --lib -p kittcore` 
+to apply 6 suggestions)
+    Finished `release` profile [optimized] 
+target(s) in 6m 08s
+[INFO]: Installing wasm-bindgen...
+[INFO]: Optimizing wasm binaries with 
+`wasm-opt`...
+[INFO]: License key is set in Cargo.toml 
+but no LICENSE file(s) were found; Please 
+add the LICENSE file(s) to your project 
+directory
+[INFO]: :-) Done in 7m 03s
+[INFO]: :-) Your wasm pkg is ready to 
+publish at C:\Users\shuga\1kittroot\1code\co
+llaborative-canvas\rust\kittcore\pkg.

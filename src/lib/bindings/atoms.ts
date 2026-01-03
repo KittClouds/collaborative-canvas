@@ -5,7 +5,7 @@
  */
 
 import { atom } from 'jotai';
-import { atomFamily } from 'jotai/utils';
+import { atomFamily } from '@/atoms/utils/atomFamily';
 import { bindingEngine } from './BindingEngine';
 import type {
     FieldBinding,

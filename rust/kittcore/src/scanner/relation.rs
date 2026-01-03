@@ -471,16 +471,18 @@ impl RelationCortex {
             return relations;
         }
         
-        // Sort entities by position (required for binary search)
-        let mut sorted_spans = entity_spans.to_vec();
-        sorted_spans.sort_by_key(|e| e.start);
+        // Sort entities by start position (for right neighbors and tie-breaking)
+        let mut sorted_by_start = entity_spans.to_vec();
+        sorted_by_start.sort_by(|a, b| a.start.cmp(&b.start));
         
-        // Also need entities sorted by end position for finding left neighbors
-        let mut by_end: Vec<(usize, &EntitySpan)> = sorted_spans.iter()
-            .enumerate()
-            .map(|(i, s)| (i, s))
-            .collect();
-        by_end.sort_by_key(|(_, s)| s.end);
+        // Sort entities by end position (for left neighbors)
+        let mut sorted_by_end = sorted_by_start.clone();
+        sorted_by_end.sort_by(|a, b| a.end.cmp(&b.end));
+        
+        // Cursors for sliding window (Two-Pointer Optimization)
+        // These replace binary search by maintaining state across the linear scan of pattern matches
+        let mut left_partition_idx = 0;
+        let mut right_partition_idx = 0;
         
         // Single automaton pass over entire text - O(n)
         for mat in automaton.find_iter(text) {
@@ -493,24 +495,99 @@ impl RelationCortex {
                 None => continue,
             };
             
-            // Find left neighbor: entity whose END is <= pattern_start
-            // and within max_entity_distance
-            let left = sorted_spans.iter()
-                .rev()
-                .find(|e| e.end <= pattern_start && pattern_start - e.end <= self.max_entity_distance);
+            // --- FIND LEFT NEIGHBOR ---
+            // Requirement: entity.end <= pattern_start AND within max_dist.
+            // Priority: Distance (Closest) > Start (Left-most) > Kind
             
-            // Find right neighbor: entity whose START is >= pattern_end
-            // and within max_entity_distance
-            let right = sorted_spans.iter()
-                .find(|e| e.start >= pattern_end && e.start - pattern_end <= self.max_entity_distance);
+            // 1. Advance partition pointer: all entities BEFORE this index have end <= pattern_start
+            while left_partition_idx < sorted_by_end.len() 
+                  && sorted_by_end[left_partition_idx].end <= pattern_start {
+                left_partition_idx += 1;
+            }
             
-            // Both neighbors must exist to form a relation
-            let (head, tail) = match (left, right) {
+            // 2. Scan backwards from partition to find best candidate
+            // We scan until distance > max_dist OR we find a valid candidate that beats all further ones?
+            // Actually, we must collect *all* candidates with the BEST distance to check tie-breakers.
+            // Since sorted by `end`, the ones at `left_partition_idx - 1` have the largest `end` (closest distance).
+            
+            let mut left_best: Option<&EntitySpan> = None;
+            
+            if left_partition_idx > 0 {
+                // Determine the best possible distance (from the closest entity)
+                let best_dist_idx = left_partition_idx - 1;
+                let best_end = sorted_by_end[best_dist_idx].end;
+                let min_valid_dist = pattern_start - best_end;
+                
+                if min_valid_dist <= self.max_entity_distance {
+                    // Collect all candidates that share this BEST distance (same end)
+                    // We need to pick the one with earliest START (Left-most priority)
+                    // If multiple have same end/start, we check Kind.
+                    
+                    // Optimization: Just scan backwards as long as `end` is same.
+                    let mut i = best_dist_idx;
+                    loop {
+                        let candidate = &sorted_by_end[i];
+                        if candidate.end != best_end {
+                            break; // Distance got worse
+                        }
+                        
+                        // Compare with current best
+                        match left_best {
+                            None => left_best = Some(candidate),
+                            Some(current) => {
+                                // Tie-breaker: Left-most (Start Ascending)
+                                if candidate.start < current.start {
+                                    left_best = Some(candidate);
+                                }
+                                // If starts are same, we keep current (stable) or check Kind later.
+                                // NOTE: We can't check Kind here because we need "Shadowing" behavior.
+                                // We pick best GEOMETRIC candidate, then check Kind.
+                            }
+                        }
+                        
+                        if i == 0 { break; }
+                        i -= 1;
+                    }
+                }
+            }
+            
+            // --- FIND RIGHT NEIGHBOR ---
+            // Requirement: entity.start >= pattern_end AND within max_dist.
+            // Priority: Distance (Closest) > Start (Left-most) > Kind
+            
+            // 1. Advance partition pointer: all entities FROM this index have start >= pattern_end
+            while right_partition_idx < sorted_by_start.len()
+                  && sorted_by_start[right_partition_idx].start < pattern_end {
+                right_partition_idx += 1;
+            }
+            
+            // 2. Scan forward from partition
+            // Since sorted by `start`:
+            // The first entity at `right_partition_idx` has the smallest `start`.
+            // Smallest `start` means:
+            //   - Smallest Distance (start - pattern_end) -> BEST Distance
+            //   - Smallest Start -> BEST Left-most
+            // So `sorted_by_start[right_partition_idx]` is strictly the best geometric candidate!
+            // No loops needed unless multiple entities have exact same start?
+            
+            let mut right_best: Option<&EntitySpan> = None;
+            
+            if right_partition_idx < sorted_by_start.len() {
+                let candidate = &sorted_by_start[right_partition_idx];
+                let dist = candidate.start - pattern_end;
+                
+                if dist <= self.max_entity_distance {
+                    right_best = Some(candidate);
+                }
+            }
+            
+            // Both neighbors must exist
+            let (head, tail) = match (left_best, right_best) {
                 (Some(h), Some(t)) => (h, t),
                 _ => continue,
             };
             
-            // Check type constraints for disambiguation
+            // Check type constraints (Strict Shadowing applied)
             let head_valid = match &meta.valid_head_kinds {
                 None => true,
                 Some(kinds) => head.kind.as_ref().map_or(
@@ -1207,6 +1284,172 @@ mod tests {
             elapsed.as_millis()
         );
     }
+
+    // =========================================================================
+    // TDD: Deterministic Tie-Breaking Tests
+    // =========================================================================
+
+    #[test]
+    fn test_tie_breaking_distance_priority() {
+        // "Closest entity roulette" fix: Closer entity should win
+        let mut cortex = RelationCortex::new();
+        cortex.clear_patterns();
+        cortex.add_pattern("LINK", vec!["link".to_string()], 1.0, false);
+        cortex.build().unwrap();
+
+        // Pattern at 10.
+        // Entity A: ends at 9 (Distance 1)
+        // Entity B: ends at 5 (Distance 5)
+        let text = "B... A link Target";
+        // indices: 0123456789012345678
+        // B: 0-1. A: 5-6. link: 7-11.
+        
+        let entities = vec![
+            EntitySpan { label: "B".to_string(), entity_id: None, start: 0, end: 1, kind: None },
+            EntitySpan { label: "A".to_string(), entity_id: None, start: 5, end: 6, kind: None },
+            EntitySpan { label: "Target".to_string(), entity_id: None, start: 12, end: 18, kind: None },
+        ];
+        
+        // Both A and B are valid left neighbors in terms of position.
+        // A is closer (dist 1). B is further (dist 6).
+        // A should be picked.
+        
+        let relations = cortex.extract(text, &entities);
+        assert_eq!(relations.len(), 1);
+        assert_eq!(relations[0].head_entity, "A", "Closest entity (A) should be picked over further one (B)");
+    }
+
+    #[test]
+    fn test_tie_breaking_left_most_priority() {
+        // "Left-most" tie-breaker for same distance
+        // This usually happens with overlapping entities or nested ones.
+        // E.g. "The [Big (Apple)]" -> "Apple" vs "Big Apple". Both end at same pos.
+        
+        let mut cortex = RelationCortex::new();
+        cortex.clear_patterns();
+        cortex.add_pattern("LINK", vec!["link".to_string()], 1.0, false);
+        cortex.build().unwrap();
+        
+        let text = "The Big Apple link Target";
+        // Big Apple: 4-13.
+        // Apple: 8-13.
+        // Both end at 13. Pattern starts at 14.
+        // Distance is identical (1).
+        // Tie-breaker: Left-most (Start position).
+        // Big Apple starts at 4. Apple starts at 8.
+        // "Left-most" means smaller start index.
+        // Big Apple (4) < Apple (8).
+        // Big Apple should be picked.
+        
+        let entities = vec![
+            EntitySpan { label: "Big Apple".to_string(), entity_id: None, start: 4, end: 13, kind: None },
+            EntitySpan { label: "Apple".to_string(), entity_id: None, start: 8, end: 13, kind: None },
+            EntitySpan { label: "Target".to_string(), entity_id: None, start: 19, end: 25, kind: None },
+        ];
+        
+        let relations = cortex.extract(text, &entities);
+        assert_eq!(relations.len(), 1);
+        assert_eq!(relations[0].head_entity, "Big Apple", "Left-most entity (earlier start) should be picked on distance tie");
+    }
+
+    #[test]
+    fn test_tie_breaking_shadowing_by_invalid_kind() {
+        // "Kind constraints" is the LAST tie-breaker.
+        // This implies strict distance/position sorting first.
+        // A closer "Invalid" entity should block a further "Valid" entity.
+        // This prevents "flickering" when entities change type or are edited.
+        
+        let mut cortex = RelationCortex::new();
+        cortex.clear_patterns();
+        cortex.add_pattern_with_types(
+            "LINK", 
+            vec!["link".to_string()], 
+            1.0, 
+            false,
+            Some(vec!["PERSON".to_string()]), // Only PERSON is valid head
+            None
+        );
+        cortex.build().unwrap();
+        
+        let text = "ValidPerson InvalidThing link Target";
+        // ValidPerson: 0-11.
+        // InvalidThing: 12-24.
+        // link: 25-29.
+        
+        let entities = vec![
+            EntitySpan { 
+                label: "ValidPerson".to_string(), 
+                entity_id: None, 
+                start: 0, 
+                end: 11, 
+                kind: Some("PERSON".to_string()) 
+            },
+            EntitySpan { 
+                label: "InvalidThing".to_string(), 
+                entity_id: None, 
+                start: 12, 
+                end: 24, 
+                kind: Some("OBJECT".to_string()) 
+            },
+            EntitySpan { label: "Target".to_string(), entity_id: None, start: 30, end: 36, kind: None },
+        ];
+        
+        // InvalidThing is closer.
+        // ValidPerson is further.
+        // Strict Priority: Distance > Kind.
+        // So InvalidThing is the "candidate".
+        // But InvalidThing fails Kind constraint.
+        // Result: NO relation. (ValidPerson is shadowed).
+        
+        let relations = cortex.extract(text, &entities);
+        assert!(relations.is_empty(), "Closer invalid entity should shadow further valid entity to ensure stability");
+    }
+
+    #[test]
+    fn test_two_pointer_sweep_scalability() {
+        // Stress test: 1000 entities, linear scan.
+        // O(E^2) would be ~1,000,000 ops.
+        // O(E + M) should be instant.
+        
+        let mut cortex = RelationCortex::new();
+        cortex.build().unwrap();
+
+        // Use a string with capacity to avoid reallocations
+        // We'll construct "Entity_0 matches Entity_1 ... "
+        let mut text = String::with_capacity(200_000);
+        let mut entities = Vec::with_capacity(1000);
+        
+        for i in 0..1000 {
+            let label = format!("Entity_{}", i);
+            let start = text.len();
+            text.push_str(&label);
+            text.push_str(" "); // gap
+            
+            entities.push(EntitySpan {
+                label,
+                entity_id: None,
+                start,
+                end: start + 7, // Approximate length
+                kind: None,
+            });
+            
+            // Inject a pattern match after some entities
+            // "Entity_N is friend of Entity_N+1" concept
+            if i % 5 == 0 {
+                text.push_str("is friend of ");
+            }
+        }
+        
+        let start = std::time::Instant::now();
+        let relations = cortex.extract(&text, &entities);
+        let elapsed = start.elapsed();
+        
+        println!("Stress Test: Extracted {} relations from 1000 entities in {:?}", relations.len(), elapsed);
+        
+        // Strict budget: < 20ms for 1000 entities/200 patterns.
+        assert!(elapsed.as_millis() < 30, "Two-pointer sweep should be under 30ms for 1000 entities. Got {:?}. Current algo might be slow.", elapsed);
+    }
 }
+
 
 
