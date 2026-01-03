@@ -315,6 +315,7 @@ import {
   selectedNoteAtom,
   selectedNoteIdAtom,
 } from '@/atoms';
+import { editorInstanceAtom } from '@/atoms/editorAtoms';
 
 // ... extensions factory ...
 
@@ -339,6 +340,7 @@ const RichEditor = ({
   const triggerAutosave = useSetAtom(autosaveAtom);
   const manualSave = useSetAtom(manualSaveAtom);
   const initContent = useSetAtom(initNoteContentAtom);
+  const setEditorInstance = useSetAtom(editorInstanceAtom);
 
   const previousContentRef = useRef<string>('');
   const previousNoteIdRef = useRef<string | undefined>(undefined);
@@ -524,6 +526,12 @@ const RichEditor = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [toolbarVisible, onToolbarVisibilityChange]);
+
+  // Expose editor instance via atom for AI inline editing
+  useEffect(() => {
+    setEditorInstance(editor);
+    return () => setEditorInstance(null);
+  }, [editor, setEditorInstance]);
 
   // Force editor update when noteId changes (switching notes) creates a ref mismatch?
   // We use selectedNoteId vs internal previousNoteIdRef.

@@ -15,7 +15,9 @@
 mod chunker;
 mod index;
 mod pipeline;
+pub mod raptor;
 
 pub use chunker::{RagChunker, Chunk};
 pub use index::{VectorIndex, SearchResult};
 pub use pipeline::RagPipeline;
+pub use raptor::{RaptorTree, RaptorNode, RaptorPayload, RaptorSearchResult, RetrievalMode};

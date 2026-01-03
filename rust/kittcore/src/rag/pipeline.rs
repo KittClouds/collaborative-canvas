@@ -14,6 +14,7 @@ use crate::resorank::{
 };
 use super::chunker::{RagChunker, Chunk};
 use super::index::{VectorIndex, SearchResult as IndexSearchResult};
+use super::raptor::{RaptorTree, RaptorPayload, RaptorSearchResult};
 
 /// Note input for indexing
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +75,8 @@ pub struct RagPipeline {
     word_doc_freq: HashMap<String, usize>,
     /// Total documents indexed
     total_docs: usize,
+    /// RAPTOR hierarchical tree (optional)
+    raptor_tree: Option<RaptorTree>,
 }
 
 #[wasm_bindgen]
@@ -92,6 +95,7 @@ impl RagPipeline {
             model_loaded: false,
             word_doc_freq: HashMap::new(),
             total_docs: 0,
+            raptor_tree: None,
         }
     }
 
@@ -374,6 +378,14 @@ impl RagPipeline {
             .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
     }
 
+    /// Embed text (helper for worker/RAPTOR)
+    #[wasm_bindgen]
+    pub fn embed(&self, text: &str) -> Result<Vec<f32>, JsValue> {
+        let cortex = self.embed_cortex.as_ref()
+            .ok_or_else(|| JsValue::from_str("Model not loaded"))?;
+        cortex.embed_text(text)
+    }
+
     /// Hybrid search combining vector (HNSW) and lexical (BM25)
     ///
     /// # Arguments
@@ -549,18 +561,168 @@ impl RagPipeline {
 
         Ok(())
     }
+
+    // ========================================================================
+    // RAPTOR Hierarchical Retrieval
+    // ========================================================================
+
+    /// Build RAPTOR tree from indexed chunks
+    ///
+    /// # Arguments
+    /// * `target_cluster_size` - Target children per internal node (default: 10)
+    #[wasm_bindgen(js_name = buildRaptorTree)]
+    pub fn build_raptor_tree(&mut self, target_cluster_size: usize) -> Result<JsValue, JsValue> {
+        if self.chunk_metas.is_empty() {
+            return Err(JsValue::from_str("No chunks indexed. Index notes first."));
+        }
+
+        // Collect chunks with embeddings
+        let mut chunks_with_embeddings: Vec<(String, Vec<f32>, RaptorPayload)> = Vec::new();
+
+        for (chunk_id, meta) in &self.chunk_metas {
+            let Some(embedding) = self.index.get_vector(chunk_id) else {
+                continue;
+            };
+            let text = self.chunk_texts.get(chunk_id).cloned().unwrap_or_default();
+
+            chunks_with_embeddings.push((
+                chunk_id.clone(),
+                embedding,
+                RaptorPayload {
+                    chunk_id: chunk_id.clone(),
+                    note_id: meta.note_id.clone(),
+                    text,
+                    start: meta.start,
+                    end: meta.end,
+                },
+            ));
+        }
+
+        if chunks_with_embeddings.is_empty() {
+            return Err(JsValue::from_str("No chunk embeddings found"));
+        }
+
+        let target = if target_cluster_size == 0 { 10 } else { target_cluster_size };
+
+        let tree = RaptorTree::build_from_chunks(chunks_with_embeddings, target)
+            .map_err(|e| JsValue::from_str(&format!("RAPTOR build failed: {}", e)))?;
+
+        let stats = serde_json::json!({
+            "nodes": tree.len(),
+            "levels": tree.level_count(),
+            "leaves": tree.leaves().len(),
+        });
+
+        self.raptor_tree = Some(tree);
+
+        serde_wasm_bindgen::to_value(&stats)
+            .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
+    }
+
+    /// Check if RAPTOR tree is built
+    #[wasm_bindgen(js_name = hasRaptorTree)]
+    pub fn has_raptor_tree(&self) -> bool {
+        self.raptor_tree.is_some()
+    }
+
+    /// Search using RAPTOR hierarchical retrieval
+    ///
+    /// # Arguments
+    /// * `query_embedding` - Query embedding vector
+    /// * `k` - Number of results
+    /// * `mode` - "collapsed", "traversal", or "hybrid"
+    /// * `beam_width` - Beam width for traversal/hybrid (default: 10)
+    #[wasm_bindgen(js_name = searchRaptor)]
+    pub fn search_raptor(
+        &self,
+        query_embedding: Vec<f32>,
+        k: usize,
+        mode: &str,
+        beam_width: usize,
+    ) -> Result<JsValue, JsValue> {
+        let tree = self.raptor_tree.as_ref()
+            .ok_or_else(|| JsValue::from_str("RAPTOR tree not built. Call buildRaptorTree first."))?;
+
+        let beam = if beam_width == 0 { 10 } else { beam_width };
+
+        let results: Vec<RaptorSearchResult> = match mode {
+            "collapsed" => tree.search_collapsed(&query_embedding, k),
+            "traversal" => tree.search_traversal(&query_embedding, k, beam),
+            "hybrid" => tree.search_hybrid(&query_embedding, k, beam),
+            "collapsed_leaves" => tree.search_collapsed_leaves_only(&query_embedding, k),
+            _ => tree.search_hybrid(&query_embedding, k, beam), // Default to hybrid
+        };
+
+        // Convert to JS-friendly format
+        #[derive(Serialize)]
+        struct JsRaptorResult {
+            node_id: String,
+            level: u8,
+            score: f32,
+            is_leaf: bool,
+            note_id: Option<String>,
+            chunk_text: Option<String>,
+        }
+
+        let js_results: Vec<JsRaptorResult> = results
+            .into_iter()
+            .map(|r| JsRaptorResult {
+                node_id: r.node_id,
+                level: r.level,
+                score: r.score,
+                is_leaf: r.is_leaf,
+                note_id: r.payload.as_ref().map(|p| p.note_id.clone()),
+                chunk_text: r.payload.as_ref().map(|p| p.text.clone()),
+            })
+            .collect();
+
+        serde_wasm_bindgen::to_value(&js_results)
+            .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
+    }
+
+    /// Get RAPTOR tree statistics
+    #[wasm_bindgen(js_name = getRaptorStats)]
+    pub fn get_raptor_stats(&self) -> Result<JsValue, JsValue> {
+        let tree = self.raptor_tree.as_ref()
+            .ok_or_else(|| JsValue::from_str("RAPTOR tree not built"))?;
+
+        let stats = serde_json::json!({
+            "nodes": tree.len(),
+            "levels": tree.level_count(),
+            "leaves": tree.leaves().len(),
+        });
+
+        serde_wasm_bindgen::to_value(&stats)
+            .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
+    }
+
+    /// Clear RAPTOR tree
+    #[wasm_bindgen(js_name = clearRaptorTree)]
+    pub fn clear_raptor_tree(&mut self) {
+        self.raptor_tree = None;
+    }
 }
 
 // Internal methods (not exposed to WASM)
 impl RagPipeline {
-    /// Internal note indexing logic
+    /// Internal note indexing logic - OPTIMIZED
+    /// 
+    /// Optimizations:
+    /// 1. Batch embedding: All chunks embedded in one ONNX call
+    /// 2. No console logging in hot path
+    /// 3. Timing spans for diagnostics
+    /// 4. Deferred ResoRank indexing (after vector inserts)
     fn index_note_internal(&mut self, note: &NoteInput) -> Result<usize, String> {
         // Skip empty content
         if note.content.trim().is_empty() {
             return Ok(0);
         }
 
-        // First remove any existing chunks for this note
+        // Start timing
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_with_label("rag_index_note");
+
+        // Remove existing chunks for this note
         self.remove_note(&note.id);
 
         // Initialize ResoRank if not already
@@ -569,23 +731,51 @@ impl RagPipeline {
             self.resorank = Some(ResoRankScorer::with_defaults(corpus_stats));
         }
 
-        // Now get cortex reference (after remove_note is done)
+        // Get cortex reference
         let cortex = self.embed_cortex.as_ref()
             .ok_or("Model not loaded")?;
 
-        // Chunk the content
+        // === Phase 1: Chunking ===
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_with_label("rag_chunking");
+        
         let chunks = self.chunker.chunk(&note.content);
+        
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_end_with_label("rag_chunking");
 
-        // Embed and index each chunk
-        for chunk in &chunks {
+        if chunks.is_empty() {
+            #[cfg(target_arch = "wasm32")]
+            web_sys::console::time_end_with_label("rag_index_note");
+            return Ok(0);
+        }
+
+        // === Phase 2: Batch Embedding (single ONNX call) ===
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_with_label("rag_embed_batch");
+
+        // Prepare all texts for batch embedding
+        let texts_to_embed: Vec<String> = chunks.iter()
+            .map(|c| format!("{}\n---\n{}", note.title, c.text))
+            .collect();
+
+        // Single batch embed call instead of N individual calls
+        let embeddings = cortex.embed_batch(&texts_to_embed)
+            .map_err(|e| format!("Batch embedding failed: {}", e))?;
+
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_end_with_label("rag_embed_batch");
+
+        // === Phase 3: Vector Index Insertion ===
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_with_label("rag_vector_insert");
+
+        // Collect chunk IDs and texts for deferred ResoRank indexing
+        let mut resorank_queue: Vec<(String, String)> = Vec::with_capacity(chunks.len());
+
+        for (i, (chunk, embedding)) in chunks.iter().zip(embeddings.into_iter()).enumerate() {
             let chunk_id = format!("{}_{}", note.id, chunk.index);
 
-            // Embed chunk (prepend title for context)
-            let text_to_embed = format!("{}\n---\n{}", note.title, chunk.text);
-            let embedding = cortex.embed_text(&text_to_embed)
-                .map_err(|e| format!("Embedding failed: {:?}", e))?;
-
-            // Store in vector index
             let meta = ChunkMeta {
                 note_id: note.id.clone(),
                 note_title: note.title.clone(),
@@ -594,17 +784,30 @@ impl RagPipeline {
                 end: chunk.end,
             };
 
+            // Vector index insert
             self.index.insert(
                 &chunk_id,
                 embedding,
                 Some(serde_json::to_value(&meta).unwrap()),
             ).map_err(|e| format!("Index insert failed: {}", e))?;
 
+            // Store text and meta
             self.chunk_texts.insert(chunk_id.clone(), chunk.text.clone());
             self.chunk_metas.insert(chunk_id.clone(), meta);
 
-            // Index into ResoRank (tokenize first to avoid borrow conflict)
-            let tokens = Self::tokenize_static(&text_to_embed);
+            // Queue for ResoRank (deferred)
+            resorank_queue.push((chunk_id, texts_to_embed[i].clone()));
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_end_with_label("rag_vector_insert");
+
+        // === Phase 4: Deferred ResoRank Indexing ===
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_with_label("rag_resorank");
+
+        for (chunk_id, text) in resorank_queue {
+            let tokens = Self::tokenize_static(&text);
             let token_metadata = Self::tokens_to_metadata(&tokens, &mut self.word_doc_freq);
             let doc_meta = Self::create_doc_metadata_static(&tokens);
             
@@ -613,7 +816,14 @@ impl RagPipeline {
             }
         }
 
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_end_with_label("rag_resorank");
+
         self.total_docs += chunks.len();
+
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::time_end_with_label("rag_index_note");
+
         Ok(chunks.len())
     }
     

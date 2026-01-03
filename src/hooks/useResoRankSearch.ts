@@ -1,24 +1,33 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { ResoRankScorer, createProductionScorer, ProximityStrategy, RESORANK_PRODUCTION_CONFIG } from '@/lib/resorank';
 import type { Note } from '@/types/noteTypes';
 
+export interface ResoRankResult {
+    docId: string;
+    score: number;
+    normalizedScore?: number;
+}
+
+/**
+ * Hook for ResoRank-powered search
+ * Uses the pure TypeScript implementation for reliable, fast lexical search
+ */
 export function useResoRankSearch(notes: Note[]) {
     const scorerRef = useRef<ResoRankScorer<string> | null>(null);
+    const [isReady, setIsReady] = useState(false);
+    const [isIndexing, setIsIndexing] = useState(false);
+    const lastIndexedCountRef = useRef(0);
 
     // Initialize scorer with corpus statistics
     const corpusStats = useMemo(() => {
         const totalDocs = notes.length;
         let totalLength = 0;
 
-        // We can do a lightweight pass just for stats if needed, 
-        // but the main effect will handle indexing.
-        // For the stats memo, we'll try to be efficient.
         const sampleSize = Math.min(notes.length, 100);
         const step = Math.max(1, Math.floor(notes.length / sampleSize));
 
         for (let i = 0; i < notes.length; i += step) {
             const note = notes[i];
-            // Quick approximation of length (words)
             const len = (note.title.length + note.content.length) / 5;
             totalLength += len;
         }
@@ -28,25 +37,32 @@ export function useResoRankSearch(notes: Note[]) {
         return {
             totalDocuments: totalDocs,
             averageFieldLengths: new Map([
-                [0, avgLength * 0.2], // Title field (shorter)
-                [1, avgLength * 0.8], // Content field (longer)
+                [0, avgLength * 0.2],
+                [1, avgLength * 0.8],
             ]),
             averageDocumentLength: avgLength,
         };
-    }, [notes.length]); // Only recompute when count changes significantly? 
-    // Ideally we should process content changes too, but that's expensive for just stats.
-    // The effect below will handle full re-indexing.
+    }, [notes.length]);
 
     // Initialize or update the scorer
     useEffect(() => {
-        // If we have no notes, we can still initialize but it won't be very useful until we index
-        if (notes.length === 0) return;
+        if (notes.length === 0) {
+            setIsReady(false);
+            return;
+        }
+
+        // Skip if already indexed this exact set
+        if (lastIndexedCountRef.current === notes.length && scorerRef.current) {
+            return;
+        }
+
+        setIsIndexing(true);
 
         scorerRef.current = createProductionScorer(corpusStats, {
-            strategy: ProximityStrategy.Pairwise, // Fast and accurate
+            strategy: ProximityStrategy.Pairwise,
         });
 
-        // 1. First pass: Calculate global document frequency for each term
+        // First pass: Calculate global document frequency
         const globalTermCounts = new Map<string, number>();
         const noteTokensMap = new Map<string, { titleTokens: string[], contentTokens: string[] }>();
 
@@ -62,7 +78,7 @@ export function useResoRankSearch(notes: Note[]) {
             noteTokensMap.set(note.id, { titleTokens, contentTokens });
         });
 
-        // 2. Second pass: Index documents with correct corpus frequencies
+        // Second pass: Index documents
         notes.forEach(note => {
             const tokensInfo = noteTokensMap.get(note.id);
             if (!tokensInfo) return;
@@ -88,23 +104,61 @@ export function useResoRankSearch(notes: Note[]) {
             scorerRef.current!.indexDocument(note.id, docMetadata, tokenMetadata);
         });
 
-        // Warm the IDF cache for better performance
         scorerRef.current.warmIdfCache();
+        lastIndexedCountRef.current = notes.length;
+        setIsIndexing(false);
+        setIsReady(true);
     }, [notes, corpusStats]);
 
-    const search = (query: string, limit = 20) => {
+    const search = useCallback((query: string, limit = 20): ResoRankResult[] => {
         if (!scorerRef.current || !query.trim()) return [];
-
         if (notes.length === 0) return [];
 
         const queryTokens = tokenize(query);
-        // return scorerRef.current.search(queryTokens, limit);
-        // Note: The search method returns { docId, score }.
-        // We simply return that result.
-        return scorerRef.current.search(queryTokens, limit);
-    };
+        if (queryTokens.length === 0) return [];
 
-    return { search };
+        return scorerRef.current.search(queryTokens, limit);
+    }, [notes.length]);
+
+    return { search, isReady, isIndexing };
+}
+
+/**
+ * Hook for debounced ResoRank search with results state
+ */
+export function useResoRankSearchWithDebounce(
+    notes: Note[],
+    query: string,
+    options: { debounceMs?: number; minLength?: number; limit?: number } = {}
+) {
+    const { debounceMs = 150, minLength = 2, limit = 20 } = options;
+    const { search, isReady, isIndexing } = useResoRankSearch(notes);
+    const [results, setResults] = useState<ResoRankResult[]>([]);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (debounceRef.current) {
+            clearTimeout(debounceRef.current);
+        }
+
+        if (!isReady || query.trim().length < minLength) {
+            setResults([]);
+            return;
+        }
+
+        debounceRef.current = setTimeout(() => {
+            const searchResults = search(query, limit);
+            setResults(searchResults);
+        }, debounceMs);
+
+        return () => {
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+            }
+        };
+    }, [query, isReady, search, debounceMs, minLength, limit]);
+
+    return { results, isReady, isIndexing, search };
 }
 
 // Simple tokenizer: lowercase, strip punctuation, split on whitespace

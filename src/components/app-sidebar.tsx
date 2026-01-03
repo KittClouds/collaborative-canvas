@@ -44,12 +44,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SemanticSearchPanel } from "@/components/search/SemanticSearchPanel";
+// DEPRECATED: TypeScript semantic search UI (libraries kept intact)
+// import { SemanticSearchPanel } from "@/components/search/SemanticSearchPanel";
 import { RustSearchPanel } from "@/components/search/RustSearchPanel";
+import { RankedSearchResults } from "@/components/search/RankedSearchResults";
 import { EntitiesPanel } from "@/components/EntitiesPanel";
 import { SettingsPanel } from "@/components/settings";
 import { ArboristTreeView } from '@/components/tree/ArboristTreeView';
 import { NetworkFolderCreationMenu } from '@/components/network/NetworkFolderCreation';
+import { useResoRankSearchWithDebounce } from '@/hooks/useResoRankSearch';
 import { GraphLogo } from "@/components/ui/GraphLogo";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -536,7 +539,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     createNote,
     createFolder,
     setSearchQuery,
+    selectNote,
   } = useJotaiNotes();
+
+  // ResoRank-powered search with debounce
+  const { results: searchResults, isReady: searchReady, isIndexing } = useResoRankSearchWithDebounce(
+    state.notes,
+    state.searchQuery,
+    { debounceMs: 150, minLength: 2, limit: 20 }
+  );
+  const showRankedResults = state.searchQuery.trim().length >= 2 && searchResults.length > 0;
 
   // No longer needed here as we use memoized button
   // const { toggleHub, isHubOpen } = useBlueprintHub();
@@ -593,12 +605,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <span>Folders</span>
               </div>
             </SelectItem>
+            {/* DEPRECATED: TypeScript semantic search tab
             <SelectItem value="semantic">
               <div className="flex items-center gap-2">
                 <Search className="h-4 w-4" />
                 <span>Semantic</span>
               </div>
             </SelectItem>
+            */}
             <SelectItem value="entities">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4" />
@@ -607,8 +621,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SelectItem>
             <SelectItem value="rust">
               <div className="flex items-center gap-2">
-                <Cpu className="h-4 w-4 text-orange-500" />
-                <span className="text-orange-400">🦀 Rust</span>
+                <Cpu className="h-4 w-4 text-teal-500" />
+                <span className="text-teal-400">Rust</span>
               </div>
             </SelectItem>
           </SelectContent>
@@ -626,6 +640,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 value={state.searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
+              {/* ResoRank indexing indicator */}
+              {isIndexing && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground animate-pulse">
+                  Indexing...
+                </span>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -661,16 +681,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </div>
                 </div>
                 <SidebarGroupContent>
-                  <ArboristTreeView
-                    searchTerm={state.searchQuery}
-                    className="mt-2"
-                  />
+                  {showRankedResults ? (
+                    <RankedSearchResults
+                      results={searchResults.map(r => ({
+                        doc_id: r.docId,
+                        score: r.score,
+                      }))}
+                      onSelect={selectNote}
+                      className="mt-2"
+                    />
+                  ) : (
+                    <ArboristTreeView
+                      searchTerm={state.searchQuery}
+                      className="mt-2"
+                    />
+                  )}
                 </SidebarGroupContent>
               </SidebarGroup>
             </div>
           </>
-        ) : activeTab === 'semantic' ? (
-          <SemanticSearchPanel />
         ) : activeTab === 'entities' ? (
           <EntitiesPanel />
         ) : activeTab === 'rust' ? (

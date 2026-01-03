@@ -3,19 +3,15 @@
 export type LLMProvider = 'gemini' | 'openrouter';
 
 export type ModelId =
-    // Gemini models
-    | 'gemini-2.0-flash-exp'
+    // Gemini models (direct API)
+    | 'gemini-2.5-flash'
+    | 'gemini-2.5-pro'
     | 'gemini-2.0-flash'
-    | 'gemini-1.5-pro'
-    | 'gemini-1.5-flash'
-    // OpenRouter models
-    | 'gpt-4o'
-    | 'claude-3.5-sonnet'
-    | 'claude-sonnet-4-20250514'
+    // OpenRouter FREE models
     | 'nvidia/nemotron-3-nano-30b-a3b:free'
-    | 'deepseek/deepseek-r1:free'
-    | 'google/gemma-3-27b-it:free'
-    | 'meta-llama/llama-3.3-70b-instruct';
+    | 'arcee-ai/trinity-mini:free'
+    | 'nex-agi/deepseek-v3.1-nex-n1:free'
+    | 'google/gemini-3-flash-preview';
 
 export interface ModelDefinition {
     id: ModelId;

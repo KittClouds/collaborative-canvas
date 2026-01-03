@@ -1,11 +1,11 @@
-import { streamText, CoreMessage, ToolCallPart, ToolResultPart } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { streamText, CoreMessage } from 'ai';
 import { google } from '@ai-sdk/google';
-import { anthropic } from '@ai-sdk/anthropic';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { tools } from './tools';
-import { agentConfig } from './mastra.config';
+import { agentConfig, ModelProvider } from './mastra.config';
+import { SettingsManager } from '@/lib/settings/SettingsManager';
 
-export type ModelProvider = 'openai' | 'google' | 'anthropic';
+export type { ModelProvider };
 
 export interface ChatRequest {
   messages: CoreMessage[];
@@ -14,21 +14,29 @@ export interface ChatRequest {
   onFinish?: (text: string) => void;
 }
 
+/**
+ * Get OpenRouter client with API key from settings
+ */
+function getOpenRouterClient() {
+  const apiKey = SettingsManager.getApiKey('openrouter');
+  return createOpenRouter({
+    apiKey: apiKey || import.meta.env.VITE_OPENROUTER_API_KEY || '',
+  });
+}
+
 export const chatService = {
   async streamResponse(request: ChatRequest) {
-    const { messages, modelProvider = 'openai', modelName = 'gpt-4o' } = request;
+    const { messages, modelProvider = 'google', modelName = 'gemini-2.5-flash' } = request;
 
     let model;
     switch (modelProvider) {
+      case 'openrouter':
+        const openrouter = getOpenRouterClient();
+        model = openrouter(modelName);
+        break;
       case 'google':
-        model = google(modelName);
-        break;
-      case 'anthropic':
-        model = anthropic(modelName);
-        break;
-      case 'openai':
       default:
-        model = openai(modelName);
+        model = google(modelName);
         break;
     }
 
@@ -37,10 +45,10 @@ export const chatService = {
         model,
         messages,
         system: agentConfig.instructions,
-        tools: tools as any, // Cast to any to avoid TS inference issues with overloads
-        // @ts-ignore - maxSteps is available in AI SDK 5.x but TS inference might be failing
-        maxSteps: 5, // Allow multi-step tool execution
-        dangerouslyAllowBrowser: true, // Client-side execution
+        tools: tools as any,
+        // @ts-ignore - maxSteps is available in AI SDK 5.x
+        maxSteps: 5,
+        dangerouslyAllowBrowser: true,
       });
 
       return result;
@@ -52,9 +60,57 @@ export const chatService = {
 
   getAvailableModels() {
     return {
-      openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-      google: ['gemini-2.0-flash-exp', 'gemini-1.5-pro'],
-      anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229'],
+      google: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
+      openrouter: [
+        'nvidia/nemotron-3-nano-30b-a3b:free',
+        'arcee-ai/trinity-mini:free',
+        'nex-agi/deepseek-v3.1-nex-n1:free',
+        'google/gemini-3-flash-preview',
+      ],
     };
+  },
+
+  /**
+   * Generate inline edit for selected text.
+   * Simpler than streamResponse - no tools, no chat history.
+   */
+  async generateInlineEdit(options: {
+    text: string;
+    prompt: string;
+    action: string;
+    modelProvider?: ModelProvider;
+    modelName?: string;
+  }) {
+    const {
+      prompt,
+      modelProvider = 'google',
+      modelName = 'gemini-2.5-flash'
+    } = options;
+
+    let model;
+    switch (modelProvider) {
+      case 'openrouter':
+        const openrouter = getOpenRouterClient();
+        model = openrouter(modelName);
+        break;
+      case 'google':
+      default:
+        model = google(modelName);
+        break;
+    }
+
+    try {
+      // @ts-ignore - allow browser execution
+      const result = await streamText({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        system: 'You are a professional writing assistant. Respond only with the improved text, no explanations or commentary.',
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Inline edit error:', error);
+      throw error;
+    }
   }
 };

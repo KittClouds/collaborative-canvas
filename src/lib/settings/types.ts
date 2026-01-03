@@ -34,9 +34,9 @@ export interface UISettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
     llm: {
-        defaultModel: 'gemini-2.0-flash-exp',
+        defaultModel: 'gemini-2.5-flash',
         extractorModel: 'nvidia/nemotron-3-nano-30b-a3b:free',
-        agentModel: 'gemini-2.0-flash-exp',
+        agentModel: 'gemini-2.5-flash',
         defaultTemperature: 0.7,
         defaultMaxTokens: 2048,
     },

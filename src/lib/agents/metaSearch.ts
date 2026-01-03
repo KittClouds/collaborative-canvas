@@ -1,10 +1,11 @@
 import { streamText, generateText, CoreMessage } from 'ai';
-import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
-import { anthropic } from '@ai-sdk/anthropic';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { tools, analyzeQueryTool, rerankResultsTool, shouldExpandGraphTool } from './tools';
+import { ModelProvider } from './mastra.config';
+import { SettingsManager } from '@/lib/settings/SettingsManager';
 
-export type ModelProvider = 'openai' | 'google' | 'anthropic';
+export type { ModelProvider };
 
 export interface MetaSearchOptions {
     query: string;
@@ -85,6 +86,30 @@ Always cite sources using: [Note Title](noteId:UUID) or [Entity Name](entity:ID)
 - Prioritize quality over quantity in your final answer`;
 
 /**
+ * Get OpenRouter client with API key from settings
+ */
+function getOpenRouterClient() {
+    const apiKey = SettingsManager.getApiKey('openrouter');
+    return createOpenRouter({
+        apiKey: apiKey || import.meta.env.VITE_OPENROUTER_API_KEY || '',
+    });
+}
+
+/**
+ * Get model instance for provider
+ */
+function getModel(modelProvider: ModelProvider, modelName: string) {
+    switch (modelProvider) {
+        case 'openrouter':
+            const openrouter = getOpenRouterClient();
+            return openrouter(modelName);
+        case 'google':
+        default:
+            return google(modelName);
+    }
+}
+
+/**
  * MetaSearch - Intelligent multi-modal search orchestration
  * 
  * Routes queries to the most appropriate search modalities based on intent,
@@ -95,26 +120,13 @@ export async function metaSearch(options: MetaSearchOptions): Promise<MetaSearch
     const {
         query,
         groupId = 'global',
-        modelProvider = 'openai',
-        modelName = 'gpt-4o',
+        modelProvider = 'google',
+        modelName = 'gemini-2.5-flash',
         maxResults = 10,
         context = [],
     } = options;
 
-    // Select model based on provider
-    let model;
-    switch (modelProvider) {
-        case 'google':
-            model = google(modelName);
-            break;
-        case 'anthropic':
-            model = anthropic(modelName);
-            break;
-        case 'openai':
-        default:
-            model = openai(modelName);
-            break;
-    }
+    const model = getModel(modelProvider, modelName);
 
     try {
         // Step 1: Analyze query to determine strategy
@@ -234,26 +246,13 @@ export async function metaSearchStream(options: MetaSearchOptions) {
     const {
         query,
         groupId = 'global',
-        modelProvider = 'openai',
-        modelName = 'gpt-4o',
+        modelProvider = 'google',
+        modelName = 'gemini-2.5-flash',
         maxResults = 10,
         context = [],
     } = options;
 
-    // Select model
-    let model;
-    switch (modelProvider) {
-        case 'google':
-            model = google(modelName);
-            break;
-        case 'anthropic':
-            model = anthropic(modelName);
-            break;
-        case 'openai':
-        default:
-            model = openai(modelName);
-            break;
-    }
+    const model = getModel(modelProvider, modelName);
 
     // Pre-analyze query
     const analysisResult = await analyzeQueryTool.execute!({ query }, {} as any);

@@ -6,22 +6,40 @@ import type { ModelDefinition, ModelId, LLMProvider } from './types';
  */
 export class ModelRegistry {
     private static models: Map<ModelId, ModelDefinition> = new Map([
-        // ===== GEMINI MODELS =====
+        // ===== GEMINI MODELS (Direct API) =====
         [
-            'gemini-2.0-flash-exp',
+            'gemini-2.5-flash',
             {
-                id: 'gemini-2.0-flash-exp',
-                name: 'Gemini 2.0 Flash (Experimental)',
+                id: 'gemini-2.5-flash',
+                name: 'Gemini 2.5 Flash',
                 provider: 'gemini',
-                contextWindow: 32000,
-                costPer1kTokens: 0, // Free tier
+                contextWindow: 1000000,
+                costPer1kTokens: 0.000075,
                 speedTier: 'fast',
                 capabilities: {
                     chat: true,
                     embeddings: false,
                     reasoning: true,
                 },
-                description: 'Latest experimental Gemini model. Fast and free.',
+                description: 'Latest Gemini 2.5 Flash. Fast and capable.',
+                maxOutputTokens: 8192,
+            },
+        ],
+        [
+            'gemini-2.5-pro',
+            {
+                id: 'gemini-2.5-pro',
+                name: 'Gemini 2.5 Pro',
+                provider: 'gemini',
+                contextWindow: 2000000,
+                costPer1kTokens: 0.00125,
+                speedTier: 'medium',
+                capabilities: {
+                    chat: true,
+                    embeddings: false,
+                    reasoning: true,
+                },
+                description: 'Most capable Gemini. 2M context window.',
                 maxOutputTokens: 8192,
             },
         ],
@@ -39,48 +57,12 @@ export class ModelRegistry {
                     embeddings: false,
                     reasoning: true,
                 },
-                description: 'Fast multimodal Gemini model.',
-                maxOutputTokens: 8192,
-            },
-        ],
-        [
-            'gemini-1.5-pro',
-            {
-                id: 'gemini-1.5-pro',
-                name: 'Gemini 1.5 Pro',
-                provider: 'gemini',
-                contextWindow: 2000000, // 2M tokens!
-                costPer1kTokens: 0.00125, // $1.25 per 1M input tokens
-                speedTier: 'medium',
-                capabilities: {
-                    chat: true,
-                    embeddings: false,
-                    reasoning: true,
-                },
-                description: 'Most capable Gemini model. Massive context window.',
-                maxOutputTokens: 8192,
-            },
-        ],
-        [
-            'gemini-1.5-flash',
-            {
-                id: 'gemini-1.5-flash',
-                name: 'Gemini 1.5 Flash',
-                provider: 'gemini',
-                contextWindow: 1000000,
-                costPer1kTokens: 0.000075, // Very cheap
-                speedTier: 'fast',
-                capabilities: {
-                    chat: true,
-                    embeddings: false,
-                    reasoning: true,
-                },
-                description: 'Fast, affordable Gemini model for most tasks.',
+                description: 'Fast multimodal Gemini 2.0 model.',
                 maxOutputTokens: 8192,
             },
         ],
 
-        // ===== OPENROUTER MODELS =====
+        // ===== OPENROUTER MODELS (FREE tier only) =====
         [
             'nvidia/nemotron-3-nano-30b-a3b:free',
             {
@@ -88,22 +70,40 @@ export class ModelRegistry {
                 name: 'Nemotron 3 Nano 30B (FREE)',
                 provider: 'openrouter',
                 contextWindow: 1000000,
-                costPer1kTokens: 0, // FREE!
+                costPer1kTokens: 0,
                 speedTier: 'fast',
                 capabilities: {
                     chat: true,
                     embeddings: false,
                     reasoning: true,
                 },
-                description: 'Nvidia free model. Great for extraction tasks.',
+                description: 'NVIDIA reasoning model. Great for extraction. FREE.',
                 maxOutputTokens: 4096,
             },
         ],
         [
-            'deepseek/deepseek-r1:free',
+            'arcee-ai/trinity-mini:free',
             {
-                id: 'deepseek/deepseek-r1:free',
-                name: 'DeepSeek R1 (FREE)',
+                id: 'arcee-ai/trinity-mini:free',
+                name: 'Trinity Mini (FREE)',
+                provider: 'openrouter',
+                contextWindow: 131000,
+                costPer1kTokens: 0,
+                speedTier: 'fast',
+                capabilities: {
+                    chat: true,
+                    embeddings: false,
+                    reasoning: true,
+                },
+                description: 'Arcee AI 26B MoE model. Function calling + agents. FREE.',
+                maxOutputTokens: 8192,
+            },
+        ],
+        [
+            'nex-agi/deepseek-v3.1-nex-n1:free',
+            {
+                id: 'nex-agi/deepseek-v3.1-nex-n1:free',
+                name: 'DeepSeek V3.1 Nex N1 (FREE)',
                 provider: 'openrouter',
                 contextWindow: 128000,
                 costPer1kTokens: 0,
@@ -113,97 +113,25 @@ export class ModelRegistry {
                     embeddings: false,
                     reasoning: true,
                 },
-                description: 'DeepSeek reasoning model. Free tier.',
+                description: 'DeepSeek V3.1 tuned for agents + tool use. FREE.',
                 maxOutputTokens: 8192,
             },
         ],
         [
-            'google/gemma-3-27b-it:free',
+            'google/gemini-3-flash-preview',
             {
-                id: 'google/gemma-3-27b-it:free',
-                name: 'Gemma 3 27B (FREE)',
+                id: 'google/gemini-3-flash-preview',
+                name: 'Gemini 3 Flash Preview',
                 provider: 'openrouter',
-                contextWindow: 96000,
-                costPer1kTokens: 0,
+                contextWindow: 1000000,
+                costPer1kTokens: 0.00015,
                 speedTier: 'fast',
                 capabilities: {
                     chat: true,
                     embeddings: false,
                     reasoning: true,
                 },
-                description: 'Google open model via OpenRouter. Free.',
-                maxOutputTokens: 8192,
-            },
-        ],
-        [
-            'gpt-4o',
-            {
-                id: 'gpt-4o',
-                name: 'GPT-4o',
-                provider: 'openrouter',
-                contextWindow: 128000,
-                costPer1kTokens: 0.0025, // Via OpenRouter
-                speedTier: 'medium',
-                capabilities: {
-                    chat: true,
-                    embeddings: false,
-                    reasoning: true,
-                },
-                description: 'Latest OpenAI model. Multimodal and powerful.',
-                maxOutputTokens: 16384,
-            },
-        ],
-        [
-            'claude-3.5-sonnet',
-            {
-                id: 'claude-3.5-sonnet',
-                name: 'Claude 3.5 Sonnet',
-                provider: 'openrouter',
-                contextWindow: 200000,
-                costPer1kTokens: 0.003,
-                speedTier: 'medium',
-                capabilities: {
-                    chat: true,
-                    embeddings: false,
-                    reasoning: true,
-                },
-                description: 'Anthropic flagship. Excellent reasoning.',
-                maxOutputTokens: 8192,
-            },
-        ],
-        [
-            'claude-sonnet-4-20250514',
-            {
-                id: 'claude-sonnet-4-20250514',
-                name: 'Claude Sonnet 4',
-                provider: 'openrouter',
-                contextWindow: 200000,
-                costPer1kTokens: 0.003,
-                speedTier: 'medium',
-                capabilities: {
-                    chat: true,
-                    embeddings: false,
-                    reasoning: true,
-                },
-                description: 'Latest Claude model via OpenRouter.',
-                maxOutputTokens: 8192,
-            },
-        ],
-        [
-            'meta-llama/llama-3.3-70b-instruct',
-            {
-                id: 'meta-llama/llama-3.3-70b-instruct',
-                name: 'Llama 3.3 70B',
-                provider: 'openrouter',
-                contextWindow: 128000,
-                costPer1kTokens: 0.0008,
-                speedTier: 'fast',
-                capabilities: {
-                    chat: true,
-                    embeddings: false,
-                    reasoning: true,
-                },
-                description: 'Meta open-source model. Fast and affordable.',
+                description: 'Gemini 3 Flash via OpenRouter. Agentic workflows.',
                 maxOutputTokens: 8192,
             },
         ],
@@ -250,13 +178,13 @@ export class ModelRegistry {
     static getRecommendedModel(task: 'chat' | 'extraction' | 'reasoning'): ModelId {
         switch (task) {
             case 'chat':
-                return 'gemini-2.0-flash-exp'; // Fast, free, good quality
+                return 'gemini-2.5-flash'; // Fast, capable
             case 'extraction':
                 return 'nvidia/nemotron-3-nano-30b-a3b:free'; // Fast extraction
             case 'reasoning':
-                return 'gemini-1.5-pro'; // Best reasoning
+                return 'gemini-2.5-pro'; // Best reasoning
             default:
-                return 'gemini-2.0-flash-exp';
+                return 'gemini-2.5-flash';
         }
     }
 }

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, User, Trash2, Settings2 } from 'lucide-react';
-import { Message, ToolInvocation } from 'ai';
-import { chatService, ModelProvider } from '@/lib/agents/chatService';
+import { chatService } from '@/lib/agents/chatService';
+import { availableModels, ModelProvider } from '@/lib/agents/mastra.config';
 import { AgentInput } from './AgentInput';
 import { ToolExecutionLog } from './ToolExecutionLog';
 import { CitationCard } from './CitationCard';
@@ -11,13 +11,28 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useTemporalHighlight } from '@/contexts/TemporalHighlightContext';
 
+// Local message types for UI state (simpler than AI SDK types)
+interface ToolInvocationState {
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+  state: 'call' | 'result';
+  result?: unknown;
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  toolInvocations?: ToolInvocationState[];
+}
+
 // Helper to extract citations from markdown [Title](id)
 const extractCitations = (text: string) => {
   const regex = /\[([^\]]+)\]\(([^)]+)\)/g;
   const citations = [];
   let match;
   while ((match = regex.exec(text)) !== null) {
-    // Basic check if it looks like a note ID (e.g. UUID or specific format, or just assume valid)
     citations.push({
       title: match[1],
       noteId: match[2],
@@ -28,15 +43,15 @@ const extractCitations = (text: string) => {
 };
 
 export function AgentSidebar() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>('gpt-4o');
-  const [selectedProvider, setSelectedProvider] = useState<ModelProvider>('openai');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
+  const [selectedProvider, setSelectedProvider] = useState<ModelProvider>('google');
   const scrollRef = useRef<HTMLDivElement>(null);
-  
+
   // Contexts
-  const { setOnActivateTimeline } = useTemporalHighlight(); // Just to have access to nav if needed
+  const { setOnActivateTimeline } = useTemporalHighlight();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -56,7 +71,7 @@ export function AgentSidebar() {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    const userMessage: Message = {
+    const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
       content: input,
@@ -69,7 +84,7 @@ export function AgentSidebar() {
     try {
       // Create a placeholder for the assistant message
       const assistantMessageId = (Date.now() + 1).toString();
-      let currentAssistantMessage: Message = {
+      let currentAssistantMessage: ChatMessage = {
         id: assistantMessageId,
         role: 'assistant',
         content: '',
@@ -78,9 +93,15 @@ export function AgentSidebar() {
 
       setMessages(prev => [...prev, currentAssistantMessage]);
 
+      // Build messages for the API (convert to CoreMessage format)
+      const apiMessages = [...messages, userMessage].map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+
       // Call Chat Service
       const result = await chatService.streamResponse({
-        messages: [...messages, userMessage], // Pass full history
+        messages: apiMessages,
         modelProvider: selectedProvider,
         modelName: selectedModel
       });
@@ -88,36 +109,36 @@ export function AgentSidebar() {
       // Consume the stream
       for await (const part of result.fullStream) {
         if (part.type === 'text-delta') {
-          currentAssistantMessage.content += part.textDelta;
+          // AI SDK v5 uses 'text' instead of 'textDelta'
+          currentAssistantMessage.content += (part as any).text ?? '';
         } else if (part.type === 'tool-call') {
-          const toolInvocation: ToolInvocation = {
+          const toolInvocation: ToolInvocationState = {
             toolCallId: part.toolCallId,
             toolName: part.toolName,
-            args: part.args,
+            args: (part as any).input ?? {},
             state: 'call',
           };
-          
+
           currentAssistantMessage.toolInvocations = [
             ...(currentAssistantMessage.toolInvocations || []),
             toolInvocation
           ];
         } else if (part.type === 'tool-result') {
-           // Update the matching tool invocation with result
-           currentAssistantMessage.toolInvocations = currentAssistantMessage.toolInvocations?.map(inv => 
-             inv.toolCallId === part.toolCallId 
-               ? { ...inv, state: 'result', result: part.result } 
-               : inv
-           );
+          // Update the matching tool invocation with result
+          currentAssistantMessage.toolInvocations = currentAssistantMessage.toolInvocations?.map(inv =>
+            inv.toolCallId === part.toolCallId
+              ? { ...inv, state: 'result' as const, result: (part as any).output }
+              : inv
+          );
         }
 
         // Update state
-        setMessages(prev => 
+        setMessages(prev =>
           prev.map(m => m.id === assistantMessageId ? { ...currentAssistantMessage } : m)
         );
       }
     } catch (error) {
       console.error('Chat error:', error);
-      // Add error message?
     } finally {
       setIsLoading(false);
     }
@@ -127,19 +148,11 @@ export function AgentSidebar() {
     setMessages([]);
   };
 
-  // Model options (simplified)
-  const models = [
-    { provider: 'openai', name: 'gpt-4o', label: 'GPT-4o' },
-    { provider: 'openai', name: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-    { provider: 'google', name: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash' },
-    { provider: 'anthropic', name: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-  ];
-
   const handleModelChange = (value: string) => {
-    const model = models.find(m => m.name === value);
+    const model = availableModels.find(m => m.modelId === value);
     if (model) {
       setSelectedModel(value);
-      setSelectedProvider(model.provider as ModelProvider);
+      setSelectedProvider(model.provider);
     }
   };
 
@@ -154,9 +167,21 @@ export function AgentSidebar() {
               <SelectValue placeholder="Select Model" />
             </SelectTrigger>
             <SelectContent>
-              {models.map(m => (
-                <SelectItem key={m.name} value={m.name} className="text-xs">
-                  {m.label}
+              {/* Gemini Models */}
+              <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">Gemini</div>
+              {availableModels.filter(m => m.provider === 'google').map(m => (
+                <SelectItem key={m.modelId} value={m.modelId} className="text-xs">
+                  {m.displayName}
+                </SelectItem>
+              ))}
+              {/* OpenRouter Models */}
+              <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase mt-1">OpenRouter</div>
+              {availableModels.filter(m => m.provider === 'openrouter').map(m => (
+                <SelectItem key={m.modelId} value={m.modelId} className="text-xs">
+                  <div className="flex items-center gap-1">
+                    {m.displayName}
+                    {m.isFree && <span className="text-[9px] bg-green-500/20 text-green-500 px-1 rounded">FREE</span>}
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -176,7 +201,7 @@ export function AgentSidebar() {
               <p className="text-sm">How can I help you analyze your notes?</p>
             </div>
           )}
-          
+
           {messages.map((m) => (
             <div key={m.id} className={cn("flex flex-col gap-1", m.role === 'user' ? "items-end" : "items-start")}>
               <div className="flex items-center gap-2 px-1">
@@ -189,12 +214,12 @@ export function AgentSidebar() {
                   {m.role}
                 </span>
               </div>
-              
-              <div 
+
+              <div
                 className={cn(
                   "rounded-lg p-3 text-sm max-w-[90%]",
-                  m.role === 'user' 
-                    ? "bg-primary text-primary-foreground" 
+                  m.role === 'user'
+                    ? "bg-primary text-primary-foreground"
                     : "bg-muted border"
                 )}
               >
@@ -213,12 +238,10 @@ export function AgentSidebar() {
                       Sources
                     </span>
                     {extractCitations(m.content).map((cit, idx) => (
-                      <CitationCard 
+                      <CitationCard
                         key={idx}
                         title={cit.title}
                         noteId={cit.noteId}
-                        // We could find the snippet from tool results if we parsed them deep, 
-                        // but for now we just link
                         className="bg-background/50"
                       />
                     ))}
@@ -232,12 +255,12 @@ export function AgentSidebar() {
       </ScrollArea>
 
       {/* Input */}
-      <AgentInput 
+      <AgentInput
         input={input}
         handleInputChange={handleInputChange}
         handleSubmit={handleSubmit}
         isLoading={isLoading}
-        stop={() => {}} // TODO: Implement stop
+        stop={() => { }}
         className="pb-8"
       />
     </div>

@@ -22,8 +22,8 @@ Guidelines:
 - Be concise but thorough.
 - If you run a tool, summarize the results clearly.
   `,
-  modelProvider: 'openai', // Default, can be changed
-  modelName: 'gpt-4o',
+  modelProvider: 'google', // Default: Gemini
+  modelName: 'gemini-2.5-flash',
   tools: tools,
 };
 
@@ -60,17 +60,17 @@ Strategy Guidelines:
 - Use History + Vector for temporal queries
 - Combine multiple modalities when query is complex
 - Always expand initial results with graph context when relevant`,
-  modelProvider: 'openai',
-  modelName: 'gpt-4o',
+  modelProvider: 'google',
+  modelName: 'gemini-2.5-flash',
   tools: tools,
   maxSteps: 8, // Allow multi-step tool execution for complex queries
 };
 
 /**
  * Model Provider Configuration
- * Supports OpenAI, Google, Anthropic, and OpenRouter
+ * Supports Google (Gemini direct) and OpenRouter
  */
-export type ModelProvider = 'openai' | 'google' | 'anthropic' | 'openrouter';
+export type ModelProvider = 'google' | 'openrouter';
 
 export interface ModelConfig {
   provider: ModelProvider;
@@ -83,54 +83,33 @@ export interface ModelConfig {
 
 /**
  * Available models by provider
+ * Focused on Gemini (direct) and OpenRouter (FREE tier)
  */
 export const availableModels: ModelConfig[] = [
-  // OpenAI
+  // Gemini (Direct API)
   {
-    provider: 'openai',
-    modelId: 'gpt-4o',
-    displayName: 'GPT-4o',
-    description: 'Most capable OpenAI model',
-    contextWindow: 128000,
+    provider: 'google',
+    modelId: 'gemini-2.5-flash',
+    displayName: 'Gemini 2.5 Flash',
+    description: 'Latest Gemini. Fast and capable.',
+    contextWindow: 1000000,
+    isFree: false,
   },
   {
-    provider: 'openai',
-    modelId: 'gpt-4o-mini',
-    displayName: 'GPT-4o Mini',
-    description: 'Fast and affordable',
-    contextWindow: 128000,
+    provider: 'google',
+    modelId: 'gemini-2.5-pro',
+    displayName: 'Gemini 2.5 Pro',
+    description: 'Most capable Gemini. 2M context.',
+    contextWindow: 2000000,
+    isFree: false,
   },
-
-  // Google
   {
     provider: 'google',
     modelId: 'gemini-2.0-flash',
     displayName: 'Gemini 2.0 Flash',
-    description: 'Fast multimodal model',
+    description: 'Fast multimodal Gemini 2.0.',
     contextWindow: 1000000,
-  },
-  {
-    provider: 'google',
-    modelId: 'gemini-1.5-pro',
-    displayName: 'Gemini 1.5 Pro',
-    description: 'Best Gemini model',
-    contextWindow: 2000000,
-  },
-
-  // Anthropic
-  {
-    provider: 'anthropic',
-    modelId: 'claude-sonnet-4-20250514',
-    displayName: 'Claude Sonnet 4',
-    description: 'Latest Claude model',
-    contextWindow: 200000,
-  },
-  {
-    provider: 'anthropic',
-    modelId: 'claude-3-5-haiku-20241022',
-    displayName: 'Claude 3.5 Haiku',
-    description: 'Fast and efficient',
-    contextWindow: 200000,
+    isFree: false,
   },
 
   // OpenRouter - FREE models
@@ -144,19 +123,27 @@ export const availableModels: ModelConfig[] = [
   },
   {
     provider: 'openrouter',
-    modelId: 'deepseek/deepseek-r1:free',
-    displayName: 'DeepSeek R1',
-    description: 'DeepSeek reasoning model - FREE',
+    modelId: 'arcee-ai/trinity-mini:free',
+    displayName: 'Trinity Mini',
+    description: 'Arcee AI MoE. Function calling - FREE',
+    contextWindow: 131000,
+    isFree: true,
+  },
+  {
+    provider: 'openrouter',
+    modelId: 'nex-agi/deepseek-v3.1-nex-n1:free',
+    displayName: 'DeepSeek V3.1 Nex N1',
+    description: 'DeepSeek for agents - FREE',
     contextWindow: 128000,
     isFree: true,
   },
   {
     provider: 'openrouter',
-    modelId: 'google/gemma-3-27b-it:free',
-    displayName: 'Gemma 3 27B',
-    description: 'Google open model - FREE',
-    contextWindow: 96000,
-    isFree: true,
+    modelId: 'google/gemini-3-flash-preview',
+    displayName: 'Gemini 3 Flash Preview',
+    description: 'Gemini 3 via OpenRouter',
+    contextWindow: 1000000,
+    isFree: false,
   },
 ];
 

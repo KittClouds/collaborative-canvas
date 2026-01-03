@@ -1,5 +1,5 @@
 export interface LLMExtractionConfig {
-    provider: 'gemini' | 'openai' | 'openrouter' | 'anthropic';
+    provider: 'gemini' | 'openrouter';
     apiKey: string;
     model?: string;
     customEntityTypes?: string[];
@@ -12,45 +12,31 @@ export interface LLMExtractionConfig {
  * Get default model for provider
  */
 export function getDefaultModel(provider: string): string {
-    const defaults = {
-        gemini: 'gemini-2.0-flash-exp',
-        openai: 'gpt-4o',
-        openrouter: 'openai/gpt-4o',  // Or 'anthropic/claude-3.5-sonnet'
-        anthropic: 'claude-3-5-sonnet-20241022',
+    const defaults: Record<string, string> = {
+        gemini: 'gemini-2.5-flash',
+        openrouter: 'nvidia/nemotron-3-nano-30b-a3b:free',
     };
-    return defaults[provider as keyof typeof defaults] || 'gemini-2.0-flash-exp';
+    return defaults[provider] || 'gemini-2.5-flash';
 }
 
 /**
  * Get supported models for provider
  */
 export function getSupportedModels(provider: string): string[] {
-    const models = {
+    const models: Record<string, string[]> = {
         gemini: [
-            'gemini-2.0-flash-exp',
-            'gemini-2.0-flash-thinking-exp-1219',
-            'gemini-1.5-pro',
-            'gemini-1.5-flash',
-        ],
-        openai: [
-            'gpt-4o',
-            'gpt-4o-mini',
-            'gpt-4-turbo',
+            'gemini-2.5-flash',
+            'gemini-2.5-pro',
+            'gemini-2.0-flash',
         ],
         openrouter: [
-            'openai/gpt-4o',
-            'anthropic/claude-3.5-sonnet',
-            'google/gemini-2.0-flash-exp',
-            'meta-llama/llama-3.3-70b-instruct',
-            'qwen/qwen-2.5-72b-instruct',
-        ],
-        anthropic: [
-            'claude-3-5-sonnet-20241022',
-            'claude-3-5-haiku-20241022',
-            'claude-3-opus-20240229',
+            'nvidia/nemotron-3-nano-30b-a3b:free',
+            'arcee-ai/trinity-mini:free',
+            'nex-agi/deepseek-v3.1-nex-n1:free',
+            'google/gemini-3-flash-preview',
         ],
     };
-    return models[provider as keyof typeof models] || [];
+    return models[provider] || [];
 }
 
 /**
@@ -61,11 +47,16 @@ export function estimateTokenCost(
     model: string,
     tokens: number
 ): number {
-    // Rough estimates (USD per 1M tokens)
+    // Pricing (USD per 1M tokens)
     const pricing: Record<string, { input: number; output: number }> = {
-        'gemini-2.0-flash-exp': { input: 0, output: 0 },  // Free during preview
-        'gpt-4o': { input: 2.5, output: 10 },
-        'claude-3-5-sonnet': { input: 3, output: 15 },
+        'gemini-2.5-flash': { input: 0.075, output: 0.3 },
+        'gemini-2.5-pro': { input: 1.25, output: 5 },
+        'gemini-2.0-flash': { input: 0.075, output: 0.3 },
+        // FREE models
+        'nvidia/nemotron-3-nano-30b-a3b:free': { input: 0, output: 0 },
+        'arcee-ai/trinity-mini:free': { input: 0, output: 0 },
+        'nex-agi/deepseek-v3.1-nex-n1:free': { input: 0, output: 0 },
+        'google/gemini-3-flash-preview': { input: 0.15, output: 0.6 },
     };
 
     const modelPricing = pricing[model] || { input: 0, output: 0 };
