@@ -1,0 +1,8 @@
+# bunfig.toml - Bun configuration
+[install]
+# Use existing lockfile format hints
+auto = true
+
+[run]
+# Don't silently fail
+silent = false
