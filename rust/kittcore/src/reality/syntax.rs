@@ -14,6 +14,16 @@ pub enum SyntaxKind {
     ConceptSpan,
     RelationSpan,
 
+    // NEW: Phrase-level nodes (from Chunker)
+    NounPhrase,      // "the ancient wizard"
+    VerbPhrase,      // "was slowly walking"
+    PrepPhrase,      // "through the forest"
+    AdjPhrase,       // "incredibly powerful"
+    
+    // NEW: Clause-level nodes
+    MainClause,           // Primary clause in sentence
+    SubordinateClause,    // "who lived in the tower", "because he was tired"
+
     // Leaves
     Word,
     Whitespace,

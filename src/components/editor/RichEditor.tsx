@@ -68,7 +68,7 @@ import type { HighlightMode } from '@/atoms/highlightingAtoms';
 import type { EntityKind } from '@/lib/types/entityTypes';
 
 // Scanner 4.0 - Rust-powered scanning via facade
-import { scannerFacade } from '@/lib/scanner';
+import { scannerFacade, initializeRustFacades } from '@/lib/scanner';
 
 // Import CSS
 import 'reactjs-tiptap-editor/style.css';
@@ -292,6 +292,7 @@ function createExtensions(
       nerEntities: getNEREntities,
       useWidgetMode: true,
       enableLinkTracking: true,
+      useUnifiedScanner: true, // Re-enabling to test catch_unwind fix
       currentNoteId: getNoteId,
       logPerformance: true,
       getHighlightMode,
@@ -369,9 +370,14 @@ const RichEditor = ({
 
     // Use IIFE to properly await async initialization
     (async () => {
-      await scannerFacade.initialize();
+      // Initialize legacy scanner and new Rust facades
+      await Promise.all([
+        scannerFacade.initialize(),
+        initializeRustFacades()
+      ]);
+
       if (cancelled) return;
-      console.log('[RichEditor] Scanner 4.0 (Rust) initialized');
+      console.log('[RichEditor] Scanner 4.0 (Rust) and facades initialized');
 
       // Initialize Rust highlighter
       const rustReady = await highlighterBridge.initialize();

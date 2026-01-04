@@ -40,3 +40,70 @@ export {
     refreshScannerPatterns,
 } from './pattern-bridge';
 
+// ===========================================================================
+// NEW: Rust-First Facades (Phase 2 Migration)
+// ===========================================================================
+
+// Unified Scanner - Pattern detection + decoration spans
+export {
+    UnifiedScannerFacade,
+    unifiedScannerFacade,
+    toPatternRanges,
+    type RefKind,
+    type StylingHint,
+    type DecorationSpan,
+    type UnifiedScanResult,
+    type UnifiedScanStats,
+    type HighlightMode,
+    type FocusModeConfig,
+    type ModeStyles,
+} from './unified-facade';
+
+// Constraints - Validation + uniqueness
+export {
+    ConstraintsFacade,
+    constraintsFacade,
+    type ConstraintResult,
+    type RefInput,
+    type RefPosition,
+    type RefPayload,
+} from './constraints-facade';
+
+// Projections - Timelines, graphs, character sheets
+export {
+    ProjectionsFacade,
+    projectionsFacade,
+    type TimelineEvent,
+    type CharacterSheet,
+    type CharacterRelationship,
+    type NoteAppearance,
+    type CharacterStats,
+    type RelationshipGraph,
+    type LinkGraph,
+    type ProjectionRef,
+    type ProjectionPayload,
+} from './projections-facade';
+
+/**
+ * Initialize all Rust-first scanner facades
+ * 
+ * Call this once at app startup to load WASM modules.
+ */
+export async function initializeRustFacades(): Promise<{
+    scanner: boolean;
+    constraints: boolean;
+    projections: boolean;
+}> {
+    const results = await Promise.allSettled([
+        import('./unified-facade').then(m => m.unifiedScannerFacade.initialize()),
+        import('./constraints-facade').then(m => m.constraintsFacade.initialize()),
+        import('./projections-facade').then(m => m.projectionsFacade.initialize()),
+    ]);
+
+    return {
+        scanner: results[0].status === 'fulfilled',
+        constraints: results[1].status === 'fulfilled',
+        projections: results[2].status === 'fulfilled',
+    };
+}
+

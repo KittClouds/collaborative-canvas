@@ -21,6 +21,17 @@ import { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { highlighterBridge, type HighlightSpan } from '@/lib/highlighter/HighlighterBridge';
 import { getOrBuildPositionMap, getOrBuildText } from '@/lib/highlighter/positionMapCache';
 
+// Unified Scanner (New Rust Pipeline)
+import { unifiedScannerFacade, type UnifiedScanResult, type DecorationSpan as UnifiedSpan } from '@/lib/scanner/unified-facade';
+import {
+    getCaptureValue,
+    getValidatedEntityKind,
+    getEntityColor,
+    getEntityBgColor,
+    safeProcessSpan,
+    isValidRefKind,
+} from '@/lib/scanner/unified-scanner-utils';
+
 // Types
 import { EntityKind, ENTITY_KINDS, ENTITY_COLORS } from '@/lib/types/entityTypes';
 import type { NEREntity } from '@/lib/extraction';
@@ -55,6 +66,7 @@ export interface KittHighlighterOptions {
     useWidgetMode?: boolean;
     enableLinkTracking?: boolean;
     logPerformance?: boolean;
+    useUnifiedScanner?: boolean; // NEW: A/B test flag for Rust scanner
 
     // Highlighting mode getters (reactive)
     getHighlightMode?: () => HighlightMode;
@@ -507,7 +519,190 @@ function buildNERDecorations(
     return decorations;
 }
 
+// ==================== UNIFIED RUST DECORATIONS (A/B TEST) ====================
+
+/**
+ * Build decorations using the new Rust Unified Scanner
+ * Replaces buildPatternDecorations when enabled
+ */
+function buildUnifiedDecorations(
+    doc: ProseMirrorNode,
+    options: KittHighlighterOptions,
+    selection: { from: number; to: number } | undefined
+): Decoration[] {
+    const decorations: Decoration[] = [];
+    const mode = options.getHighlightMode?.() ?? 'vivid';
+
+    if (mode === 'off') return decorations;
+
+    const useWidgets = options.useWidgetMode ?? false;
+    const focusKinds = options.getFocusEntityKinds?.() ?? [];
+
+    // Convert entity keys to match scanner format (lowercase)
+    const focusConfig = { kinds: focusKinds.map(k => k.toLowerCase()) };
+
+    // Scan per text node to maintain parity with legacy behavior
+    doc.descendants((node, pos) => {
+        if (!node.isText || !node.text) return;
+
+        // Scan this text node
+        const results = unifiedScannerFacade.scan(node.text);
+
+        // Get decoration specs from facade
+        // Pass local cursor position if selection is inside this node
+        let localCursor: number | undefined = undefined;
+        if (selection && selection.from >= pos && selection.from <= pos + node.text.length) {
+            localCursor = selection.from - pos;
+        }
+
+        const specs = unifiedScannerFacade.getDecorations(results, mode, focusConfig, localCursor);
+
+        for (const { from: localFrom, to: localTo, spec, span } of specs) {
+            const absFrom = pos + localFrom;
+            const absTo = pos + localTo;
+
+            // Existence check for wikilinks
+            let exists = true;
+            if (span.kind === 'Wikilink' && options.checkWikilinkExists) {
+                exists = options.checkWikilinkExists(span.captures['target'] || span.label);
+            }
+
+            if (spec.showWidget) {
+                // Calculate entity-specific colors for widgets
+                let widgetColor = 'inherit';
+                let widgetBgColor = 'transparent';
+
+                if (spec.applyColor) {
+                    if (span.kind === 'Entity') {
+                        // Use utility function that handles Map vs Object serialization
+                        const entityKind = getValidatedEntityKind(span.captures);
+                        widgetColor = getEntityColor(entityKind);
+                        widgetBgColor = getEntityBgColor(entityKind);
+                    } else if (span.kind === 'Wikilink' || span.kind === 'Backlink') {
+                        widgetColor = exists ? 'hsl(var(--primary))' : 'hsl(var(--destructive))';
+                        widgetBgColor = exists ? 'hsl(var(--primary) / 0.15)' : 'hsl(var(--destructive) / 0.15)';
+                    } else if (span.kind === 'Tag') {
+                        widgetColor = '#3b82f6';
+                        widgetBgColor = '#3b82f620';
+                    } else if (span.kind === 'Mention') {
+                        widgetColor = '#8b5cf6';
+                        widgetBgColor = '#8b5cf620';
+                    } else if (span.kind === 'Triple') {
+                        widgetColor = 'var(--entity-relationship, #f59e0b)';
+                        widgetBgColor = 'rgba(245, 158, 11, 0.15)';
+                    }
+                }
+
+                // Widget logic
+                const widget = createPatternWidget(
+                    span.label,
+                    span.kind.toLowerCase() as RefKind,
+                    span.raw_text,
+                    widgetColor,
+                    widgetBgColor,
+                    span.kind === 'Wikilink' ? (exists ? 'wikilink-exists' : 'wikilink-broken') : ''
+                );
+
+                decorations.push(
+                    Decoration.widget(absFrom, widget, {
+                        side: -1,
+                        key: `u-${span.kind}-${absFrom}-${span.raw_text}`,
+                    })
+                );
+
+                decorations.push(
+                    Decoration.inline(absFrom, absTo, {
+                        class: 'ref-hidden',
+                        style: 'display: none;',
+                    })
+                );
+            } else {
+                // Inline decoration (not widget mode)
+                const isCleanModeEditing = mode === 'clean' && spec.modeClass.includes('highlight-editing');
+
+                // Get entity-specific colors
+                let color = 'inherit';
+                let bgColor = 'transparent';
+
+                if (span.kind === 'Entity') {
+                    // Use utility function that handles Map vs Object serialization
+                    const entityKind = getValidatedEntityKind(span.captures);
+                    color = getEntityColor(entityKind);
+                    bgColor = getEntityBgColor(entityKind);
+                } else if (span.kind === 'Wikilink' || span.kind === 'Backlink') {
+                    color = exists ? 'hsl(var(--primary))' : 'hsl(var(--destructive))';
+                    bgColor = exists ? 'hsl(var(--primary) / 0.15)' : 'hsl(var(--destructive) / 0.15)';
+                } else if (span.kind === 'Tag') {
+                    color = '#3b82f6';
+                    bgColor = '#3b82f620';
+                } else if (span.kind === 'Mention') {
+                    color = '#8b5cf6';
+                    bgColor = '#8b5cf620';
+                }
+
+                // Clean mode expanded: only highlight the label portion, not the full syntax
+                if (isCleanModeEditing && span.label !== span.raw_text) {
+                    const labelIndex = span.raw_text.indexOf(span.label);
+                    if (labelIndex !== -1) {
+                        const labelFrom = absFrom + labelIndex;
+                        const labelTo = labelFrom + span.label.length;
+
+                        decorations.push(
+                            Decoration.inline(labelFrom, labelTo, {
+                                class: `ref-highlight ref-${span.kind.toLowerCase()} clean-mode-label`,
+                                style: `
+                                    background-color: ${bgColor};
+                                    color: ${color};
+                                    padding: 2px 4px;
+                                    border-radius: 3px;
+                                `,
+                                'data-ref-kind': span.kind.toLowerCase(),
+                                'data-ref-target': span.captures['target'] || span.label,
+                            }, { inclusiveStart: false, inclusiveEnd: false })
+                        );
+                    }
+                } else {
+                    // Normal vivid/focus mode or clean mode with matching label
+                    const className = `${spec.baseClass} ${spec.modeClass} ${span.kind === 'Wikilink' ? (exists ? 'wikilink-exists' : 'wikilink-broken') : ''
+                        }`;
+
+                    const style = spec.applyColor ? `
+                        background-color: ${bgColor};
+                        color: ${color};
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                        font-weight: 500;
+                        font-size: 0.875em;
+                        cursor: pointer;
+                    ` : '';
+
+                    const attrs: Record<string, string> = {
+                        'class': className,
+                        'data-ref-kind': span.kind.toLowerCase(),
+                        'data-ref-target': span.captures['target'] || span.label,
+                    };
+
+                    if (style) {
+                        attrs['style'] = style;
+                    }
+
+                    if (span.kind === 'Wikilink') {
+                        attrs['data-ref-exists'] = exists.toString();
+                    }
+
+                    decorations.push(
+                        Decoration.inline(absFrom, absTo, attrs, { inclusiveStart: false, inclusiveEnd: false })
+                    );
+                }
+            }
+        }
+    });
+
+    return decorations;
+}
+
 // ==================== MAIN DECORATION BUILDER ====================
+
 
 function buildAllDecorations(
     doc: ProseMirrorNode,
@@ -516,10 +711,17 @@ function buildAllDecorations(
 ): DecorationSet {
     const allDecorations: Decoration[] = [];
 
-    // 1. Pattern registry decorations (wikilinks, tags, mentions, explicit widgets) - Highest Priority
-    // Note: Patterns use per-node processedRanges internally (node-relative offsets)
-    const patternDecorations = buildPatternDecorations(doc, options, selection);
-    allDecorations.push(...patternDecorations);
+    // 1. Pattern decorations (Legacy vs Unified) - Highest Priority
+    if (options.useUnifiedScanner && unifiedScannerFacade.isReady()) {
+        const unifiedDecorations = buildUnifiedDecorations(doc, options, selection);
+        allDecorations.push(...unifiedDecorations);
+        if (options.logPerformance) {
+            // console.log(`[KittHighlighter] Using Unified Rust Scanner (${unifiedDecorations.length} decos)`);
+        }
+    } else {
+        const patternDecorations = buildPatternDecorations(doc, options, selection);
+        allDecorations.push(...patternDecorations);
+    }
 
     // Doc-relative ranges for Rust + NER (these share coordinate space)
     const docProcessedRanges: Range[] = [];

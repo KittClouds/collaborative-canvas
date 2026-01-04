@@ -76,6 +76,20 @@ pub use scanner::{
     resolver::{Resolver, NarrativeContext, MentionChain, Gender},
     dialogue::{DialogueAttributor, QuotePosition},
     narrative::{NarrativeGraph, NarrativeResult, NarrativeStats},
+    // Unified Scanner (NEW - Rust-first document processing)
+    unified::{
+        WasmUnifiedScanner, UnifiedScanner, UnifiedScanResult, UnifiedScanStats,
+        DecorationSpan, StylingHint, RefKind,
+    },
+    // Constraints (NEW - Ref validation)
+    constraints::{
+        WasmConstraintEngine, ConstraintEngine, ConstraintResult,
+    },
+    // Projections (NEW - Views & projections)
+    projections::{
+        WasmProjector, Projector,
+        TimelineEvent, CharacterSheet, RelationshipGraph, LinkGraph,
+    },
 };
 
 // Public exports - ResoRank
@@ -129,4 +143,21 @@ pub fn greet(name: &str) -> String {
 #[wasm_bindgen]
 pub fn version() -> String {
     format!("kittcore v{}", env!("CARGO_PKG_VERSION"))
+}
+
+/// Get build timestamp for detecting stale WASM binaries
+/// This changes every time the WASM is rebuilt
+#[wasm_bindgen]
+pub fn build_timestamp() -> String {
+    // This is set at compile time
+    option_env!("BUILD_TIMESTAMP")
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
+        .to_string()
+}
+
+/// Check if this build has catch_unwind protection
+/// Used to verify the binary isn't stale
+#[wasm_bindgen]
+pub fn has_panic_protection() -> bool {
+    true // This version has catch_unwind in scan()
 }

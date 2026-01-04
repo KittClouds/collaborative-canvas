@@ -174,3 +174,117 @@ fn test_projection_triples() {
     assert_eq!(triples[0].relation, "owns");
     assert_eq!(triples[0].target, "Sting");
 }
+
+// =============================================================================
+// Unified Architecture Integration Tests
+// =============================================================================
+
+#[test]
+fn test_unified_cortex_lossless() {
+    use super::entity_layer::EntityLayer;
+    use super::metadata_layer::MetadataLayer;
+    
+    let mut entity_layer = EntityLayer::new();
+    
+    let text = "Frodo owns the Ring. Sam helps Frodo.";
+    
+    // Simulate scanner output with multiple mentions
+    entity_layer.record_span("Frodo", "CHARACTER", 0, 5, "doc1", text);
+    entity_layer.record_span("Ring", "ITEM", 15, 19, "doc1", text);
+    entity_layer.record_span("Sam", "CHARACTER", 21, 24, "doc1", text);
+    entity_layer.record_span("Frodo", "CHARACTER", 31, 36, "doc1", text); // Second mention!
+    
+    // VERIFY: All 4 spans stored (not deduplicated)
+    assert_eq!(entity_layer.total_spans(), 4, "Should store all 4 spans");
+    
+    // VERIFY: 3 unique entities
+    assert_eq!(entity_layer.unique_entities(), 3, "Should have 3 unique entities");
+    
+    // VERIFY: Frodo has 2 spans
+    let frodo_spans = entity_layer.all_spans_for("frodo");
+    assert_eq!(frodo_spans.len(), 2, "Frodo should have 2 spans");
+    assert_eq!(frodo_spans[0].start, 0, "First Frodo at position 0");
+    assert_eq!(frodo_spans[1].start, 31, "Second Frodo at position 31");
+    
+    // Compute metadata
+    let mut metadata_layer = MetadataLayer::new();
+    metadata_layer.compute_from_entity_layer(&entity_layer);
+    
+    // VERIFY: Metadata computed correctly
+    let frodo_meta = metadata_layer.get("frodo").unwrap();
+    assert_eq!(frodo_meta.frequency, 2, "Frodo frequency should be 2");
+    assert_eq!(frodo_meta.first_mention_offset, 0, "First mention at 0");
+    
+    let sam_meta = metadata_layer.get("sam").unwrap();
+    assert_eq!(sam_meta.frequency, 1, "Sam frequency should be 1");
+    
+    // VERIFY: Importance reflects frequency
+    assert!(frodo_meta.importance > sam_meta.importance, "Frodo should have higher importance");
+}
+
+#[test]
+fn test_cross_document_lossless() {
+    use super::entity_layer::EntityLayer;
+    use super::metadata_layer::MetadataLayer;
+    
+    let mut entity_layer = EntityLayer::new();
+    
+    // Process multiple documents
+    entity_layer.record_span("Frodo", "CHARACTER", 0, 5, "chapter1.md", "Frodo left the Shire.");
+    entity_layer.record_span("Shire", "LOCATION", 15, 20, "chapter1.md", "Frodo left the Shire.");
+    
+    entity_layer.record_span("Frodo", "CHARACTER", 0, 5, "chapter2.md", "Frodo met Aragorn.");
+    entity_layer.record_span("Aragorn", "CHARACTER", 10, 17, "chapter2.md", "Frodo met Aragorn.");
+    
+    entity_layer.record_span("Frodo", "CHARACTER", 0, 5, "chapter3.md", "Frodo carried the Ring.");
+    entity_layer.record_span("Ring", "ITEM", 17, 21, "chapter3.md", "Frodo carried the Ring.");
+    
+    // VERIFY: Cross-document accumulation
+    assert_eq!(entity_layer.total_spans(), 6);
+    assert_eq!(entity_layer.unique_entities(), 4); // Frodo, Shire, Aragorn, Ring
+    
+    let frodo_spans = entity_layer.all_spans_for("frodo");
+    assert_eq!(frodo_spans.len(), 3, "Frodo appears in 3 documents");
+    
+    // VERIFY: Different doc IDs tracked
+    let doc_ids: Vec<&str> = frodo_spans.iter().map(|s| s.doc_id.as_str()).collect();
+    assert!(doc_ids.contains(&"chapter1.md"));
+    assert!(doc_ids.contains(&"chapter2.md"));
+    assert!(doc_ids.contains(&"chapter3.md"));
+    
+    // Compute metadata
+    let mut metadata_layer = MetadataLayer::new();
+    metadata_layer.compute_from_entity_layer(&entity_layer);
+    
+    let frodo_meta = metadata_layer.get("frodo").unwrap();
+    assert!(frodo_meta.is_cross_document(), "Frodo should be cross-document");
+    assert_eq!(frodo_meta.documents.len(), 3);
+    
+    // Cross-document query
+    let cross_doc = metadata_layer.cross_document_entities();
+    assert_eq!(cross_doc.len(), 1, "Only Frodo is cross-document");
+    assert_eq!(cross_doc[0].entity_id, "frodo");
+}
+
+#[test]
+fn test_clear_doc_preserves_others() {
+    use super::entity_layer::EntityLayer;
+    
+    let mut entity_layer = EntityLayer::new();
+    
+    entity_layer.record_span("Frodo", "CHARACTER", 0, 5, "doc1", "Frodo");
+    entity_layer.record_span("Frodo", "CHARACTER", 0, 5, "doc2", "Frodo");
+    entity_layer.record_span("Sam", "CHARACTER", 0, 3, "doc1", "Sam");
+    
+    assert_eq!(entity_layer.total_spans(), 3);
+    
+    // Clear doc1
+    entity_layer.clear_doc("doc1");
+    
+    // Frodo remains from doc2, Sam is gone
+    assert_eq!(entity_layer.total_spans(), 1);
+    assert_eq!(entity_layer.unique_entities(), 1);
+    assert!(entity_layer.get_entity("frodo").is_some());
+    assert!(entity_layer.get_entity("sam").is_none());
+}
+

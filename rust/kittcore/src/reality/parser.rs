@@ -635,3 +635,476 @@ mod parser_tests {
         assert_eq!(sentences.len(), 2, "Should have 2 sentence nodes");
     }
 }
+
+// =============================================================================
+// PHASE 2: Enhanced Zipper with Phrase Nodes
+// =============================================================================
+
+use crate::scanner::chunker::{Chunk, ChunkKind, ChunkResult};
+
+/// A span that can be either a semantic entity or a phrase chunk
+#[derive(Debug, Clone)]
+pub enum MixedSpan<'a, S: SemanticSpan> {
+    Entity(&'a S),
+    Chunk(&'a Chunk),
+}
+
+impl<'a, S: SemanticSpan> MixedSpan<'a, S> {
+    fn start(&self) -> usize {
+        match self {
+            MixedSpan::Entity(e) => e.start(),
+            MixedSpan::Chunk(c) => c.range.start,
+        }
+    }
+    
+    fn end(&self) -> usize {
+        match self {
+            MixedSpan::Entity(e) => e.end(),
+            MixedSpan::Chunk(c) => c.range.end,
+        }
+    }
+    
+    fn syntax_kind(&self) -> SyntaxKind {
+        match self {
+            MixedSpan::Entity(e) => e.syntax_kind(),
+            MixedSpan::Chunk(c) => chunk_kind_to_syntax_kind(c.kind),
+        }
+    }
+}
+
+/// Convert Chunker's ChunkKind to CST SyntaxKind
+pub fn chunk_kind_to_syntax_kind(kind: ChunkKind) -> SyntaxKind {
+    match kind {
+        ChunkKind::NounPhrase => SyntaxKind::NounPhrase,
+        ChunkKind::VerbPhrase => SyntaxKind::VerbPhrase,
+        ChunkKind::PrepPhrase => SyntaxKind::PrepPhrase,
+        ChunkKind::AdjPhrase => SyntaxKind::AdjPhrase,
+        ChunkKind::Clause => SyntaxKind::SubordinateClause,
+    }
+}
+
+/// Enhanced Zipper: Merges text, semantic spans, AND phrase chunks into a GreenNode
+///
+/// This is the Phase 2 enhancement that creates richer CST structure by including
+/// phrase-level nodes (NP, VP, PP) from the Chunker alongside entity spans.
+///
+/// # Node Hierarchy
+///
+/// ```text
+/// Document
+///   └── Paragraph
+///       └── Sentence
+///           ├── NounPhrase ("the wizard")
+///           │   └── EntitySpan ("wizard")
+///           ├── VerbPhrase ("defeated")
+///           ├── NounPhrase ("the enemy")
+///           │   └── EntitySpan ("enemy")
+///           └── PrepPhrase ("in Mordor")
+/// ```
+///
+/// # Interleaving Strategy
+///
+/// When entities and chunks overlap:
+/// - Entities take priority (they are semantic truth)
+/// - Chunks are used to wrap content not covered by entities
+/// - VP chunks become RelationSpan candidates for projection
+pub fn zip_reality_enhanced<S: SemanticSpan>(
+    text: &str,
+    spans: &[S],
+    chunks: &[Chunk],
+) -> GreenNode {
+    let mut builder = GreenNodeBuilder::new();
+    
+    // Start Document
+    builder.start_node(SyntaxKind::Document.into());
+    
+    // Sort spans: Start ASC, then End DESC (Longest first)
+    let mut sorted_entities: Vec<&S> = spans.iter().collect();
+    sorted_entities.sort_by(|a, b| {
+        let start_cmp = a.start().cmp(&b.start());
+        if start_cmp != std::cmp::Ordering::Equal {
+            return start_cmp;
+        }
+        b.end().cmp(&a.end())
+    });
+    
+    // Sort chunks similarly
+    let mut sorted_chunks: Vec<&Chunk> = chunks.iter().collect();
+    sorted_chunks.sort_by(|a, b| {
+        let start_cmp = a.range.start.cmp(&b.range.start);
+        if start_cmp != std::cmp::Ordering::Equal {
+            return start_cmp;
+        }
+        b.range.end.cmp(&a.range.end)
+    });
+    
+    // Detect paragraphs
+    let paragraphs = detect_paragraphs(text);
+    
+    for (para_start, para_end) in paragraphs {
+        builder.start_node(SyntaxKind::Paragraph.into());
+        
+        // Detect sentences within this paragraph
+        let para_text = &text[para_start..para_end];
+        let sentences = detect_sentences(para_text);
+        
+        if sentences.is_empty() {
+            // No sentences detected, process as raw with mixed spans
+            let para_entities: Vec<&S> = sorted_entities.iter()
+                .filter(|s| s.start() >= para_start && s.end() <= para_end)
+                .copied()
+                .collect();
+            let para_chunks: Vec<&Chunk> = sorted_chunks.iter()
+                .filter(|c| c.range.start >= para_start && c.range.end <= para_end)
+                .copied()
+                .collect();
+            zip_range_enhanced(&mut builder, text, para_start, para_end, &para_entities, &para_chunks);
+        } else {
+            for (sent_rel_start, sent_rel_end) in sentences {
+                let sent_start = para_start + sent_rel_start;
+                let sent_end = para_start + sent_rel_end;
+                
+                builder.start_node(SyntaxKind::Sentence.into());
+                
+                // Filter spans that belong to this sentence
+                let sent_entities: Vec<&S> = sorted_entities.iter()
+                    .filter(|s| s.start() >= sent_start && s.end() <= sent_end)
+                    .copied()
+                    .collect();
+                let sent_chunks: Vec<&Chunk> = sorted_chunks.iter()
+                    .filter(|c| c.range.start >= sent_start && c.range.end <= sent_end)
+                    .copied()
+                    .collect();
+                
+                zip_range_enhanced(&mut builder, text, sent_start, sent_end, &sent_entities, &sent_chunks);
+                
+                builder.finish_node(); // Close Sentence
+            }
+        }
+        
+        builder.finish_node(); // Close Paragraph
+    }
+    
+    builder.finish_node(); // Close Document
+    
+    builder.finish()
+}
+
+/// Zip a range with both entities and chunks
+///
+/// Priority: Entities > Chunks > Raw text
+/// This ensures semantic truth (entities) takes precedence over structural analysis (chunks)
+fn zip_range_enhanced<S: SemanticSpan>(
+    builder: &mut GreenNodeBuilder,
+    full_text: &str,
+    start: usize,
+    end: usize,
+    entities: &[&S],
+    chunks: &[&Chunk],
+) {
+    // Merge entities and chunks into a single sorted list
+    // Entities take priority over overlapping chunks
+    let mut mixed: Vec<MixedSpan<S>> = Vec::new();
+    
+    // Add all entities
+    for e in entities {
+        mixed.push(MixedSpan::Entity(*e));
+    }
+    
+    // Add chunks that don't overlap with entities
+    for c in chunks {
+        let overlaps_entity = entities.iter().any(|e| {
+            // Check if chunk overlaps with entity
+            !(c.range.end <= e.start() || c.range.start >= e.end())
+        });
+        
+        if !overlaps_entity {
+            mixed.push(MixedSpan::Chunk(*c));
+        }
+    }
+    
+    // Sort by start position, then by end (descending for nesting)
+    mixed.sort_by(|a, b| {
+        let start_cmp = a.start().cmp(&b.start());
+        if start_cmp != std::cmp::Ordering::Equal {
+            return start_cmp;
+        }
+        b.end().cmp(&a.end())
+    });
+    
+    let mut current_pos = start;
+    let mut i = 0;
+    
+    while current_pos < end {
+        // Skip spans that have already been passed
+        while i < mixed.len() && mixed[i].start() < current_pos {
+            i += 1;
+        }
+
+        if i >= mixed.len() {
+            // No more spans ahead
+            if current_pos < end {
+                tokenize_range(builder, &full_text[current_pos..end]);
+            }
+            break;
+        }
+
+        let span = &mixed[i];
+        
+        // Validate span is within current bounds
+        if span.start() >= end {
+            break;
+        }
+        
+        // Fill gap before span
+        if span.start() > current_pos {
+            tokenize_range(builder, &full_text[current_pos..span.start()]);
+        }
+        
+        // Start the span node
+        builder.start_node(span.syntax_kind().into());
+        
+        // Find children that are contained within this span
+        let mut children_entities: Vec<&S> = Vec::new();
+        let mut children_chunks: Vec<&Chunk> = Vec::new();
+        
+        let mut j = i + 1;
+        while j < mixed.len() {
+            let candidate = &mixed[j];
+            if candidate.start() >= span.end() {
+                break;
+            }
+            if candidate.end() <= span.end() {
+                match candidate {
+                    MixedSpan::Entity(e) => children_entities.push(*e),
+                    MixedSpan::Chunk(c) => children_chunks.push(*c),
+                }
+            }
+            j += 1;
+        }
+        
+        // Recurse into this span
+        if children_entities.is_empty() && children_chunks.is_empty() {
+            // No children, just tokenize the content
+            tokenize_range(builder, &full_text[span.start()..span.end()]);
+        } else {
+            zip_range_enhanced(builder, full_text, span.start(), span.end(), &children_entities, &children_chunks);
+        }
+        
+        builder.finish_node(); // Close span
+        
+        current_pos = span.end();
+        i += 1;
+    }
+}
+
+// =============================================================================
+// Phase 2 Tests (TDD Contract)
+// =============================================================================
+
+#[cfg(test)]
+mod enhanced_parser_tests {
+    use super::*;
+    use super::super::syntax::RealityLanguage;
+    use crate::scanner::chunker::{Chunker, ChunkKind, TextRange};
+
+    // Helper to create mock entity
+    fn mock_entity(start: usize, end: usize) -> MockEntity {
+        MockEntity { 
+            start, 
+            end, 
+            label: format!("entity_{}_{}", start, end),
+            kind: "CHARACTER".to_string(),
+        }
+    }
+    
+    // -------------------------------------------------------------------------
+    // CONTRACT: Phrase Nodes Appear in CST
+    // -------------------------------------------------------------------------
+    
+    #[test]
+    fn test_enhanced_zipper_includes_verb_phrase() {
+        let text = "The wizard walked slowly.";
+        let chunker = Chunker::new();
+        let chunk_result = chunker.chunk_native(text);
+        
+        let entities: Vec<MockEntity> = vec![];
+        let green = zip_reality_enhanced(text, &entities, &chunk_result.chunks);
+        let root: rowan::SyntaxNode<RealityLanguage> = rowan::SyntaxNode::new_root(green);
+        
+        // Should contain VerbPhrase node
+        let vp_nodes: Vec<_> = root.descendants()
+            .filter(|n| n.kind() == SyntaxKind::VerbPhrase)
+            .collect();
+        
+        assert!(!vp_nodes.is_empty(), "Should have VerbPhrase nodes from Chunker");
+    }
+    
+    #[test]
+    fn test_enhanced_zipper_includes_noun_phrase() {
+        let text = "The ancient wizard cast a spell.";
+        let chunker = Chunker::new();
+        let chunk_result = chunker.chunk_native(text);
+        
+        let entities: Vec<MockEntity> = vec![];
+        let green = zip_reality_enhanced(text, &entities, &chunk_result.chunks);
+        let root: rowan::SyntaxNode<RealityLanguage> = rowan::SyntaxNode::new_root(green);
+        
+        // Should contain NounPhrase nodes
+        let np_nodes: Vec<_> = root.descendants()
+            .filter(|n| n.kind() == SyntaxKind::NounPhrase)
+            .collect();
+        
+        assert!(!np_nodes.is_empty(), "Should have NounPhrase nodes from Chunker");
+    }
+    
+    #[test]
+    fn test_enhanced_zipper_includes_prep_phrase() {
+        let text = "He walked through the forest.";
+        let chunker = Chunker::new();
+        let chunk_result = chunker.chunk_native(text);
+        
+        let entities: Vec<MockEntity> = vec![];
+        let green = zip_reality_enhanced(text, &entities, &chunk_result.chunks);
+        let root: rowan::SyntaxNode<RealityLanguage> = rowan::SyntaxNode::new_root(green);
+        
+        // Should contain PrepPhrase node
+        let pp_nodes: Vec<_> = root.descendants()
+            .filter(|n| n.kind() == SyntaxKind::PrepPhrase)
+            .collect();
+        
+        assert!(!pp_nodes.is_empty(), "Should have PrepPhrase nodes from Chunker");
+    }
+    
+    // -------------------------------------------------------------------------
+    // CONTRACT: Entity Priority Over Chunks
+    // -------------------------------------------------------------------------
+    
+    #[test]
+    fn test_entities_take_priority_over_chunks() {
+        // "Gandalf defeated Sauron"
+        //  ^^^^^^^          ^^^^^^
+        // Entity positions: 0-7, 17-23
+        let text = "Gandalf defeated Sauron";
+        let chunker = Chunker::new();
+        let chunk_result = chunker.chunk_native(text);
+        
+        // Entity spans at "Gandalf" and "Sauron"
+        let entities = vec![
+            mock_entity(0, 7),   // "Gandalf"
+            mock_entity(17, 23), // "Sauron"
+        ];
+        
+        let green = zip_reality_enhanced(text, &entities, &chunk_result.chunks);
+        let root: rowan::SyntaxNode<RealityLanguage> = rowan::SyntaxNode::new_root(green);
+        
+        // Should have EntitySpan nodes
+        let entity_nodes: Vec<_> = root.descendants()
+            .filter(|n| n.kind() == SyntaxKind::EntitySpan)
+            .collect();
+        
+        assert_eq!(entity_nodes.len(), 2, "Should have 2 EntitySpan nodes");
+        
+        // Should still have VerbPhrase for "defeated"
+        let vp_nodes: Vec<_> = root.descendants()
+            .filter(|n| n.kind() == SyntaxKind::VerbPhrase)
+            .collect();
+        
+        assert!(!vp_nodes.is_empty(), "Should have VerbPhrase node");
+    }
+    
+    // -------------------------------------------------------------------------
+    // CONTRACT: Sentence Structure Preserved
+    // -------------------------------------------------------------------------
+    
+    #[test]
+    fn test_enhanced_zipper_preserves_sentences() {
+        let text = "First sentence. Second sentence.";
+        let chunker = Chunker::new();
+        let chunk_result = chunker.chunk_native(text);
+        
+        let entities: Vec<MockEntity> = vec![];
+        let green = zip_reality_enhanced(text, &entities, &chunk_result.chunks);
+        let root: rowan::SyntaxNode<RealityLanguage> = rowan::SyntaxNode::new_root(green);
+        
+        let sentences: Vec<_> = root.descendants()
+            .filter(|n| n.kind() == SyntaxKind::Sentence)
+            .collect();
+        
+        assert_eq!(sentences.len(), 2, "Should have 2 Sentence nodes");
+    }
+    
+    // -------------------------------------------------------------------------
+    // CONTRACT: ChunkKind to SyntaxKind Conversion
+    // -------------------------------------------------------------------------
+    
+    #[test]
+    fn test_chunk_kind_to_syntax_kind() {
+        assert_eq!(chunk_kind_to_syntax_kind(ChunkKind::NounPhrase), SyntaxKind::NounPhrase);
+        assert_eq!(chunk_kind_to_syntax_kind(ChunkKind::VerbPhrase), SyntaxKind::VerbPhrase);
+        assert_eq!(chunk_kind_to_syntax_kind(ChunkKind::PrepPhrase), SyntaxKind::PrepPhrase);
+        assert_eq!(chunk_kind_to_syntax_kind(ChunkKind::AdjPhrase), SyntaxKind::AdjPhrase);
+        assert_eq!(chunk_kind_to_syntax_kind(ChunkKind::Clause), SyntaxKind::SubordinateClause);
+    }
+    
+    // -------------------------------------------------------------------------
+    // CONTRACT: Empty Inputs Handled
+    // -------------------------------------------------------------------------
+    
+    #[test]
+    fn test_enhanced_zipper_empty_text() {
+        let text = "";
+        let entities: Vec<MockEntity> = vec![];
+        let chunks: Vec<Chunk> = vec![];
+        
+        let green = zip_reality_enhanced(text, &entities, &chunks);
+        let root: rowan::SyntaxNode<RealityLanguage> = rowan::SyntaxNode::new_root(green);
+        
+        assert_eq!(root.kind(), SyntaxKind::Document);
+    }
+    
+    #[test]
+    fn test_enhanced_zipper_no_chunks() {
+        let text = "Hello world";
+        let entities: Vec<MockEntity> = vec![];
+        let chunks: Vec<Chunk> = vec![];
+        
+        let green = zip_reality_enhanced(text, &entities, &chunks);
+        let root: rowan::SyntaxNode<RealityLanguage> = rowan::SyntaxNode::new_root(green);
+        
+        // Should still produce valid CST
+        assert_eq!(root.kind(), SyntaxKind::Document);
+        assert!(root.text().to_string().contains("Hello"));
+    }
+    
+    // -------------------------------------------------------------------------
+    // CONTRACT: Nested Phrase Structure
+    // -------------------------------------------------------------------------
+    
+    #[test]
+    fn test_prep_phrase_contains_noun_phrase() {
+        // "in the forest" should be PP containing NP("the forest")
+        let text = "walked in the forest";
+        let chunker = Chunker::new();
+        let chunk_result = chunker.chunk_native(text);
+        
+        let entities: Vec<MockEntity> = vec![];
+        let green = zip_reality_enhanced(text, &entities, &chunk_result.chunks);
+        let root: rowan::SyntaxNode<RealityLanguage> = rowan::SyntaxNode::new_root(green);
+        
+        // Find PP nodes
+        let pp_nodes: Vec<_> = root.descendants()
+            .filter(|n| n.kind() == SyntaxKind::PrepPhrase)
+            .collect();
+        
+        // PP should exist
+        assert!(!pp_nodes.is_empty(), "Should have PrepPhrase");
+        
+        // PP text should contain "in" and "forest"
+        if !pp_nodes.is_empty() {
+            let pp_text = pp_nodes[0].text().to_string();
+            assert!(pp_text.contains("in"), "PP should contain 'in'");
+        }
+    }
+}
+

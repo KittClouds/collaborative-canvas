@@ -43,6 +43,8 @@ pub struct ConceptEdge {
     pub relation: String,
     /// Confidence or strength (0.0 to 1.0)
     pub weight: f64,
+    /// Edge kind for Phase 4 richer projections
+    pub edge_kind: EdgeKind,
     // --- Provenance fields ---
     /// Source document ID (for multi-document graphs)
     pub source_doc: Option<String>,
@@ -52,11 +54,53 @@ pub struct ConceptEdge {
     pub created_at: Option<u64>,
 }
 
+/// Edge kinds for richer semantic relationships
+///
+/// Phase 4 of Evolution 1.5: Support for different relationship types
+/// from the projection system.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EdgeKind {
+    /// Standard relation (existing): "DEFEATED", "OWNS", "LOVES"
+    Relation,
+    
+    /// Dialogue attribution: Speaker → Quote
+    /// Used when someone says/shouts/whispers something
+    Attribution {
+        /// The dialogue verb: "said", "shouted", "whispered"
+        verb: String,
+    },
+    
+    /// Entity state transition: Entity → State
+    /// "Frodo became invisible"
+    StateTransition {
+        /// What triggered the state change
+        trigger: Option<String>,
+    },
+    
+    /// Modified relation (from QuadPlus): SPO + modifiers
+    /// "Gandalf defeated Sauron with magic in Mordor during the battle"
+    ModifiedRelation {
+        /// HOW: "with magic", "by force"
+        manner: Option<String>,
+        /// WHERE: "in Mordor", "at the bridge"
+        location: Option<String>,
+        /// WHEN: "during the battle", "after midnight"
+        time: Option<String>,
+    },
+}
+
+impl Default for EdgeKind {
+    fn default() -> Self {
+        EdgeKind::Relation
+    }
+}
+
 impl ConceptEdge {
     pub fn new(relation: impl Into<String>, weight: f64) -> Self {
         Self {
             relation: relation.into(),
             weight,
+            edge_kind: EdgeKind::Relation,
             source_doc: None,
             source_span: None,
             created_at: None,
@@ -84,6 +128,53 @@ impl ConceptEdge {
     pub fn with_timestamp(mut self, ts: u64) -> Self {
         self.created_at = Some(ts);
         self
+    }
+    
+    /// Builder: set edge kind
+    pub fn with_kind(mut self, kind: EdgeKind) -> Self {
+        self.edge_kind = kind;
+        self
+    }
+    
+    /// Create an attribution edge (Speaker → Quote)
+    pub fn attribution(verb: impl Into<String>) -> Self {
+        Self {
+            relation: "SAID".to_string(),
+            weight: 1.0,
+            edge_kind: EdgeKind::Attribution { verb: verb.into() },
+            source_doc: None,
+            source_span: None,
+            created_at: None,
+        }
+    }
+    
+    /// Create a state transition edge (Entity → State)
+    pub fn state_transition(to_state: impl Into<String>, trigger: Option<String>) -> Self {
+        Self {
+            relation: format!("BECAME_{}", to_state.into().to_uppercase()),
+            weight: 1.0,
+            edge_kind: EdgeKind::StateTransition { trigger },
+            source_doc: None,
+            source_span: None,
+            created_at: None,
+        }
+    }
+    
+    /// Create a modified relation edge (QuadPlus)
+    pub fn modified_relation(
+        relation: impl Into<String>,
+        manner: Option<String>,
+        location: Option<String>,
+        time: Option<String>,
+    ) -> Self {
+        Self {
+            relation: relation.into(),
+            weight: 1.0,
+            edge_kind: EdgeKind::ModifiedRelation { manner, location, time },
+            source_doc: None,
+            source_span: None,
+            created_at: None,
+        }
     }
 }
 
@@ -923,6 +1014,139 @@ mod tests {
 
         let frag_score = fragmented.narrative_health_score();
         assert!(frag_score < score, "Fragmented graph should score lower");
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 4: EdgeKind Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_edge_kind_default() {
+        let edge = ConceptEdge::unweighted("owns");
+        assert!(matches!(edge.edge_kind, EdgeKind::Relation));
+    }
+
+    #[test]
+    fn test_edge_kind_attribution() {
+        let edge = ConceptEdge::attribution("shouted");
+        
+        assert_eq!(edge.relation, "SAID");
+        assert!(matches!(
+            edge.edge_kind, 
+            EdgeKind::Attribution { verb } if verb == "shouted"
+        ));
+    }
+
+    #[test]
+    fn test_edge_kind_state_transition() {
+        let edge = ConceptEdge::state_transition("invisible", Some("after putting on the Ring".to_string()));
+        
+        assert_eq!(edge.relation, "BECAME_INVISIBLE");
+        assert!(matches!(
+            edge.edge_kind,
+            EdgeKind::StateTransition { trigger: Some(t) } if t.contains("Ring")
+        ));
+    }
+
+    #[test]
+    fn test_edge_kind_state_transition_no_trigger() {
+        let edge = ConceptEdge::state_transition("angry", None);
+        
+        assert_eq!(edge.relation, "BECAME_ANGRY");
+        assert!(matches!(
+            edge.edge_kind,
+            EdgeKind::StateTransition { trigger: None }
+        ));
+    }
+
+    #[test]
+    fn test_edge_kind_modified_relation() {
+        let edge = ConceptEdge::modified_relation(
+            "DEFEATED",
+            Some("with magic".to_string()),
+            Some("in Mordor".to_string()),
+            Some("during the battle".to_string()),
+        );
+        
+        assert_eq!(edge.relation, "DEFEATED");
+        match edge.edge_kind {
+            EdgeKind::ModifiedRelation { manner, location, time } => {
+                assert_eq!(manner.as_deref(), Some("with magic"));
+                assert_eq!(location.as_deref(), Some("in Mordor"));
+                assert_eq!(time.as_deref(), Some("during the battle"));
+            }
+            _ => panic!("Expected ModifiedRelation edge kind"),
+        }
+    }
+
+    #[test]
+    fn test_edge_kind_modified_relation_partial() {
+        let edge = ConceptEdge::modified_relation(
+            "ATTACKED",
+            None,
+            Some("at the bridge".to_string()),
+            None,
+        );
+        
+        match edge.edge_kind {
+            EdgeKind::ModifiedRelation { manner, location, time } => {
+                assert!(manner.is_none());
+                assert_eq!(location.as_deref(), Some("at the bridge"));
+                assert!(time.is_none());
+            }
+            _ => panic!("Expected ModifiedRelation edge kind"),
+        }
+    }
+
+    #[test]
+    fn test_edge_with_kind_builder() {
+        let edge = ConceptEdge::unweighted("custom")
+            .with_kind(EdgeKind::Attribution { verb: "whispered".to_string() });
+        
+        assert!(matches!(
+            edge.edge_kind,
+            EdgeKind::Attribution { verb } if verb == "whispered"
+        ));
+    }
+
+    #[test]
+    fn test_graph_with_edge_kinds() {
+        let mut graph = ConceptGraph::new();
+        
+        // Add relation edge
+        graph.add_edge_with_nodes(
+            make_node("frodo", "Frodo", "Person"),
+            make_node("ring", "Ring", "Item"),
+            ConceptEdge::unweighted("owns"),
+        );
+        
+        // Add attribution edge
+        graph.add_edge_with_nodes(
+            make_node("gandalf", "Gandalf", "Wizard"),
+            make_node("quote_1", "You shall not pass!", "Quote"),
+            ConceptEdge::attribution("shouted"),
+        );
+        
+        // Add state transition edge
+        graph.add_edge_with_nodes(
+            make_node("frodo", "Frodo", "Person"),
+            make_node("invisible", "invisible", "State"),
+            ConceptEdge::state_transition("invisible", Some("after putting on Ring".to_string())),
+        );
+        
+        assert_eq!(graph.node_count(), 5);
+        assert_eq!(graph.edge_count(), 3);
+        
+        // Verify edge kinds are preserved
+        let edges: Vec<_> = graph.edges().collect();
+        
+        let has_relation = edges.iter().any(|(_, _, e)| matches!(e.edge_kind, EdgeKind::Relation));
+        let has_attribution = edges.iter().any(|(_, _, e)| matches!(e.edge_kind, EdgeKind::Attribution { .. }));
+        let has_state = edges.iter().any(|(_, _, e)| matches!(e.edge_kind, EdgeKind::StateTransition { .. }));
+        
+        assert!(has_relation, "Should have Relation edge");
+        assert!(has_attribution, "Should have Attribution edge");
+        assert!(has_state, "Should have StateTransition edge");
     }
 }
 

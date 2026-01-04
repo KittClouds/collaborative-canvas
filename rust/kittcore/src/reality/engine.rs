@@ -5,13 +5,19 @@
 //! - Graph (petgraph) for semantic relationships  
 //! - Synapse for text↔graph bridging
 //! - Interner for string deduplication
+//!
+//! Phase 4 of Evolution 1.5: Integration with richer projections
 
 use rowan::GreenNode;
 
 use super::syntax::{RealityLanguage, SyntaxKind};
 use super::parser::{zip_reality, SemanticSpan};
-use super::projection::{project_triples, Triple};
-use super::graph::{ConceptGraph, ConceptNode, ConceptEdge};
+use super::projection::{
+    project_triples, project_quads, project_attributions, project_state_changes,
+    project_all, project_all_with_stats,
+    Triple, QuadPlus, Attribution, StateChange, Projection, ProjectionStats,
+};
+use super::graph::{ConceptGraph, ConceptNode, ConceptEdge, EdgeKind};
 use super::synapse::SynapseBridge;
 
 /// Type alias for Rowan syntax node with our language
@@ -46,6 +52,9 @@ pub struct RealityEngine {
 #[derive(Debug, Clone, Default)]
 pub struct ProcessStats {
     pub triples_extracted: usize,
+    pub quads_extracted: usize,
+    pub attributions_extracted: usize,
+    pub state_changes_extracted: usize,
     pub nodes_created: usize,
     pub edges_created: usize,
     pub synapse_links: usize,
@@ -212,6 +221,162 @@ impl RealityEngine {
     fn make_entity_id(&self, label: &str) -> String {
         // Simple normalization: lowercase, trim, replace spaces with underscores
         label.trim().to_lowercase().replace(' ', "_")
+    }
+    
+    // -------------------------------------------------------------------------
+    // Phase 4: Projection Integration
+    // -------------------------------------------------------------------------
+    
+    /// Process a document with all projection types (Phase 4)
+    ///
+    /// This is the enhanced entry point that:
+    /// 1. Builds the CST from text + spans
+    /// 2. Extracts ALL projection types (Triple, Quad, Attribution, StateChange)
+    /// 3. Updates the graph with new concepts and rich edge types
+    /// 4. Populates the synapse bridge
+    ///
+    /// Returns the extracted projections and statistics.
+    pub fn process_with_projections<S: SemanticSpan>(
+        &mut self,
+        text: &str,
+        spans: &[S],
+    ) -> (Vec<Projection>, ProcessStats) {
+        // Clear previous synapse state
+        self.synapse.clear();
+        
+        // 1. Build CST
+        self.green = Some(zip_reality(text, spans));
+        
+        // 2. Extract all projections
+        let root = self.syntax_root().expect("Just built the tree");
+        let (projections, proj_stats) = project_all_with_stats(&root);
+        
+        // 3. Populate graph from projections
+        let mut stats = ProcessStats {
+            triples_extracted: proj_stats.triples,
+            quads_extracted: proj_stats.quads,
+            attributions_extracted: proj_stats.attributions,
+            state_changes_extracted: proj_stats.state_changes,
+            ..Default::default()
+        };
+        
+        self.populate_from_projections(&projections, &mut stats);
+        
+        // 4. Link standalone entities
+        self.link_standalone_entities(&root, &mut stats);
+        
+        self.last_stats = Some(stats.clone());
+        
+        (projections, stats)
+    }
+    
+    /// Populate graph from projections
+    ///
+    /// Dispatches each projection type to its specific ingestion method.
+    pub fn populate_from_projections(&mut self, projections: &[Projection], stats: &mut ProcessStats) {
+        for proj in projections {
+            match proj {
+                Projection::Triple(t) => self.ingest_triple(t, stats),
+                Projection::Quad(q) => self.ingest_quad(q, stats),
+                Projection::Attribution(a) => self.ingest_attribution(a, stats),
+                Projection::StateChange(s) => self.ingest_state_change(s, stats),
+            }
+        }
+    }
+    
+    /// Ingest a QuadPlus projection (SPO + modifiers)
+    fn ingest_quad(&mut self, quad: &QuadPlus, stats: &mut ProcessStats) {
+        let subject_id = self.make_entity_id(&quad.subject);
+        let object_id = self.make_entity_id(&quad.object);
+        
+        // Ensure nodes exist
+        let subject_node = ConceptNode::new(&subject_id, &quad.subject, "Entity");
+        let subject_idx = self.graph.ensure_node(subject_node);
+        
+        let object_node = ConceptNode::new(&object_id, &quad.object, "Entity");
+        let object_idx = self.graph.ensure_node(object_node);
+        
+        stats.nodes_created = self.graph.node_count();
+        
+        // Create modified relation edge
+        let edge = ConceptEdge::modified_relation(
+            &quad.predicate.to_uppercase(),
+            quad.manner.clone(),
+            quad.location.clone(),
+            quad.time.clone(),
+        );
+        
+        if self.graph.add_edge(&subject_id, &object_id, edge).is_some() {
+            stats.edges_created += 1;
+        }
+        
+        // Link spans
+        if let Some((start, end)) = quad.subject_span {
+            self.synapse.link_offsets(start as u32, end as u32, subject_id.clone(), subject_idx);
+            stats.synapse_links += 1;
+        }
+        if let Some((start, end)) = quad.object_span {
+            self.synapse.link_offsets(start as u32, end as u32, object_id, object_idx);
+            stats.synapse_links += 1;
+        }
+    }
+    
+    /// Ingest an Attribution projection (dialogue)
+    fn ingest_attribution(&mut self, attr: &Attribution, stats: &mut ProcessStats) {
+        let speaker_id = self.make_entity_id(&attr.speaker);
+        let quote_id = format!("quote_{}", attr.quote_span.0);
+        
+        // Speaker node
+        let speaker_node = ConceptNode::new(&speaker_id, &attr.speaker, "Character");
+        let speaker_idx = self.graph.ensure_node(speaker_node);
+        
+        // Quote node (special type)
+        let quote_node = ConceptNode::new(&quote_id, &attr.quote, "Quote");
+        let _quote_idx = self.graph.ensure_node(quote_node);
+        
+        stats.nodes_created = self.graph.node_count();
+        
+        // Create attribution edge
+        let edge = ConceptEdge::attribution(&attr.verb);
+        
+        if self.graph.add_edge(&speaker_id, &quote_id, edge).is_some() {
+            stats.edges_created += 1;
+        }
+        
+        // Link speaker span
+        if let Some((start, end)) = attr.speaker_span {
+            self.synapse.link_offsets(start as u32, end as u32, speaker_id, speaker_idx);
+            stats.synapse_links += 1;
+        }
+    }
+    
+    /// Ingest a StateChange projection
+    fn ingest_state_change(&mut self, change: &StateChange, stats: &mut ProcessStats) {
+        let entity_id = self.make_entity_id(&change.entity);
+        let state_id = format!("state_{}", change.to_state.to_lowercase());
+        
+        // Entity node
+        let entity_node = ConceptNode::new(&entity_id, &change.entity, "Character");
+        let entity_idx = self.graph.ensure_node(entity_node);
+        
+        // State node
+        let state_node = ConceptNode::new(&state_id, &change.to_state, "State");
+        let _state_idx = self.graph.ensure_node(state_node);
+        
+        stats.nodes_created = self.graph.node_count();
+        
+        // Create state transition edge
+        let edge = ConceptEdge::state_transition(&change.to_state, change.trigger.clone());
+        
+        if self.graph.add_edge(&entity_id, &state_id, edge).is_some() {
+            stats.edges_created += 1;
+        }
+        
+        // Link entity span
+        if let Some((start, end)) = change.entity_span {
+            self.synapse.link_offsets(start as u32, end as u32, entity_id, entity_idx);
+            stats.synapse_links += 1;
+        }
     }
 }
 
@@ -445,5 +610,201 @@ mod tests {
         let incoming = engine.graph().incoming_edges("sting");
         assert_eq!(incoming.len(), 1);
         assert_eq!(incoming[0].0.id, "frodo");
+    }
+    
+    // -------------------------------------------------------------------------
+    // Phase 4: Projection Integration Tests
+    // -------------------------------------------------------------------------
+    
+    #[test]
+    fn test_engine_process_with_projections() {
+        let mut engine = RealityEngine::new();
+        
+        let text = "Frodo owns Sting.";
+        let spans = vec![
+            entity(0, 5, "Frodo"),
+            relation(6, 10),
+            entity(11, 16, "Sting"),
+        ];
+        
+        let (projections, stats) = engine.process_with_projections(text, &spans);
+        
+        // Should have triples
+        assert!(stats.triples_extracted >= 1 || !projections.is_empty(),
+            "Should extract at least one projection");
+        
+        // Graph should be populated
+        assert!(engine.graph().node_count() >= 2, "Should have nodes");
+    }
+    
+    #[test]
+    fn test_engine_ingest_quad() {
+        use super::super::projection::QuadPlus;
+        
+        let mut engine = RealityEngine::new();
+        let mut stats = ProcessStats::default();
+        
+        let quad = QuadPlus {
+            subject: "Gandalf".to_string(),
+            predicate: "defeated".to_string(),
+            object: "Sauron".to_string(),
+            manner: Some("with magic".to_string()),
+            location: Some("in Mordor".to_string()),
+            time: None,
+            subject_span: Some((0, 7)),
+            object_span: Some((17, 23)),
+        };
+        
+        engine.ingest_quad(&quad, &mut stats);
+        
+        // Should create nodes
+        assert_eq!(engine.graph().node_count(), 2);
+        
+        // Should create edge with modified relation kind
+        assert_eq!(engine.graph().edge_count(), 1);
+        
+        let edges: Vec<_> = engine.graph().edges().collect();
+        match &edges[0].2.edge_kind {
+            super::super::graph::EdgeKind::ModifiedRelation { manner, location, time } => {
+                assert_eq!(manner.as_deref(), Some("with magic"));
+                assert_eq!(location.as_deref(), Some("in Mordor"));
+                assert!(time.is_none());
+            }
+            _ => panic!("Expected ModifiedRelation edge kind"),
+        }
+    }
+    
+    #[test]
+    fn test_engine_ingest_attribution() {
+        use super::super::projection::Attribution;
+        
+        let mut engine = RealityEngine::new();
+        let mut stats = ProcessStats::default();
+        
+        let attr = Attribution {
+            speaker: "Gandalf".to_string(),
+            quote: "You shall not pass!".to_string(),
+            quote_span: (0, 21),
+            verb: "shouted".to_string(),
+            speaker_span: Some((22, 29)),
+        };
+        
+        engine.ingest_attribution(&attr, &mut stats);
+        
+        // Should create speaker and quote nodes
+        assert_eq!(engine.graph().node_count(), 2);
+        
+        // Should create attribution edge
+        let edges: Vec<_> = engine.graph().edges().collect();
+        assert_eq!(edges.len(), 1);
+        
+        match &edges[0].2.edge_kind {
+            super::super::graph::EdgeKind::Attribution { verb } => {
+                assert_eq!(verb, "shouted");
+            }
+            _ => panic!("Expected Attribution edge kind"),
+        }
+    }
+    
+    #[test]
+    fn test_engine_ingest_state_change() {
+        use super::super::projection::StateChange;
+        
+        let mut engine = RealityEngine::new();
+        let mut stats = ProcessStats::default();
+        
+        let change = StateChange {
+            entity: "Frodo".to_string(),
+            from_state: None,
+            to_state: "invisible".to_string(),
+            trigger: Some("after putting on the Ring".to_string()),
+            entity_span: Some((0, 5)),
+        };
+        
+        engine.ingest_state_change(&change, &mut stats);
+        
+        // Should create entity and state nodes
+        assert_eq!(engine.graph().node_count(), 2);
+        
+        // Should create state transition edge
+        let edges: Vec<_> = engine.graph().edges().collect();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].2.relation, "BECAME_INVISIBLE");
+        
+        match &edges[0].2.edge_kind {
+            super::super::graph::EdgeKind::StateTransition { trigger } => {
+                assert!(trigger.as_ref().unwrap().contains("Ring"));
+            }
+            _ => panic!("Expected StateTransition edge kind"),
+        }
+    }
+    
+    #[test]
+    fn test_engine_populate_from_projections() {
+        use super::super::projection::{Projection, Triple, QuadPlus};
+        
+        let mut engine = RealityEngine::new();
+        let mut stats = ProcessStats::default();
+        
+        let projections = vec![
+            Projection::Triple(Triple {
+                source: "A".to_string(),
+                relation: "owns".to_string(),
+                target: "B".to_string(),
+                source_span: None,
+                target_span: None,
+            }),
+            Projection::Quad(QuadPlus {
+                subject: "C".to_string(),
+                predicate: "defeated".to_string(),
+                object: "D".to_string(),
+                manner: Some("with sword".to_string()),
+                location: None,
+                time: None,
+                subject_span: None,
+                object_span: None,
+            }),
+        ];
+        
+        engine.populate_from_projections(&projections, &mut stats);
+        
+        // Should have 4 nodes (A, B, C, D)
+        assert_eq!(engine.graph().node_count(), 4);
+        
+        // Should have 2 edges
+        assert_eq!(engine.graph().edge_count(), 2);
+    }
+    
+    #[test]
+    fn test_evolution_1_5_integration() {
+        // Integration test for the full Evolution 1.5 pipeline
+        let mut engine = RealityEngine::new();
+        
+        // Simple test with entity-relation-entity pattern
+        let text = "Frodo destroyed Ring.";
+        let spans = vec![
+            entity(0, 5, "Frodo"),
+            relation(6, 15),  // "destroyed"
+            entity(16, 20, "Ring"),
+        ];
+        
+        let (projections, stats) = engine.process_with_projections(text, &spans);
+        
+        // Should have extracted at least triples
+        assert!(stats.triples_extracted >= 1, 
+            "Should extract at least 1 triple. Stats: {:?}", stats);
+        
+        // Graph should be populated
+        assert!(engine.graph().node_count() >= 2, 
+            "Graph should have at least 2 nodes");
+        assert!(engine.graph().edge_count() >= 1,
+            "Graph should have at least 1 edge");
+        
+        // Verify CST was built
+        assert!(engine.syntax_root().is_some(), "Should have syntax tree");
+        
+        // Verify synapse was populated
+        assert!(engine.synapse().link_count() >= 2, 
+            "Synapse should have at least 2 links");
     }
 }
