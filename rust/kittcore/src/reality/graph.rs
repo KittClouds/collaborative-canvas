@@ -4,10 +4,12 @@
 //! semantic relationships between concepts. No serialization, no WASM —
 //! just fast in-memory graph operations.
 
-use petgraph::graph::{DiGraph, NodeIndex, EdgeIndex};
-use petgraph::visit::EdgeRef;
-use petgraph::Direction;
+// Use petgraph from rustworkx-core to ensure version compatibility
+use rustworkx_core::petgraph::graph::{DiGraph, NodeIndex, EdgeIndex};
+use rustworkx_core::petgraph::visit::EdgeRef;
+use rustworkx_core::petgraph::Direction;
 use std::collections::HashMap;
+
 
 // =============================================================================
 // Types
@@ -41,6 +43,13 @@ pub struct ConceptEdge {
     pub relation: String,
     /// Confidence or strength (0.0 to 1.0)
     pub weight: f64,
+    // --- Provenance fields ---
+    /// Source document ID (for multi-document graphs)
+    pub source_doc: Option<String>,
+    /// Source text span (start, end) in bytes
+    pub source_span: Option<(u32, u32)>,
+    /// Creation timestamp (epoch millis)
+    pub created_at: Option<u64>,
 }
 
 impl ConceptEdge {
@@ -48,6 +57,9 @@ impl ConceptEdge {
         Self {
             relation: relation.into(),
             weight,
+            source_doc: None,
+            source_span: None,
+            created_at: None,
         }
     }
     
@@ -55,7 +67,26 @@ impl ConceptEdge {
     pub fn unweighted(relation: impl Into<String>) -> Self {
         Self::new(relation, 1.0)
     }
+
+    /// Builder: set source document
+    pub fn with_doc(mut self, doc_id: impl Into<String>) -> Self {
+        self.source_doc = Some(doc_id.into());
+        self
+    }
+
+    /// Builder: set source text span
+    pub fn with_span(mut self, start: u32, end: u32) -> Self {
+        self.source_span = Some((start, end));
+        self
+    }
+
+    /// Builder: set creation timestamp
+    pub fn with_timestamp(mut self, ts: u64) -> Self {
+        self.created_at = Some(ts);
+        self
+    }
 }
+
 
 // =============================================================================
 // ConceptGraph
@@ -220,7 +251,227 @@ impl ConceptGraph {
             Some((source, target, edge))
         })
     }
+
+    /// Get raw petgraph reference for advanced algorithms
+    pub fn raw_graph(&self) -> &DiGraph<ConceptNode, ConceptEdge> {
+        &self.graph
+    }
+
+    // =========================================================================
+    // Subgraph Extraction
+    // =========================================================================
+
+    /// Extract a subgraph centered on a node, up to `depth` hops away
+    /// 
+    /// Uses BFS to find all nodes within `depth` edges of the center.
+    /// Returns a new ConceptGraph containing only those nodes and their connecting edges.
+    pub fn subgraph(&self, center_id: &str, depth: usize) -> ConceptGraph {
+        use std::collections::{HashSet, VecDeque};
+
+        let mut result = ConceptGraph::new();
+        
+        let Some(&center_idx) = self.id_to_index.get(center_id) else {
+            return result;
+        };
+
+        // BFS to find nodes within depth
+        let mut visited: HashSet<NodeIndex> = HashSet::new();
+        let mut queue: VecDeque<(NodeIndex, usize)> = VecDeque::new();
+        
+        queue.push_back((center_idx, 0));
+        visited.insert(center_idx);
+
+        while let Some((current_idx, current_depth)) = queue.pop_front() {
+            // Add node to result
+            if let Some(node) = self.graph.node_weight(current_idx) {
+                result.ensure_node(node.clone());
+            }
+
+            // If we haven't reached max depth, explore neighbors
+            if current_depth < depth {
+                for neighbor_idx in self.graph.neighbors_undirected(current_idx) {
+                    if !visited.contains(&neighbor_idx) {
+                        visited.insert(neighbor_idx);
+                        queue.push_back((neighbor_idx, current_depth + 1));
+                    }
+                }
+            }
+        }
+
+        // Add edges between visited nodes
+        for edge_idx in self.graph.edge_indices() {
+            if let Some((source_idx, target_idx)) = self.graph.edge_endpoints(edge_idx) {
+                if visited.contains(&source_idx) && visited.contains(&target_idx) {
+                    if let (Some(source), Some(target), Some(edge)) = (
+                        self.graph.node_weight(source_idx),
+                        self.graph.node_weight(target_idx),
+                        self.graph.edge_weight(edge_idx),
+                    ) {
+                        result.add_edge(&source.id, &target.id, edge.clone());
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    // =========================================================================
+    // Centrality & Connectivity (via rustworkx-core)
+    // =========================================================================
+
+    /// Get degree centrality for all nodes
+    /// 
+    /// Degree = (in_degree + out_degree) / (2 * (n - 1))
+    /// Higher values = more connected nodes
+    pub fn centrality_degree(&self) -> Vec<(String, f64)> {
+        let n = self.graph.node_count();
+        if n <= 1 {
+            return self.nodes().map(|node| (node.id.clone(), 0.0)).collect();
+        }
+
+        let normalizer = 2.0 * (n - 1) as f64;
+        
+        self.graph.node_indices().filter_map(|idx| {
+            let node = self.graph.node_weight(idx)?;
+            let in_deg = self.graph.edges_directed(idx, Direction::Incoming).count();
+            let out_deg = self.graph.edges_directed(idx, Direction::Outgoing).count();
+            let centrality = (in_deg + out_deg) as f64 / normalizer;
+            Some((node.id.clone(), centrality))
+        }).collect()
+    }
+
+    /// Find isolated nodes (no connections)
+    /// 
+    /// These are "orphan" entities that appear but have no relationships.
+    pub fn orphan_nodes(&self) -> Vec<&ConceptNode> {
+        use rustworkx_core::connectivity::isolates;
+        
+        // isolates returns Vec<NodeIndex>
+        isolates(&self.graph)
+            .into_iter()
+            .filter_map(|idx| self.graph.node_weight(idx))
+            .collect()
+    }
+
+    /// Count connected components (narrative threads)
+    /// 
+    /// Returns the number of disconnected subgraphs.
+    /// A value > 1 means the narrative is fragmented.
+    /// 
+    /// Note: Uses undirected graph interpretation for connectivity analysis.
+    pub fn connected_component_count(&self) -> usize {
+        use rustworkx_core::connectivity::number_connected_components;
+        use rustworkx_core::petgraph::graph::UnGraph;
+        
+        if self.graph.node_count() == 0 {
+            return 0;
+        }
+        
+        // Convert to undirected for connectivity analysis
+        let mut undirected: UnGraph<(), ()> = UnGraph::new_undirected();
+        
+        let node_map: HashMap<NodeIndex, _> = self.graph.node_indices()
+            .map(|idx| (idx, undirected.add_node(())))
+            .collect();
+        
+        for edge_ref in self.graph.edge_references() {
+            if let (Some(&src), Some(&tgt)) = (
+                node_map.get(&edge_ref.source()),
+                node_map.get(&edge_ref.target())
+            ) {
+                if !undirected.contains_edge(src, tgt) {
+                    undirected.add_edge(src, tgt, ());
+                }
+            }
+        }
+        
+        number_connected_components(&undirected)
+    }
+
+
+    /// Find articulation points (critical nodes)
+    /// 
+    /// These are nodes that, if removed, would fragment the graph.
+    /// In narrative terms: "keystone" characters/concepts.
+    /// 
+    /// Note: articulation_points works on undirected graphs, so we treat
+    /// edges as bidirectional for this analysis.
+    pub fn critical_nodes(&self) -> Vec<&ConceptNode> {
+        use rustworkx_core::connectivity::articulation_points;
+        use rustworkx_core::petgraph::graph::UnGraph;
+        
+        // Convert directed graph to undirected for articulation point analysis
+        let mut undirected: UnGraph<(), ()> = UnGraph::new_undirected();
+        
+        // Add all nodes
+        let node_map: HashMap<NodeIndex, _> = self.graph.node_indices()
+            .map(|idx| (idx, undirected.add_node(())))
+            .collect();
+        
+        // Add all edges (both directions become one undirected edge)
+        for edge_ref in self.graph.edge_references() {
+            if let (Some(&src), Some(&tgt)) = (
+                node_map.get(&edge_ref.source()),
+                node_map.get(&edge_ref.target())
+            ) {
+                // Check if edge already exists (avoid duplicates)
+                if !undirected.contains_edge(src, tgt) {
+                    undirected.add_edge(src, tgt, ());
+                }
+            }
+        }
+        
+        // articulation_points returns HashSet<NodeIndex>
+        let ap_set = articulation_points(&undirected, None);
+        
+        // Map back to original graph's nodes
+        let reverse_map: HashMap<_, _> = node_map.iter()
+            .map(|(orig, und)| (*und, *orig))
+            .collect();
+        
+        ap_set.into_iter()
+            .filter_map(|und_idx| {
+                let orig_idx = reverse_map.get(&und_idx)?;
+                self.graph.node_weight(*orig_idx)
+            })
+            .collect()
+    }
+
+
+    /// Compute narrative health score (0-100)
+    /// 
+    /// Based on:
+    /// - Orphan penalty: -5 per orphan node
+    /// - Fragmentation penalty: -20 per extra component beyond 1
+    /// - Critical node bonus: +5 per articulation point (shows structure)
+    pub fn narrative_health_score(&self) -> u32 {
+        let n = self.node_count();
+        if n == 0 {
+            return 100;
+        }
+
+        let orphans = self.orphan_nodes().len();
+        let components = self.connected_component_count();
+        let critical = self.critical_nodes().len();
+
+        let mut score: i32 = 100;
+        
+        // Orphan penalty (capped at 50)
+        score -= (orphans as i32 * 5).min(50);
+        
+        // Fragmentation penalty
+        if components > 1 {
+            score -= ((components - 1) as i32 * 20).min(40);
+        }
+        
+        // Critical node bonus (shows narrative structure, up to +20)
+        score += (critical as i32 * 5).min(20);
+
+        score.clamp(0, 100) as u32
+    }
 }
+
 
 // =============================================================================
 // Tests
@@ -480,4 +731,198 @@ mod tests {
         assert_eq!(edge.relation, "high_confidence");
         assert!((edge.weight - 0.95).abs() < f64::EPSILON);
     }
+
+    // -------------------------------------------------------------------------
+    // Edge Provenance Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_edge_provenance_builder() {
+        let edge = ConceptEdge::unweighted("owns")
+            .with_doc("chapter1.md")
+            .with_span(100, 150)
+            .with_timestamp(1704067200000);
+
+        assert_eq!(edge.relation, "owns");
+        assert_eq!(edge.source_doc, Some("chapter1.md".to_string()));
+        assert_eq!(edge.source_span, Some((100, 150)));
+        assert_eq!(edge.created_at, Some(1704067200000));
+    }
+
+    // -------------------------------------------------------------------------
+    // Subgraph Extraction Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_subgraph_depth_0() {
+        let mut graph = ConceptGraph::new();
+        
+        graph.ensure_node(make_node("a", "A", "Test"));
+        graph.ensure_node(make_node("b", "B", "Test"));
+        graph.add_edge("a", "b", ConceptEdge::unweighted("connects"));
+
+        // Depth 0 = only the center node
+        let sub = graph.subgraph("a", 0);
+        assert_eq!(sub.node_count(), 1);
+        assert!(sub.get_node("a").is_some());
+        assert!(sub.get_node("b").is_none());
+    }
+
+    #[test]
+    fn test_subgraph_depth_1() {
+        let mut graph = ConceptGraph::new();
+        
+        graph.ensure_node(make_node("center", "Center", "Test"));
+        graph.ensure_node(make_node("n1", "N1", "Test"));
+        graph.ensure_node(make_node("n2", "N2", "Test"));
+        graph.ensure_node(make_node("far", "Far", "Test"));
+        
+        graph.add_edge("center", "n1", ConceptEdge::unweighted("to"));
+        graph.add_edge("center", "n2", ConceptEdge::unweighted("to"));
+        graph.add_edge("n1", "far", ConceptEdge::unweighted("to"));
+
+        // Depth 1 = center + immediate neighbors
+        let sub = graph.subgraph("center", 1);
+        assert_eq!(sub.node_count(), 3); // center, n1, n2
+        assert!(sub.get_node("center").is_some());
+        assert!(sub.get_node("n1").is_some());
+        assert!(sub.get_node("n2").is_some());
+        assert!(sub.get_node("far").is_none());
+    }
+
+    #[test]
+    fn test_subgraph_includes_edges() {
+        let mut graph = ConceptGraph::new();
+        
+        graph.add_edge_with_nodes(
+            make_node("a", "A", "Test"),
+            make_node("b", "B", "Test"),
+            ConceptEdge::unweighted("connected"),
+        );
+
+        let sub = graph.subgraph("a", 1);
+        assert_eq!(sub.node_count(), 2);
+        assert_eq!(sub.edge_count(), 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Centrality & Connectivity Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_degree_centrality() {
+        let mut graph = ConceptGraph::new();
+        
+        // Hub pattern: center connects to all others
+        graph.ensure_node(make_node("hub", "Hub", "Test"));
+        graph.ensure_node(make_node("a", "A", "Test"));
+        graph.ensure_node(make_node("b", "B", "Test"));
+        graph.ensure_node(make_node("c", "C", "Test"));
+        
+        graph.add_edge("hub", "a", ConceptEdge::unweighted("to"));
+        graph.add_edge("hub", "b", ConceptEdge::unweighted("to"));
+        graph.add_edge("hub", "c", ConceptEdge::unweighted("to"));
+
+        let centrality = graph.centrality_degree();
+        
+        // Hub should have highest centrality
+        let hub_centrality = centrality.iter().find(|(id, _)| id == "hub").unwrap().1;
+        let a_centrality = centrality.iter().find(|(id, _)| id == "a").unwrap().1;
+        
+        assert!(hub_centrality > a_centrality, "Hub should be more central");
+    }
+
+    #[test]
+    fn test_orphan_nodes() {
+        let mut graph = ConceptGraph::new();
+        
+        // Connected pair
+        graph.add_edge_with_nodes(
+            make_node("a", "A", "Test"),
+            make_node("b", "B", "Test"),
+            ConceptEdge::unweighted("connected"),
+        );
+        
+        // Orphan
+        graph.ensure_node(make_node("orphan", "Orphan", "Test"));
+
+        let orphans = graph.orphan_nodes();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].id, "orphan");
+    }
+
+    #[test]
+    fn test_connected_components() {
+        let mut graph = ConceptGraph::new();
+        
+        // Component 1: a-b
+        graph.add_edge_with_nodes(
+            make_node("a", "A", "Test"),
+            make_node("b", "B", "Test"),
+            ConceptEdge::unweighted("connected"),
+        );
+        
+        // Component 2: c-d
+        graph.add_edge_with_nodes(
+            make_node("c", "C", "Test"),
+            make_node("d", "D", "Test"),
+            ConceptEdge::unweighted("connected"),
+        );
+
+        let count = graph.connected_component_count();
+        assert_eq!(count, 2, "Should have 2 connected components");
+    }
+
+    #[test]
+    fn test_critical_nodes() {
+        let mut graph = ConceptGraph::new();
+        
+        // Linear chain: a -> b -> c
+        // b is the critical node (bridge)
+        graph.ensure_node(make_node("a", "A", "Test"));
+        graph.ensure_node(make_node("b", "B", "Test"));
+        graph.ensure_node(make_node("c", "C", "Test"));
+        
+        graph.add_edge("a", "b", ConceptEdge::unweighted("to"));
+        graph.add_edge("b", "c", ConceptEdge::unweighted("to"));
+
+        let critical = graph.critical_nodes();
+        
+        // In a linear chain a-b-c, b is an articulation point
+        let critical_ids: Vec<&str> = critical.iter().map(|n| n.id.as_str()).collect();
+        assert!(critical_ids.contains(&"b"), "b should be critical node");
+    }
+
+    #[test]
+    fn test_narrative_health_score() {
+        // Healthy graph: single component, no orphans
+        let mut healthy = ConceptGraph::new();
+        healthy.add_edge_with_nodes(
+            make_node("a", "A", "Test"),
+            make_node("b", "B", "Test"),
+            ConceptEdge::unweighted("connected"),
+        );
+        healthy.add_edge_with_nodes(
+            make_node("b", "B", "Test"),
+            make_node("c", "C", "Test"),
+            ConceptEdge::unweighted("connected"),
+        );
+
+        let score = healthy.narrative_health_score();
+        assert!(score >= 80, "Healthy graph should score >= 80, got {}", score);
+
+        // Fragmented graph: multiple components
+        let mut fragmented = ConceptGraph::new();
+        fragmented.add_edge_with_nodes(
+            make_node("a", "A", "Test"),
+            make_node("b", "B", "Test"),
+            ConceptEdge::unweighted("connected"),
+        );
+        fragmented.ensure_node(make_node("orphan1", "O1", "Test"));
+        fragmented.ensure_node(make_node("orphan2", "O2", "Test"));
+
+        let frag_score = fragmented.narrative_health_score();
+        assert!(frag_score < score, "Fragmented graph should score lower");
+    }
 }
+

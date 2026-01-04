@@ -7,7 +7,7 @@
 //! - Incremental updates when text changes
 
 use rowan::TextRange;
-use petgraph::graph::NodeIndex;
+use rustworkx_core::petgraph::graph::NodeIndex;
 use std::collections::HashMap;
 
 // =============================================================================
@@ -171,7 +171,7 @@ impl SynapseBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use petgraph::graph::NodeIndex;
+    use rustworkx_core::petgraph::graph::NodeIndex;
     
     fn make_range(start: u32, end: u32) -> TextRange {
         TextRange::new(start.into(), end.into())

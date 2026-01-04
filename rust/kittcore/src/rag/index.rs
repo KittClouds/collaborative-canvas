@@ -91,6 +91,33 @@ impl VectorIndex {
             .collect()
     }
 
+    /// Search for k nearest neighbors with diversity (MMR reranking)
+    /// 
+    /// # Arguments
+    /// * `query_vector` - Query embedding
+    /// * `k` - Number of results to return  
+    /// * `lambda` - Balance factor: 0.0 = pure diversity, 1.0 = pure relevance
+    pub fn search_with_diversity(&self, query_vector: &[f32], k: usize, lambda: f32) -> Vec<SearchResult> {
+        if query_vector.len() != self.dimensions {
+            return Vec::new();
+        }
+
+        let hnsw_results = self.hnsw.search_with_diversity(query_vector, k, lambda);
+
+        hnsw_results
+            .into_iter()
+            .filter_map(|(numeric_id, score)| {
+                let string_id = self.numeric_to_id.get(&numeric_id)?;
+                let meta = self.metadata.get(&numeric_id).cloned().flatten();
+                Some(SearchResult {
+                    id: string_id.clone(),
+                    score,
+                    metadata: meta,
+                })
+            })
+            .collect()
+    }
+
     /// Remove a vector by string ID (soft delete in HNSW)
     pub fn remove(&mut self, id: &str) {
         if let Some(numeric_id) = self.id_to_numeric.remove(id) {

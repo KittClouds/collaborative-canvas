@@ -14,7 +14,7 @@ use super::engine::RealityEngine;
 // =============================================================================
 
 /// Input span from TypeScript scanner
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputSpan {
     pub start: usize,
     pub end: usize,
@@ -97,6 +97,8 @@ pub struct SpanInfo {
 }
 
 // =============================================================================
+use crate::scanner::relation::{RelationCortex, EntitySpan as RelationEntitySpan, ExtractedRelation};
+
 // RealityCortex WASM Handle
 // =============================================================================
 
@@ -107,6 +109,7 @@ pub struct SpanInfo {
 #[wasm_bindgen]
 pub struct RealityCortex {
     engine: RealityEngine,
+    relation_cortex: RelationCortex,
 }
 
 #[wasm_bindgen]
@@ -114,9 +117,77 @@ impl RealityCortex {
     /// Create a new RealityCortex instance
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
+        let mut relation_cortex = RelationCortex::new();
+        // Ensure default patterns are loaded and built
+        let _ = relation_cortex.build(); // Ignore error if empty
+        
         Self {
             engine: RealityEngine::new(),
+            relation_cortex,
         }
+    }
+
+    /// Add a custom relationship pattern
+    #[wasm_bindgen(js_name = addRelationPattern)]
+    pub fn add_relation_pattern(
+        &mut self,
+        relation_type: &str,
+        patterns: JsValue,
+        confidence: f64,
+        bidirectional: bool,
+    ) -> Result<(), JsValue> {
+        self.relation_cortex.js_add_pattern(relation_type, patterns, confidence, bidirectional)
+    }
+
+    /// Hydrate relation patterns from JSON
+    #[wasm_bindgen(js_name = hydrateRelationPatterns)]
+    pub fn hydrate_relation_patterns(&mut self, patterns: JsValue) -> Result<(), JsValue> {
+        self.relation_cortex.js_hydrate_patterns(patterns)
+    }
+    
+    /// Process a document with AUTOMATIC relation detection
+    /// 
+    /// 1. Takes text and known entity spans (e.g. from Regex/NER).
+    /// 2. Runs RelationCortex to find patterns between entities.
+    /// 3. Merges detected relations as new spans.
+    /// 4. Runs full Reality Engine processing.
+    #[wasm_bindgen(js_name = processEnhanced)]
+    pub fn process_enhanced(&mut self, text: &str, spans_js: JsValue) -> Result<JsValue, JsValue> {
+        let mut input_spans: Vec<InputSpan> = serde_wasm_bindgen::from_value(spans_js)?;
+
+        // 1. Convert InputSpans to RelationEntitySpans for RelationCortex
+        let entity_spans: Vec<RelationEntitySpan> = input_spans.iter()
+            .filter(|s| s.kind != "Relation" && s.kind != "RELATION" && s.kind != "relation") // Only use entities for relation extraction
+            .map(|s| RelationEntitySpan {
+                label: s.label.clone().unwrap_or_else(|| text[s.start..s.end].to_string()),
+                entity_id: None, // We don't have stable IDs yet at this stage
+                start: s.start,
+                end: s.end,
+                kind: Some(s.kind.clone()),
+            })
+            .collect();
+
+        // 2. Extract relations
+        let relations = self.relation_cortex.extract(text, &entity_spans);
+
+        // 3. Convert ExtractedRelations to InputSpans (RelationSpan)
+        for rel in relations {
+            // Note: relation logic extracts the PATTERN text as the relation span
+            input_spans.push(InputSpan {
+                start: rel.pattern_start,
+                end: rel.pattern_end,
+                label: Some(rel.relation_type), // e.g. "OWNS"
+                kind: "Relation".to_string(),
+            });
+        }
+
+        // 4. Sort spans by start position (RealityEngine expects sorted or at least reasonable inputs?)
+        // Actually parser splits/merges, but helpful to be somewhat ordered.
+        input_spans.sort_by(|a, b| a.start.cmp(&b.start));
+
+        // 5. Run normal processing with enhanced span list
+        let enhanced_js = serde_wasm_bindgen::to_value(&input_spans)?;
+        self.process(text, enhanced_js)
     }
     
     /// Process a document with semantic spans

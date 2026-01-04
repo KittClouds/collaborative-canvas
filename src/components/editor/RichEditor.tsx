@@ -61,9 +61,11 @@ import { EntityMark } from '@/lib/extensions/EntityMark';
 import { TagMark } from '@/lib/extensions/TagMark';
 import { MentionMarkExt } from '@/lib/extensions/MentionMarkExt';
 import { WikiLinkMark } from '@/lib/extensions/WikiLinkMark';
-import { UnifiedSyntaxHighlighter } from '@/lib/extensions/UnifiedSyntaxHighlighter';
-import { RustSyntaxHighlighter, highlighterBridge } from '@/lib/highlighter';
+import { KittHighlighter } from '@/lib/extensions/KittHighlighter';
+import { highlighterBridge } from '@/lib/highlighter';
 import { useNER } from '@/contexts/NERContext';
+import type { HighlightMode } from '@/atoms/highlightingAtoms';
+import type { EntityKind } from '@/lib/types/entityTypes';
 
 // Scanner 4.0 - Rust-powered scanning via facade
 import { scannerFacade } from '@/lib/scanner';
@@ -127,7 +129,9 @@ function createExtensions(
   onTemporalClick?: (temporal: string) => void,
   onBacklinkClick?: (title: string) => void,
   getNEREntities?: () => any[],
-  getNoteId?: () => string | undefined  // Dynamic getter instead of static
+  getNoteId?: () => string | undefined,  // Dynamic getter instead of static
+  getHighlightMode?: () => HighlightMode,
+  getFocusEntityKinds?: () => EntityKind[]
 ) {
   return [
     // Base Extensions
@@ -279,8 +283,8 @@ function createExtensions(
     MentionMarkExt,
     WikiLinkMark,
 
-    // Unified syntax highlighter for all decorations (entities, wikilinks, tags, mentions, temporal)
-    UnifiedSyntaxHighlighter.configure({
+    // Unified KittHighlighter - combines Rust WASM entities, patterns, and NER
+    KittHighlighter.configure({
       onWikilinkClick,
       checkWikilinkExists,
       onTemporalClick,
@@ -288,16 +292,12 @@ function createExtensions(
       nerEntities: getNEREntities,
       useWidgetMode: true,
       enableLinkTracking: true,
-      enableScannerEvents: true, // Scanner 3.0: emit pattern-matched events
-      currentNoteId: getNoteId,  // Pass getter for dynamic noteId resolution
-    }),
-
-    // Rust-powered implicit entity highlighting
-    RustSyntaxHighlighter.configure({
       currentNoteId: getNoteId,
       logPerformance: true,
+      getHighlightMode,
+      getFocusEntityKinds,
       onImplicitClick: (entityId, entityLabel) => {
-        console.log('[RustHighlighter] Clicked:', entityId, entityLabel);
+        console.log('[KittHighlighter] Implicit clicked:', entityId, entityLabel);
       },
     }),
   ];
@@ -316,6 +316,7 @@ import {
   selectedNoteIdAtom,
 } from '@/atoms';
 import { editorInstanceAtom } from '@/atoms/editorAtoms';
+import { highlightSettingsAtom } from '@/atoms/highlightingAtoms';
 
 // ... extensions factory ...
 
@@ -342,6 +343,13 @@ const RichEditor = ({
   const initContent = useSetAtom(initNoteContentAtom);
   const setEditorInstance = useSetAtom(editorInstanceAtom);
 
+  // Highlighting mode settings (reactive via ref)
+  const highlightSettings = useAtomValue(highlightSettingsAtom);
+  const highlightSettingsRef = useRef(highlightSettings);
+  useEffect(() => {
+    highlightSettingsRef.current = highlightSettings;
+  }, [highlightSettings]);
+
   const previousContentRef = useRef<string>('');
   const previousNoteIdRef = useRef<string | undefined>(undefined);
   const { entities } = useNER();
@@ -361,11 +369,6 @@ const RichEditor = ({
 
     // Use IIFE to properly await async initialization
     (async () => {
-      await scannerFacade.initialize();
-      if (cancelled) return;
-      console.log('[RichEditor] Scanner 4.0 (Rust) initialized');
-
-      // Initialize Scanner 4.0 (Rust) and Rust highlighter
       await scannerFacade.initialize();
       if (cancelled) return;
       console.log('[RichEditor] Scanner 4.0 (Rust) initialized');
@@ -470,7 +473,9 @@ const RichEditor = ({
       (temporal) => optionsRef.current.onTemporalClick?.(temporal),
       (title) => optionsRef.current.onBacklinkClick?.(title),
       () => nerEntitiesRef.current,
-      () => noteIdRef.current  // Dynamic getter instead of static value
+      () => noteIdRef.current,  // Dynamic getter instead of static value
+      () => highlightSettingsRef.current.mode,  // Highlighting mode getter
+      () => highlightSettingsRef.current.focusEntityKinds  // Focus kinds getter
     ),
     []  // ← STABLE - never re-creates extensions
   );
@@ -532,6 +537,16 @@ const RichEditor = ({
     setEditorInstance(editor);
     return () => setEditorInstance(null);
   }, [editor, setEditorInstance]);
+
+  // Dispatch transaction when highlighting mode changes to trigger reactive rebuild
+  // This interacts with KittHighlighter's apply() method
+  useEffect(() => {
+    if (editor) {
+      editor.view.dispatch(
+        editor.state.tr.setMeta('highlightModeChange', true)
+      );
+    }
+  }, [highlightSettings, editor]);
 
   // Force editor update when noteId changes (switching notes) creates a ref mismatch?
   // We use selectedNoteId vs internal previousNoteIdRef.

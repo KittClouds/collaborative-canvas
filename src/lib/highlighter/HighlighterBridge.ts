@@ -33,6 +33,7 @@ export interface SpanMetadata {
 export interface HighlightResult {
     spans: HighlightSpan[];
     contentHash: string;
+    textLength: number; // M2: For O(1) length pre-check before O(n) hash
     wasCached: boolean;
     scanTimeMs: number;
 }
@@ -41,8 +42,9 @@ export interface HighlightResult {
 
 class HighlighterBridge {
     private initialized = false;
-    private lastResultByNote = new Map<string, HighlightResult>();
+    private lastResultByNote = new Map<string, HighlightResult & { textLength: number }>();
     private lastHashByNote = new Map<string, string>();
+    private lastLengthByNote = new Map<string, number>(); // M2: Fast length check
     private hydrationCallbacks: Array<() => void> = [];
 
     // Rust cortexes (imported dynamically)
@@ -163,22 +165,32 @@ class HighlighterBridge {
     highlight(text: string, noteId: string): HighlightResult {
         const start = performance.now();
 
-        // Check cache first
-        const hash = this.computeHash(text);
-        const lastHash = this.lastHashByNote.get(noteId);
+        // M2: Fast O(1) length pre-check before O(n) hash
+        const lastLength = this.lastLengthByNote.get(noteId);
+        const lengthChanged = lastLength !== undefined && lastLength !== text.length;
 
-        if (lastHash === hash) {
-            const cached = this.lastResultByNote.get(noteId);
-            if (cached) {
-                return { ...cached, wasCached: true };
+        // Only compute hash if length matches (potential cache hit)
+        if (!lengthChanged) {
+            const hash = this.computeHash(text);
+            const lastHash = this.lastHashByNote.get(noteId);
+
+            if (lastHash === hash) {
+                const cached = this.lastResultByNote.get(noteId);
+                if (cached) {
+                    return { ...cached, wasCached: true };
+                }
             }
         }
+
+        // Compute hash for storage (needed even if length changed)
+        const hash = this.computeHash(text);
 
         // Not cached - perform full scan
         if (!this.isReady()) {
             return {
                 spans: [],
                 contentHash: hash,
+                textLength: text.length,
                 wasCached: false,
                 scanTimeMs: performance.now() - start,
             };
@@ -192,6 +204,7 @@ class HighlighterBridge {
                 return {
                     spans: [],
                     contentHash: hash,
+                    textLength: text.length,
                     wasCached: false,
                     scanTimeMs: performance.now() - start,
                 };
@@ -244,12 +257,14 @@ class HighlighterBridge {
             const result: HighlightResult = {
                 spans,
                 contentHash: hash,
+                textLength: text.length,
                 wasCached: false,
                 scanTimeMs: performance.now() - start,
             };
 
-            // Cache result
+            // Cache result + length
             this.lastHashByNote.set(noteId, hash);
+            this.lastLengthByNote.set(noteId, text.length);
             this.lastResultByNote.set(noteId, result);
 
             return result;
@@ -258,6 +273,7 @@ class HighlighterBridge {
             return {
                 spans: [],
                 contentHash: hash,
+                textLength: text.length,
                 wasCached: false,
                 scanTimeMs: performance.now() - start,
             };

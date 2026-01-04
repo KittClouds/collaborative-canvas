@@ -72,35 +72,33 @@ class ScannerFacade {
                 await persistTemporalMentions(noteId, result.temporal, fullText);
             }
 
-            // Persist extracted relationships
+            // Persist extracted relationships (batch write)
             if (result.relations && result.relations.length > 0) {
-                let persistedCount = 0;
-                for (const rel of result.relations) {
-                    // Resolve labels to IDs
-                    const head = entityRegistry.findEntityByLabel(rel.head_entity);
-                    const tail = entityRegistry.findEntityByLabel(rel.tail_entity);
+                // Pre-resolve all entity labels to IDs
+                const inputs = result.relations
+                    .map(rel => {
+                        const head = entityRegistry.findEntityByLabel(rel.head_entity);
+                        const tail = entityRegistry.findEntityByLabel(rel.tail_entity);
+                        if (!head || !tail) return null;
+                        return {
+                            sourceEntityId: head.id,
+                            targetEntityId: tail.id,
+                            type: rel.relation_type,
+                            provenance: [{
+                                source: RelationshipSource.NER_EXTRACTION,
+                                originId: noteId,
+                                confidence: rel.confidence,
+                                timestamp: new Date()
+                            }]
+                        };
+                    })
+                    .filter((input): input is NonNullable<typeof input> => input !== null);
 
-                    if (head && tail) {
-                        try {
-                            relationshipRegistry.add({
-                                sourceEntityId: head.id,
-                                targetEntityId: tail.id,
-                                type: rel.relation_type,
-                                provenance: [{
-                                    source: RelationshipSource.NER_EXTRACTION,
-                                    originId: noteId,
-                                    confidence: rel.confidence,
-                                    timestamp: new Date()
-                                }]
-                            });
-                            persistedCount++;
-                        } catch (err) {
-                            console.warn('[ScannerFacade] Failed to persist relation:', rel, err);
-                        }
+                if (inputs.length > 0) {
+                    const persistedCount = relationshipRegistry.addBatch(inputs);
+                    if (persistedCount > 0) {
+                        console.log(`[ScannerFacade] Persisted ${persistedCount}/${result.relations.length} relationships (batch)`);
                     }
-                }
-                if (persistedCount > 0) {
-                    console.log(`[ScannerFacade] Persisted ${persistedCount}/${result.relations.length} relationships`);
                 }
             }
 

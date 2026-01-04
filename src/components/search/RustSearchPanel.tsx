@@ -28,11 +28,13 @@ import {
     CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import type { ModelId } from '@/lib/rag';
+import { MODEL_REGISTRY } from '@/lib/rag/models';
 
 // Types
-type RagStatus = 'idle' | 'initializing' | 'loading-model' | 'ready' | 'indexing' | 'searching' | 'error';
+type RagStatus = 'idle' | 'initializing' | 'loading-model' | 'setting-dims' | 'ready' | 'indexing' | 'searching' | 'error';
 type SearchMode = 'vector' | 'hybrid' | 'raptor';
 type TruncateDim = 'full' | '256' | '128' | '64';
+type EmbedMode = 'rust' | 'typescript'; // NEW: Which side does embedding
 
 interface SearchResult {
     note_id: string;
@@ -60,12 +62,13 @@ export function RustSearchPanel() {
     const [results, setResults] = useState<SearchResult[]>([]);
     const [searchTime, setSearchTime] = useState<number>(0);
 
-    // Model config
-    const [selectedModel, setSelectedModel] = useState<ModelId>('bge-small');
+    // Model config - default to MDBR Leaf (TypeScript mode)
+    const [selectedModel, setSelectedModel] = useState<ModelId>('mdbr-leaf');
     const [truncateDim, setTruncateDim] = useState<TruncateDim>('full');
     const [searchMode, setSearchMode] = useState<SearchMode>('vector');
     const [vectorWeight, setVectorWeight] = useState(0.7);
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [embedMode, setEmbedMode] = useState<EmbedMode>('typescript'); // NEW: Default to TS embedding
 
     // Initialize worker
     useEffect(() => {
@@ -81,6 +84,11 @@ export function RustSearchPanel() {
                     setStatus('idle');
                     break;
                 case 'MODEL_LOADED':
+                    setEmbedMode('rust'); // Rust model is now active
+                    setStatus('ready');
+                    break;
+                case 'DIMENSIONS_SET':
+                    setEmbedMode('typescript'); // TypeScript embedding mode
                     setStatus('ready');
                     break;
                 case 'INDEX_COMPLETE':
@@ -105,45 +113,59 @@ export function RustSearchPanel() {
         return () => worker.terminate();
     }, []);
 
-    // Load model
+    // Load model (or set dimensions for TypeScript mode)
     const loadModel = useCallback(async () => {
         if (!workerRef.current) return;
-        setStatus('loading-model');
         setError(null);
 
-        try {
-            const modelPath = selectedModel === 'bge-small'
-                ? 'https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx'
-                : 'https://huggingface.co/answerdotai/ModernBERT-base/resolve/main/onnx/model.onnx';
-
-            const tokenizerPath = selectedModel === 'bge-small'
-                ? 'https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json'
-                : 'https://huggingface.co/answerdotai/ModernBERT-base/resolve/main/tokenizer.json';
-
-            const [onnxRes, tokenizerRes] = await Promise.all([
-                fetch(modelPath),
-                fetch(tokenizerPath),
-            ]);
-
-            if (!onnxRes.ok || !tokenizerRes.ok) {
-                throw new Error('Failed to download model files');
-            }
-
-            const onnx = await onnxRes.arrayBuffer();
-            const tokenizer = await tokenizerRes.text();
-
-            workerRef.current.postMessage({
-                type: 'LOAD_MODEL',
-                payload: {
-                    onnx,
-                    tokenizer,
-                    dims: selectedModel === 'bge-small' ? 384 : 768,
-                    truncate: truncateDim,
-                },
-            });
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Model load failed');
+        const modelConfig = MODEL_REGISTRY[selectedModel];
+        if (!modelConfig) {
+            setError(`Unknown model: ${selectedModel}`);
             setStatus('error');
+            return;
+        }
+
+        // Check if this is a TypeScript-only model (no ONNX URL)
+        const isTypescriptModel = modelConfig.provider === 'local' || !modelConfig.onnxUrl;
+
+        if (isTypescriptModel) {
+            // TypeScript embedding mode - just set dimensions
+            setStatus('setting-dims');
+            workerRef.current.postMessage({
+                type: 'SET_DIMENSIONS',
+                payload: { dims: modelConfig.dims },
+            });
+            console.log(`[RustSearchPanel] TypeScript mode: ${modelConfig.label} (${modelConfig.dims}d)`);
+        } else {
+            // Rust embedding mode - load ONNX model
+            setStatus('loading-model');
+            try {
+                const [onnxRes, tokenizerRes] = await Promise.all([
+                    fetch(modelConfig.onnxUrl),
+                    fetch(modelConfig.tokenizerUrl),
+                ]);
+
+                if (!onnxRes.ok || !tokenizerRes.ok) {
+                    throw new Error('Failed to download model files');
+                }
+
+                const onnx = await onnxRes.arrayBuffer();
+                const tokenizer = await tokenizerRes.text();
+
+                workerRef.current.postMessage({
+                    type: 'LOAD_MODEL',
+                    payload: {
+                        onnx,
+                        tokenizer,
+                        dims: modelConfig.dims,
+                        truncate: truncateDim,
+                    },
+                });
+                console.log(`[RustSearchPanel] Rust mode: ${modelConfig.label} (${modelConfig.dims}d)`);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Model load failed');
+                setStatus('error');
+            }
         }
     }, [selectedModel, truncateDim]);
 
@@ -215,6 +237,8 @@ export function RustSearchPanel() {
                 return { icon: CheckCircle2, text: 'Ready', color: 'text-emerald-400' };
             case 'indexing':
                 return { icon: Loader2, text: 'Indexing...', color: 'text-teal-400', spin: true };
+            case 'setting-dims':
+                return { icon: Loader2, text: 'Configuring...', color: 'text-teal-400', spin: true };
             case 'searching':
                 return { icon: Loader2, text: 'Searching...', color: 'text-teal-400', spin: true };
             case 'error':
@@ -243,9 +267,11 @@ export function RustSearchPanel() {
                         <div>
                             <h2 className="text-base font-semibold text-zinc-100">Semantic Search</h2>
                             <div className="flex items-center gap-2 text-xs">
-                                <span className="text-zinc-500">Rust/WASM</span>
+                                <span className="text-zinc-500">{embedMode === 'typescript' ? 'TypeScript' : 'Rust/WASM'}</span>
                                 <span className="text-zinc-600">•</span>
-                                <span className="text-teal-400 font-medium">{selectedModel === 'bge-small' ? 'BGE-small' : 'ModernBERT'}</span>
+                                <span className="text-teal-400 font-medium">
+                                    {MODEL_REGISTRY[selectedModel]?.label || selectedModel}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -338,7 +364,19 @@ export function RustSearchPanel() {
                     {/* Model Selection */}
                     <div className="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/30 space-y-3">
                         <div className="text-xs text-zinc-400 font-medium mb-2">Embedding Model</div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                onClick={() => setSelectedModel('mdbr-leaf')}
+                                className={cn(
+                                    "p-2 rounded-md text-xs text-left transition-all",
+                                    selectedModel === 'mdbr-leaf'
+                                        ? "bg-teal-500/10 border border-teal-500/30 text-teal-300"
+                                        : "bg-zinc-800/50 border border-zinc-700/30 text-zinc-400 hover:text-zinc-300"
+                                )}
+                            >
+                                <div className="font-medium">MDBR Leaf</div>
+                                <div className="text-zinc-500 text-[10px]">256d • Fastest</div>
+                            </button>
                             <button
                                 onClick={() => setSelectedModel('bge-small')}
                                 className={cn(
@@ -349,7 +387,7 @@ export function RustSearchPanel() {
                                 )}
                             >
                                 <div className="font-medium">BGE-small</div>
-                                <div className="text-zinc-500 text-[10px]">384d • Fast</div>
+                                <div className="text-zinc-500 text-[10px]">384d • Rust</div>
                             </button>
                             <button
                                 onClick={() => setSelectedModel('modernbert-base')}
@@ -361,7 +399,7 @@ export function RustSearchPanel() {
                                 )}
                             >
                                 <div className="font-medium">ModernBERT</div>
-                                <div className="text-zinc-500 text-[10px]">768d • Accurate</div>
+                                <div className="text-zinc-500 text-[10px]">768d • Rust</div>
                             </button>
                         </div>
 

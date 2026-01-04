@@ -134,6 +134,31 @@ impl RagPipeline {
         self.dimensions
     }
 
+    /// Set dimensions for external embedding mode (TypeScript models)
+    /// 
+    /// Use this when embeddings are generated on the TypeScript side
+    /// (e.g., MDBR Leaf via Transformers.js) and passed directly to Rust.
+    /// This reconfigures the HNSW index without loading a Rust model.
+    #[wasm_bindgen(js_name = setDimensions)]
+    pub fn set_dimensions(&mut self, dims: u32) {
+        let dims = dims as usize;
+        if dims != self.dimensions {
+            self.dimensions = dims;
+            self.index = VectorIndex::new(dims);
+            
+            web_sys::console::log_1(&format!(
+                "[RagPipeline] Dimensions set to {} (external embedding mode)",
+                dims
+            ).into());
+        }
+    }
+
+    /// Check if using external embedding mode (no Rust model loaded)
+    #[wasm_bindgen(js_name = isExternalEmbedding)]
+    pub fn is_external_embedding(&self) -> bool {
+        self.embed_cortex.is_none() && self.dimensions > 0
+    }
+
     /// Index a single note
     ///
     /// Chunks the note, embeds each chunk, and adds to index.
@@ -385,6 +410,48 @@ impl RagPipeline {
             .ok_or_else(|| JsValue::from_str("Model not loaded"))?;
         cortex.embed_text(text)
     }
+
+    /// Search with diversity using MMR (Maximal Marginal Relevance)
+    ///
+    /// Returns results reranked to balance relevance and diversity.
+    /// This is ideal for RAG to avoid redundant context.
+    ///
+    /// # Arguments
+    /// * `query` - Search query text
+    /// * `k` - Number of results to return
+    /// * `lambda` - Balance factor: 0.0 = pure diversity, 0.5 = balanced, 1.0 = pure relevance
+    #[wasm_bindgen(js_name = searchWithDiversity)]
+    pub fn search_with_diversity(&self, query: &str, k: usize, lambda: f32) -> Result<JsValue, JsValue> {
+        let cortex = self.embed_cortex.as_ref()
+            .ok_or_else(|| JsValue::from_str("Model not loaded"))?;
+
+        // Embed query
+        let query_vec = cortex.embed_text(query)?;
+
+        // Search with diversity (MMR reranking)
+        let results = self.index.search_with_diversity(&query_vec, k, lambda);
+
+        // Convert to RagSearchResult
+        let rag_results: Vec<RagSearchResult> = results
+            .into_iter()
+            .filter_map(|r| {
+                let meta = self.chunk_metas.get(&r.id)?;
+                let text = self.chunk_texts.get(&r.id)?;
+                
+                Some(RagSearchResult {
+                    note_id: meta.note_id.clone(),
+                    note_title: meta.note_title.clone(),
+                    chunk_text: text.clone(),
+                    score: r.score,
+                    chunk_index: meta.chunk_index,
+                })
+            })
+            .collect();
+
+        serde_wasm_bindgen::to_value(&rag_results)
+            .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
+    }
+
 
     /// Hybrid search combining vector (HNSW) and lexical (BM25)
     ///

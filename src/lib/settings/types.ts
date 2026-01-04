@@ -41,7 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         defaultMaxTokens: 2048,
     },
     embeddings: {
-        defaultModel: 'modernbert-base', // Local by default
+        defaultModel: 'mongodb-leaf', // MDBR Leaf - fastest local model
         cacheEmbeddings: true,
         batchSize: 32,
     },

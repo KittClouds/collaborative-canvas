@@ -86,6 +86,24 @@ export class RelationshipRegistryAdapter {
     }
 
     /**
+     * Add multiple relationships in batch (more efficient than individual adds)
+     * Returns count of successfully added relationships
+     */
+    addBatch(inputs: RelationshipInput[]): number {
+        this.ensureInitSync();
+        let count = 0;
+        for (const input of inputs) {
+            try {
+                this.add(input, true); // skipPersist=true for efficiency
+                count++;
+            } catch (err) {
+                console.warn('[RelationshipRegistryAdapter] Batch add failed for:', input, err);
+            }
+        }
+        return count;
+    }
+
+    /**
      * Get relationship by ID
      */
     get(id: string): UnifiedRelationship | undefined {

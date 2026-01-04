@@ -20,7 +20,7 @@ export class EmbeddingEngine {
     static async initialize(modelId?: string): Promise<void> {
         const settings = SettingsManager.load();
         // Use optional chaining and default to modernbert-base
-        const targetModelId = modelId || (settings as any).embeddings?.defaultModel || 'modernbert-base';
+        const targetModelId = modelId || (settings as any).embeddings?.defaultModel || 'mongodb-leaf';
 
         // Check if already initialized with this model
         if (this.currentProvider?.getModelInfo().id === targetModelId) {
@@ -103,6 +103,40 @@ export class EmbeddingEngine {
      */
     static async switchModel(modelId: string): Promise<void> {
         await this.initialize(modelId);
+    }
+
+    /**
+     * Get the active provider type for hybrid pipeline routing
+     * 
+     * Returns:
+     * - 'rust': Embeddings are done in Rust/WASM (send raw text to worker)
+     * - 'local': Embeddings are done in TypeScript (send vectors to worker)
+     * - 'cloud': Embeddings are done via cloud API (send vectors to worker)
+     */
+    static getActiveProviderType(): 'rust' | 'local' | 'cloud' | 'none' {
+        if (!this.currentProvider) {
+            return 'none';
+        }
+
+        const modelInfo = this.currentProvider.getModelInfo();
+
+        // Check provider type from model definition
+        if (modelInfo.provider === 'rust') {
+            return 'rust';
+        } else if (modelInfo.provider === 'local') {
+            return 'local';
+        } else if (modelInfo.provider === 'gemini' || modelInfo.provider === 'huggingface') {
+            return 'cloud';
+        }
+
+        return 'local'; // Default to local for safety
+    }
+
+    /**
+     * Get current model dimensions (safe version that returns 0 if not initialized)
+     */
+    static getDimensionsSafe(): number {
+        return this.currentProvider?.getModelInfo().dimensions ?? 0;
     }
 
     /**

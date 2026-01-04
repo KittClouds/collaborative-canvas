@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { HighlightingModeToggle } from "@/components/ui/HighlightingModeToggle";
 
 export function EntityThemeTab() {
     const { theme, updateTheme, resetTheme, getVar } = useEntityTheme();
@@ -22,10 +23,13 @@ export function EntityThemeTab() {
                         Customize the colors used for entity highlighting and icons across the application.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={resetTheme}>
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Reset to Defaults
-                </Button>
+                <div className="flex items-center gap-2">
+                    <HighlightingModeToggle />
+                    <Button variant="outline" size="sm" onClick={resetTheme}>
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Reset to Defaults
+                    </Button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

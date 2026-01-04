@@ -8,6 +8,7 @@ import { entityRegistry } from '@/lib/cozo/graph/adapters';
 import { patternRegistry, type PatternDefinition, type RefKind } from '../refs';
 import { mentionEventQueue } from '@/lib/scanner/mention-event-queue';
 import type { EntityMentionEvent, PositionType } from '../cozo/types';
+import { getOrBuildText } from '@/lib/highlighter/positionMapCache'; // M3: Shared cache
 
 // Legacy scanner-v3 stubs (Rust scanner handles this now)
 // This extension is deprecated - use RustSyntaxHighlighter instead
@@ -48,6 +49,8 @@ const allProfanityEntityMatcher = {
 // Cache for tracking last emitted content hash per note
 // Prevents redundant scanner events when returning to unchanged notes
 const lastEmittedContentHash = new Map<string, string>();
+// Timestamp of last emission per note (for 100ms throttle)
+const lastEmittedTimestamp = new Map<string, number>();
 
 
 export interface UnifiedSyntaxOptions {
@@ -93,6 +96,55 @@ function isEditing(selection: { from: number; to: number }, range: EditingRange)
     (selection.to >= range.from - buffer && selection.to <= range.to + buffer) ||
     (selection.from <= range.from && selection.to >= range.to)
   );
+}
+
+/**
+ * Range-based overlap detection (O(log n) vs O(n) per-character Set)
+ * Maintains sorted ranges for efficient overlap checks
+ */
+type Range = [number, number]; // [start, end)
+
+function rangesOverlap(ranges: Range[], start: number, end: number): boolean {
+  // Binary search for first range that could overlap
+  let lo = 0, hi = ranges.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (ranges[mid][1] <= start) lo = mid + 1;
+    else hi = mid;
+  }
+  // Check if found range overlaps
+  return lo < ranges.length && ranges[lo][0] < end;
+}
+
+function insertRange(ranges: Range[], start: number, end: number): void {
+  // Binary search for insertion point (maintain sorted order by start)
+  let lo = 0, hi = ranges.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (ranges[mid][0] < start) lo = mid + 1;
+    else hi = mid;
+  }
+  ranges.splice(lo, 0, [start, end]);
+}
+
+/**
+ * M1: Check if selection movement crosses a decoration boundary
+ * Returns true if cursor moved INTO or OUT OF a decorated region
+ * Used to skip full rebuild when cursor moves within undecorated text
+ */
+function crossesDecorationBoundary(
+  decorations: DecorationSet,
+  oldSel: { from: number; to: number },
+  newSel: { from: number; to: number }
+): boolean {
+  // Get decorations at old and new positions
+  const oldFrom = decorations.find(oldSel.from, oldSel.from);
+  const oldTo = decorations.find(oldSel.to, oldSel.to);
+  const newFrom = decorations.find(newSel.from, newSel.from);
+  const newTo = decorations.find(newSel.to, newSel.to);
+
+  // If decoration count at position changed, boundary was crossed
+  return oldFrom.length !== newFrom.length || oldTo.length !== newTo.length;
 }
 
 function extractEntityMentionsFromDoc(
@@ -157,22 +209,22 @@ function createPatternWidget(
   extraStyles: string = ''
 ): HTMLElement {
   const span = document.createElement('span');
-  span.className = `ref-widget ref-${kind} ${extraClasses}`;
+  span.className = `ref - widget ref - ${kind} ${extraClasses} `;
   span.textContent = label;
 
   // Base style + overrides
   span.style.cssText = `
-    background-color: ${backgroundColor};
-    color: ${color};
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: 500;
-    font-size: 0.875em;
-    cursor: text;
-    display: inline-block;
-    position: relative;
+background - color: ${backgroundColor};
+color: ${color};
+padding: 2px 6px;
+border - radius: 4px;
+font - weight: 500;
+font - size: 0.875em;
+cursor: text;
+display: inline - block;
+position: relative;
     ${extraStyles}
-  `;
+`;
 
   // Data attributes for identifying the widget
   span.setAttribute('data-ref-kind', kind);
@@ -198,22 +250,22 @@ function buildAllDecorations(
   const useWidgets = options.useWidgetMode ?? false;
   const noteId = resolveNoteId(options.currentNoteId);
 
-  // Extract full document text for content-hash comparison
-  let fullDocText = '';
-  doc.descendants((node) => {
-    if (node.isText && node.text) {
-      fullDocText += node.text;
-    }
-  });
+  // M3: Use shared cache for text extraction (avoids duplicate traversal if RustSyntaxHighlighter also runs)
+  const fullDocText = getOrBuildText(doc);
 
   // Check if content has changed since last emission
   const contentHash = computeContentHash(fullDocText);
   const lastHash = lastEmittedContentHash.get(noteId);
-  const shouldEmitEvents = options.enableScannerEvents !== false && lastHash !== contentHash;
+  const lastTime = lastEmittedTimestamp.get(noteId) || 0;
+  const now = Date.now();
+  // Skip emission if: scanner events disabled, hash unchanged, or within 100ms throttle window
+  const shouldEmitEvents = options.enableScannerEvents !== false &&
+    (lastHash !== contentHash || (now - lastTime) > 100);
 
-  // Update the hash cache if we're going to emit
+  // Update the hash/timestamp cache if we're going to emit
   if (shouldEmitEvents) {
     lastEmittedContentHash.set(noteId, contentHash);
+    lastEmittedTimestamp.set(noteId, now);
   }
 
   // Get active patterns sorted by priority
@@ -223,7 +275,7 @@ function buildAllDecorations(
     if (!node.isText || !node.text) return;
 
     const text = node.text;
-    const processed = new Set<number>();
+    const processedRanges: Range[] = [];
 
     // 1. Iterate through registered patterns
     for (const pattern of patterns) {
@@ -245,20 +297,11 @@ function buildAllDecorations(
         const from = pos + match.index;
         const to = from + fullMatch.length;
 
-        // Check for overlaps with already processed ranges
-        let hasOverlap = false;
-        for (let i = match.index; i < match.index + fullMatch.length; i++) {
-          if (processed.has(i)) {
-            hasOverlap = true;
-            break;
-          }
-        }
-        if (hasOverlap) continue;
+        // Check for overlaps with already processed ranges (O(log n))
+        if (rangesOverlap(processedRanges, match.index, match.index + fullMatch.length)) continue;
 
-        // Mark range as processed
-        for (let i = match.index; i < match.index + fullMatch.length; i++) {
-          processed.add(i);
-        }
+        // Mark range as processed (O(log n) insert)
+        insertRange(processedRanges, match.index, match.index + fullMatch.length);
 
         // Logic for "is being edited"
         const isCurrentlyEditing = selection
@@ -308,7 +351,7 @@ function buildAllDecorations(
           const entityKind = match[1] as EntityKind;
           // Check if it's a known kind that would have a CSS var
           if (entityKind && ENTITY_COLORS[entityKind]) {
-            const varName = `--entity-${entityKind.toLowerCase().replace('_', '-')}`;
+            const varName = `--entity - ${entityKind.toLowerCase().replace('_', '-')} `;
             color = `hsl(var(${varName}))`;
             bgColor = `hsl(var(${varName}) / 0.15)`;
           }
@@ -337,7 +380,7 @@ function buildAllDecorations(
           decorations.push(
             Decoration.widget(from, widget, {
               side: -1,
-              key: `${pattern.id}-${from}-${fullMatch}`,
+              key: `${pattern.id} -${from} -${fullMatch} `,
             })
           );
 
@@ -351,23 +394,23 @@ function buildAllDecorations(
         } else {
           // INLINE
           let style = `
-            background-color: ${bgColor}; 
-            color: ${color}; 
-            padding: 2px 6px; 
-            border-radius: 4px; 
-            font-weight: 500; 
-            font-size: 0.875em; 
-            cursor: pointer;
-          `;
+background - color: ${bgColor};
+color: ${color};
+padding: 2px 6px;
+border - radius: 4px;
+font - weight: 500;
+font - size: 0.875em;
+cursor: pointer;
+`;
 
           // Special inline styles
           if (pattern.kind === 'wikilink') {
-            style += ` text-decoration: underline; text-decoration-style: ${exists ? 'dotted' : 'dashed'};`;
+            style += ` text - decoration: underline; text - decoration - style: ${exists ? 'dotted' : 'dashed'}; `;
           }
 
           decorations.push(
             Decoration.inline(from, to, {
-              class: `ref-highlight ref-${pattern.kind} ${pattern.kind === 'wikilink' ? (exists ? 'wikilink-editing' : 'wikilink-broken wikilink-editing') : ''}`,
+              class: `ref - highlight ref - ${pattern.kind} ${pattern.kind === 'wikilink' ? (exists ? 'wikilink-editing' : 'wikilink-broken wikilink-editing') : ''} `,
               style,
               'data-ref-kind': pattern.kind,
               'data-ref-target': target,
@@ -421,20 +464,11 @@ function buildAllDecorations(
         const from = pos + relativeStart;
         const to = pos + relativeEnd;
 
-        // Check overlap
-        let hasOverlap = false;
-        for (let i = relativeStart; i < relativeEnd; i++) {
-          if (processed.has(i)) {
-            hasOverlap = true;
-            break;
-          }
-        }
-        if (hasOverlap) continue;
+        // Check overlap (O(log n))
+        if (rangesOverlap(processedRanges, relativeStart, relativeEnd)) continue;
 
-        // Mark processed
-        for (let i = relativeStart; i < relativeEnd; i++) {
-          processed.add(i);
-        }
+        // Mark processed (O(log n) insert)
+        insertRange(processedRanges, relativeStart, relativeEnd);
 
         decorations.push(
           Decoration.inline(from, to, {
@@ -458,33 +492,24 @@ function buildAllDecorations(
         const from = pos + match.position;
         const to = from + match.length;
 
-        // Check overlap
-        let hasOverlap = false;
-        for (let i = match.position; i < match.position + match.length; i++) {
-          if (processed.has(i)) {
-            hasOverlap = true;
-            break;
-          }
-        }
-        if (hasOverlap) continue;
+        // Check overlap (O(log n))
+        if (rangesOverlap(processedRanges, match.position, match.position + match.length)) continue;
 
-        // Mark processed
-        for (let i = match.position; i < match.position + match.length; i++) {
-          processed.add(i);
-        }
+        // Mark processed (O(log n) insert)
+        insertRange(processedRanges, match.position, match.position + match.length);
 
-        const varName = `--entity-${match.entity.kind.toLowerCase().replace('_', '-')}`;
+        const varName = `--entity - ${match.entity.kind.toLowerCase().replace('_', '-')} `;
         const color = `hsl(var(${varName}))`;
         const bgColor = `hsl(var(${varName}) / 0.1)`;
 
         decorations.push(
           Decoration.inline(from, to, {
             class: 'entity-implicit-highlight',
-            style: `background-color: ${bgColor}; color: ${color}; padding: 0px 2px; border-bottom: 2px dotted ${color}; cursor: help;`,
+            style: `background - color: ${bgColor}; color: ${color}; padding: 0px 2px; border - bottom: 2px dotted ${color}; cursor: help; `,
             'data-entity-id': match.entity.id,
             'data-entity-kind': match.entity.kind,
             'data-entity-label': match.entity.label,
-            'title': `${match.entity.kind}: ${match.entity.label}`
+            'title': `${match.entity.kind}: ${match.entity.label} `
           }, { inclusiveStart: false, inclusiveEnd: false })
         );
       }
@@ -531,10 +556,17 @@ export const UnifiedSyntaxHighlighter = Extension.create<UnifiedSyntaxOptions>({
               const selection = { from: newState.selection.from, to: newState.selection.to };
               return buildAllDecorations(newState.doc, options, selection);
             }
-            // Check selection change for widget mode editing
+            // M1: Check selection change for widget mode editing
+            // Only rebuild if cursor crossed INTO or OUT OF a decorated region
             if (tr.selectionSet && useWidgets) {
-              const newSelection = { from: newState.selection.from, to: newState.selection.to };
-              return buildAllDecorations(newState.doc, options, newSelection);
+              const oldSel = { from: oldState.selection.from, to: oldState.selection.to };
+              const newSel = { from: newState.selection.from, to: newState.selection.to };
+
+              // Skip rebuild if cursor didn't cross a decoration boundary
+              if (!crossesDecorationBoundary(oldDecorations, oldSel, newSel)) {
+                return oldDecorations.map(tr.mapping, tr.doc);
+              }
+              return buildAllDecorations(newState.doc, options, newSel);
             }
             return oldDecorations.map(tr.mapping, tr.doc);
           },

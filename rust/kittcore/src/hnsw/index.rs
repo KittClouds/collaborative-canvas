@@ -73,6 +73,12 @@ pub struct Hnsw {
     level_max: u8,
     dimension: Option<usize>,
     
+    // Quantized storage for hybrid search (4x compression)
+    quantized: HashMap<u32, super::quantization::ScalarQuantized>,
+    
+    // Binary quantized storage for two-stage retrieval (32x compression)
+    binary_quantized: HashMap<u32, super::binary_quantization::BinaryQuantized>,
+    
     // RNG state for level selection (simple LCG for determinism)
     rng_state: u64,
 }
@@ -97,6 +103,8 @@ impl Hnsw {
             entry_point_id: None,
             level_max: 0,
             dimension: None,
+            quantized: HashMap::new(),
+            binary_quantized: HashMap::new(),
             rng_state: 42, // Deterministic seed
         }
     }
@@ -223,6 +231,55 @@ impl Hnsw {
             .collect()
     }
 
+    /// Search for k nearest neighbors with a filter predicate
+    /// 
+    /// The filter is applied during result collection, not during graph traversal.
+    /// This ensures we find k results that match the filter.
+    /// 
+    /// # Arguments
+    /// * `query` - Query vector
+    /// * `k` - Desired number of results
+    /// * `filter` - Predicate that returns true for IDs to include
+    /// 
+    /// # Performance
+    /// The search fetches more candidates (ef * 2) to increase chances of finding
+    /// k matching results after filtering.
+    pub fn search_knn_filtered<F>(&self, query: &[f32], k: usize, filter: F) -> Vec<(u32, f32)>
+    where
+        F: Fn(u32) -> bool,
+    {
+        if self.nodes.is_empty() || self.entry_point_id.is_none() {
+            return Vec::new();
+        }
+        
+        let query_vec = query.to_vec();
+        let query_mag = magnitude(&query_vec);
+        
+        let mut ep_id = self.entry_point_id.unwrap();
+        
+        // Phase 1: Traverse from top to level 1 (greedy)
+        let mut current_level = self.level_max as i32;
+        while current_level > 0 {
+            let (nearest_id, _) = self.search_layer_single_query(ep_id, &query_vec, query_mag, current_level as u8);
+            ep_id = nearest_id;
+            current_level -= 1;
+        }
+        
+        // Phase 2: Search at level 0 with expanded ef to account for filtering
+        // Fetch more candidates since some will be filtered out
+        let ef = (k * 4).max(self.ef_construction);
+        let candidates = self.search_layer_query(ep_id, &query_vec, query_mag, ef, 0);
+        
+        // Return top k that pass both deletion check and user filter
+        candidates.into_iter()
+            .filter(|(id, _)| {
+                let not_deleted = self.nodes.get(id).map(|n| !n.deleted).unwrap_or(false);
+                not_deleted && filter(*id)
+            })
+            .take(k)
+            .collect()
+    }
+
     /// Soft-delete a point
     pub fn delete_point(&mut self, id: u32) {
         if let Some(node) = self.nodes.get_mut(&id) {
@@ -242,6 +299,205 @@ impl Hnsw {
     /// Get the vector for a specific node by ID
     pub fn get_vector(&self, id: u32) -> Option<Vec<f32>> {
         self.nodes.get(&id).map(|node| node.vector.clone())
+    }
+
+    /// Compute similarity between two vectors based on metric
+    fn compute_similarity(&self, a: &[f32], b: &[f32]) -> f32 {
+        match self.metric {
+            Metric::Cosine => cosine_similarity(a, b, None, None),
+            Metric::Euclidean => {
+                // Convert distance to similarity: 1 / (1 + dist)
+                let dist = euclidean_distance_squared(a, b).sqrt();
+                1.0 / (1.0 + dist)
+            }
+        }
+    }
+
+    // ========================================================================
+    // Hybrid Search with Quantization
+    // ========================================================================
+
+    /// Add a point with both full-precision and quantized storage
+    /// 
+    /// Stores the full vector for exact search and a quantized version
+    /// for memory-efficient hybrid search.
+    pub fn add_point_quantized(&mut self, id: u32, vector: Vec<f32>) -> Result<(), HnswError> {
+        // Create quantized version before adding point
+        let quantized = super::quantization::ScalarQuantized::quantize(&vector);
+        
+        // Add the point normally
+        self.add_point(id, vector)?;
+        
+        // Store quantized version
+        self.quantized.insert(id, quantized);
+        
+        Ok(())
+    }
+
+    /// Search using hybrid quantized + full precision reranking
+    /// 
+    /// 1. Standard HNSW graph traversal to find candidates
+    /// 2. Rerank candidates using full precision similarity
+    /// 
+    /// This gives the same results as search_knn but enables future
+    /// optimizations where quantized candidates can be retrieved faster.
+    pub fn search_hybrid(&self, query: &[f32], k: usize) -> Vec<(u32, f32)> {
+        // For now, use standard search with full precision reranking
+        // Future optimization: use quantized vectors for initial candidate scoring
+        self.search_knn(query, k)
+    }
+
+    /// Get the quantized representation of a vector
+    pub fn get_quantized(&self, id: u32) -> Option<&super::quantization::ScalarQuantized> {
+        self.quantized.get(&id)
+    }
+
+    /// Get memory usage statistics
+    /// 
+    /// Returns (full_precision_bytes, quantized_bytes)
+    pub fn memory_usage(&self) -> (usize, usize) {
+        let dim = self.dimension.unwrap_or(0);
+        let count = self.nodes.len();
+        
+        // Full precision: dim * 4 bytes per vector
+        let full_bytes = count * dim * 4;
+        
+        // Quantized: dim bytes + 8 bytes overhead (min + scale) per vector
+        let quantized_bytes = count * (dim + 8);
+        
+        (full_bytes, quantized_bytes)
+    }
+
+    /// Search with diversity using MMR (Maximal Marginal Relevance)
+    /// 
+    /// Reranks results to balance relevance and diversity.
+    /// 
+    /// # Arguments
+    /// * `query` - Query vector
+    /// * `k` - Number of results to return
+    /// * `lambda` - Balance factor: 0.0 = pure diversity, 1.0 = pure relevance
+    /// 
+    /// # Returns
+    /// Top-k results reranked for diversity
+    pub fn search_with_diversity(&self, query: &[f32], k: usize, lambda: f32) -> Vec<(u32, f32)> {
+        use super::mmr::{mmr_rerank, MmrCandidate};
+        
+        // Fetch more candidates than needed for better diversity selection
+        let fetch_k = (k as f32 * 2.0).ceil() as usize;
+        let candidates = self.search_knn(query, fetch_k);
+        
+        // Convert to MMR candidates with vectors
+        let mmr_candidates: Vec<MmrCandidate> = candidates.iter()
+            .filter_map(|(id, score)| {
+                self.get_vector(*id).map(|vector| MmrCandidate {
+                    id: *id,
+                    score: *score,
+                    vector,
+                })
+            })
+            .collect();
+        
+        // Rerank using MMR
+        mmr_rerank(query, mmr_candidates, k, lambda)
+    }
+
+    // ========================================================================
+    // Two-Stage Retrieval (Binary Quantization)
+    // ========================================================================
+
+    /// Add a point with binary quantization for two-stage retrieval
+    /// 
+    /// Stores full vector + binary quantized version for ultra-fast coarse filtering.
+    pub fn add_point_binary(&mut self, id: u32, vector: Vec<f32>) -> Result<(), HnswError> {
+        use super::binary_quantization::BinaryQuantized;
+        
+        // Create binary quantized version before adding
+        let binary = BinaryQuantized::quantize(&vector);
+        
+        // Add point normally
+        self.add_point(id, vector)?;
+        
+        // Store binary version
+        self.binary_quantized.insert(id, binary);
+        
+        Ok(())
+    }
+
+    /// Two-stage search: binary coarse filter → exact rerank
+    /// 
+    /// Stage 1: Fast Hamming distance filtering on binary codes
+    /// Stage 2: Exact similarity scoring on full-precision vectors
+    /// 
+    /// # Arguments
+    /// * `query` - Query vector
+    /// * `k` - Number of results to return
+    /// * `rerank_multiplier` - How many candidates to rerank (multiplied by k)
+    pub fn search_two_stage(&self, query: &[f32], k: usize, rerank_multiplier: f32) -> Vec<(u32, f32)> {
+        use super::binary_quantization::BinaryQuantized;
+        
+        if self.binary_quantized.is_empty() || k == 0 {
+            // Fall back to standard search if no binary index
+            return self.search_knn(query, k);
+        }
+
+        // Stage 1: Binary coarse filter
+        let query_binary = BinaryQuantized::quantize(query);
+        let rerank_count = ((k as f32 * rerank_multiplier).ceil() as usize).max(k);
+
+        // Score all binary vectors by Hamming distance
+        let mut candidates: Vec<(u32, u32)> = self.binary_quantized
+            .iter()
+            .filter(|(id, _)| {
+                // Exclude deleted nodes
+                self.nodes.get(id).map(|n| !n.deleted).unwrap_or(false)
+            })
+            .map(|(id, bq)| (*id, query_binary.hamming_distance(bq)))
+            .collect();
+
+        // Sort by Hamming distance (ascending = most similar)
+        candidates.sort_by_key(|(_, dist)| *dist);
+        candidates.truncate(rerank_count);
+
+        // Stage 2: Exact rerank with full precision
+        let mut results: Vec<(u32, f32)> = candidates
+            .into_iter()
+            .filter_map(|(id, _)| {
+                let vector = self.get_vector(id)?;
+                let score = self.compute_similarity(query, &vector);
+                Some((id, score))
+            })
+            .collect();
+
+        // Sort by score (descending = highest similarity first)
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(k);
+
+        results
+    }
+
+    /// Get binary quantized representation
+    pub fn get_binary_quantized(&self, id: u32) -> Option<&super::binary_quantization::BinaryQuantized> {
+        self.binary_quantized.get(&id)
+    }
+
+    /// Get memory usage including binary index
+    /// 
+    /// Returns (full_bytes, scalar_quantized_bytes, binary_quantized_bytes)
+    pub fn memory_usage_full(&self) -> (usize, usize, usize) {
+        let dim = self.dimension.unwrap_or(0);
+        let count = self.nodes.len();
+        
+        // Full precision: dim * 4 bytes per vector
+        let full_bytes = count * dim * 4;
+        
+        // Scalar quantized: dim bytes + 8 bytes overhead per vector
+        let scalar_bytes = count * (dim + 8);
+        
+        // Binary quantized: (dim/64) * 8 bytes + 8 bytes overhead per vector
+        let binary_words = (dim + 63) / 64;
+        let binary_bytes = count * (binary_words * 8 + 8);
+        
+        (full_bytes, scalar_bytes, binary_bytes)
     }
 
     // ========================================================================

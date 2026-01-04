@@ -15,7 +15,9 @@ import { Plugin, PluginKey, Selection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { highlighterBridge, type HighlightSpan } from './HighlighterBridge';
+import { getOrBuildPositionMap } from './positionMapCache'; // M3: Shared cache
 import { ENTITY_COLORS, type EntityKind } from '@/lib/types/entityTypes';
+import type { HighlightMode } from '@/atoms/highlightingAtoms';
 
 // ==================== OPTIONS ====================
 
@@ -24,6 +26,10 @@ export interface RustSyntaxOptions {
     onTemporalClick?: (temporal: string) => void;
     currentNoteId?: string | (() => string | undefined);
     logPerformance?: boolean;
+    /** Highlighting mode - getter for reactive updates */
+    getHighlightMode?: () => HighlightMode;
+    /** Entity kinds to show in Focus mode - getter for reactive updates */
+    getFocusEntityKinds?: () => EntityKind[];
 }
 
 // ==================== HELPERS ====================
@@ -38,46 +44,23 @@ function resolveNoteId(noteId: string | (() => string | undefined) | undefined):
 }
 
 /**
- * Extract full text from ProseMirror document
- */
-function extractDocText(doc: ProseMirrorNode): string {
-    let text = '';
-    doc.descendants((node) => {
-        if (node.isText && node.text) {
-            text += node.text;
-        } else if (node.isBlock) {
-            text += '\n';
-        }
-    });
-    return text;
-}
-
-/**
  * Convert HighlightSpans to ProseMirror Decorations
+ * Mode-aware: respects highlightMode setting
  */
 function spansToDecorations(
     spans: HighlightSpan[],
-    doc: ProseMirrorNode,
+    positionMap: number[],
     options: RustSyntaxOptions
 ): Decoration[] {
     const decorations: Decoration[] = [];
+    // Call getters for reactive settings (if not provided, default to clean mode)
+    const mode = options.getHighlightMode?.() ?? 'clean';
+    const focusKinds = options.getFocusEntityKinds?.() ?? [];
 
-    // Build position map: character offset → document position
-    // This is needed because Rust returns character offsets but ProseMirror uses doc positions
-    const positionMap: number[] = [];
-    let charOffset = 0;
-
-    doc.descendants((node, pos) => {
-        if (node.isText && node.text) {
-            for (let i = 0; i < node.text.length; i++) {
-                positionMap[charOffset + i] = pos + i;
-            }
-            charOffset += node.text.length;
-        } else if (node.isBlock) {
-            positionMap[charOffset] = pos;
-            charOffset += 1;
-        }
-    });
+    // Off mode: no decorations
+    if (mode === 'off') {
+        return decorations;
+    }
 
     for (const span of spans) {
         const from = positionMap[span.start];
@@ -87,7 +70,15 @@ function spansToDecorations(
 
         if (from === undefined || to === undefined) continue;
 
-        // Determine styling based on span kind
+        // Focus mode: only show selected entity kinds
+        if (mode === 'focus') {
+            const entityKind = span.metadata?.entityKind as EntityKind | undefined;
+            if (!entityKind || (focusKinds.length > 0 && !focusKinds.includes(entityKind))) {
+                continue;
+            }
+        }
+
+        // Determine styling based on span kind and mode
         let style = '';
         let className = '';
         let dataAttrs: Record<string, string> = {};
@@ -99,14 +90,20 @@ function spansToDecorations(
                 const color = `hsl(var(${varName}))`;
                 const bgColor = `hsl(var(${varName}) / 0.1)`;
 
+                // Vivid mode: full solid styling always visible
+                // Clean mode: subtle dotted underline (current default)
+                const isVivid = mode === 'vivid';
+                const borderStyle = isVivid ? 'solid' : (span.confidence < 1.0 ? 'dotted' : 'solid');
+                const bgOpacity = isVivid ? 0.15 : 0.1;
+
                 style = `
-          background-color: ${bgColor}; 
+          background-color: hsl(var(${varName}) / ${bgOpacity}); 
           color: ${color}; 
           padding: 0px 2px; 
-          border-bottom: 2px ${span.confidence < 1.0 ? 'dotted' : 'solid'} ${color}; 
+          border-bottom: 2px ${borderStyle} ${color}; 
           cursor: help;
         `;
-                className = 'rust-implicit-highlight';
+                className = isVivid ? 'rust-implicit-highlight vivid' : 'rust-implicit-highlight';
                 dataAttrs = {
                     'data-entity-id': span.metadata.entityId || '',
                     'data-entity-kind': entityKind,
@@ -118,14 +115,15 @@ function spansToDecorations(
             }
 
             case 'temporal': {
+                const isVivid = mode === 'vivid';
                 style = `
-          background-color: hsl(var(--warning) / 0.15);
+          background-color: hsl(var(--warning) / ${isVivid ? 0.2 : 0.15});
           color: hsl(var(--warning));
           padding: 0px 2px;
-          border-bottom: 2px dashed hsl(var(--warning));
+          border-bottom: 2px ${isVivid ? 'solid' : 'dashed'} hsl(var(--warning));
           cursor: pointer;
         `;
-                className = 'rust-temporal-highlight';
+                className = isVivid ? 'rust-temporal-highlight vivid' : 'rust-temporal-highlight';
                 dataAttrs = {
                     'data-temporal': span.content,
                     'data-temporal-kind': span.target,
@@ -175,7 +173,7 @@ export const RustSyntaxHighlighter = Extension.create<RustSyntaxOptions>({
                             return DecorationSet.empty;
                         }
 
-                        const text = extractDocText(doc);
+                        const { text, positionMap } = getOrBuildPositionMap(doc);
                         const noteId = resolveNoteId(options.currentNoteId);
                         const result = highlighterBridge.highlight(text, noteId);
 
@@ -184,7 +182,7 @@ export const RustSyntaxHighlighter = Extension.create<RustSyntaxOptions>({
                         }
 
                         lastDocText = text;
-                        const decorations = spansToDecorations(result.spans, doc, options);
+                        const decorations = spansToDecorations(result.spans, positionMap, options);
                         return DecorationSet.create(doc, decorations);
                     },
 
@@ -201,7 +199,7 @@ export const RustSyntaxHighlighter = Extension.create<RustSyntaxOptions>({
                             return DecorationSet.empty;
                         }
 
-                        const text = extractDocText(newState.doc);
+                        const { text, positionMap } = getOrBuildPositionMap(newState.doc);
 
                         // Skip if text hasn't changed AND this isn't a forced rescan
                         if (text === lastDocText && !forceRescan) {
@@ -223,7 +221,7 @@ export const RustSyntaxHighlighter = Extension.create<RustSyntaxOptions>({
                             console.log(`[RustHighlighter] Scan: ${result.scanTimeMs.toFixed(1)}ms, ${result.spans.length} spans`);
                         }
 
-                        const decorations = spansToDecorations(result.spans, newState.doc, options);
+                        const decorations = spansToDecorations(result.spans, positionMap, options);
                         return DecorationSet.create(newState.doc, decorations);
                     },
                 },

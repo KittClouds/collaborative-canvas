@@ -27,6 +27,26 @@ export interface EmbeddingModelDefinition {
 export class EmbeddingModelRegistry {
     private static models: Map<string, EmbeddingModelDefinition> = new Map([
         // ===== LOCAL MODELS (In-Browser) =====
+        // MDBR Leaf is first - recommended default (fastest, smallest, high quality)
+        [
+            'mongodb-leaf',
+            {
+                id: 'mongodb-leaf',
+                name: 'MDBR Leaf (256d)',
+                provider: 'local',
+                dimensions: 256,
+                maxTokens: 512,
+                speed: 'fast',
+                quality: 'high',
+                costPer1kTokens: 0,
+                localModel: {
+                    modelId: 'MongoDB/mxbai-embed-large-v1',
+                    quantization: 'q8',
+                    memoryMB: 50,
+                },
+                description: 'MDBR Leaf - Fastest, smallest, excellent quality. Recommended.',
+            },
+        ],
         [
             'modernbert-base',
             {
@@ -39,31 +59,11 @@ export class EmbeddingModelRegistry {
                 quality: 'high',
                 costPer1kTokens: 0,
                 localModel: {
-                    // Use Xenova's converted ONNX model for Transformers.js compatibility
                     modelId: 'Xenova/all-MiniLM-L6-v2',
                     quantization: 'q8',
                     memoryMB: 90,
                 },
                 description: 'all-MiniLM-L6-v2 via Transformers.js (ONNX converted).',
-            },
-        ],
-        [
-            'mongodb-leaf',
-            {
-                id: 'mongodb-leaf',
-                name: 'MongoDB Leaf (256d)',
-                provider: 'local',
-                dimensions: 256,
-                maxTokens: 512,
-                speed: 'fast',
-                quality: 'medium',
-                costPer1kTokens: 0,
-                localModel: {
-                    modelId: 'MongoDB/MongoLite-IR-v1',
-                    quantization: 'q8',
-                    memoryMB: 50,
-                },
-                description: 'Lightweight, fast. Great for search/retrieval.',
             },
         ],
 
@@ -78,7 +78,7 @@ export class EmbeddingModelRegistry {
                 maxTokens: 2048,
                 speed: 'fast',
                 quality: 'high',
-                costPer1kTokens: 0.00001, // Very cheap
+                costPer1kTokens: 0.00001,
                 description: 'Google Gemini embeddings. High quality, cloud-based.',
             },
         ],
@@ -156,16 +156,20 @@ export class EmbeddingModelRegistry {
         return Array.from(this.models.values()).filter(m => m.dimensions === dim);
     }
 
+    static getAllModels(): EmbeddingModelDefinition[] {
+        return Array.from(this.models.values());
+    }
+
     static getRecommended(preference: 'speed' | 'quality' | 'privacy'): string {
         switch (preference) {
             case 'speed':
                 return 'mongodb-leaf'; // Fastest local
             case 'quality':
-                return 'modernbert-base'; // Best quality local
+                return 'mongodb-leaf'; // High quality AND fast
             case 'privacy':
-                return 'modernbert-base'; // All local, privacy-first
+                return 'mongodb-leaf'; // All local, privacy-first
             default:
-                return 'modernbert-base';
+                return 'mongodb-leaf';
         }
     }
 }

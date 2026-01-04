@@ -9,7 +9,7 @@ export interface EmbeddingConfig {
 }
 
 export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
-  defaultModel: 'modernbert-base',
+  defaultModel: 'mongodb-leaf',
   maxBatchSize: 32,
 };
 

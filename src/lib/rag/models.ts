@@ -19,6 +19,7 @@ export interface ModelConfig {
     tokenizerUrl: string;
     supportsMatryoshka: boolean;
     truncationOptions: number[];
+    provider?: 'local' | 'rust'; // 'local' = TypeScript, 'rust' = WASM
 }
 
 export type ModelId = keyof typeof MODEL_REGISTRY;
@@ -29,6 +30,16 @@ export type TruncateDim = 'full' | number;
 // ============================================================================
 
 export const MODEL_REGISTRY = {
+    'mdbr-leaf': {
+        id: 'mdbr-leaf',
+        label: 'MDBR Leaf',
+        dims: 256,
+        onnxUrl: '', // Not used - TypeScript model via Transformers.js
+        tokenizerUrl: '',
+        supportsMatryoshka: false,
+        truncationOptions: [],
+        provider: 'local' as const, // TypeScript only
+    },
     'bge-small': {
         id: 'bge-small',
         label: 'BGE-small',
@@ -37,6 +48,7 @@ export const MODEL_REGISTRY = {
         tokenizerUrl: 'https://huggingface.co/nicholascao/gte-small-onnx/resolve/main/tokenizer.json',
         supportsMatryoshka: false,
         truncationOptions: [],
+        provider: 'rust' as const,
     },
     'modernbert-base': {
         id: 'modernbert-base',
@@ -46,6 +58,7 @@ export const MODEL_REGISTRY = {
         tokenizerUrl: 'https://huggingface.co/nicholascao/modernbert-embed-base-onnx/resolve/main/tokenizer.json',
         supportsMatryoshka: true,
         truncationOptions: [512, 256, 128, 64],
+        provider: 'rust' as const,
     },
 } as const satisfies Record<string, ModelConfig>;
 
@@ -58,6 +71,7 @@ export const MODEL_REGISTRY = {
  * When multiple models share a dimension, first entry is preferred default.
  */
 export const DIMENSION_TO_MODELS: Record<number, ModelId[]> = {
+    256: ['mdbr-leaf'],
     384: ['bge-small'],
     768: ['modernbert-base'],
 };
