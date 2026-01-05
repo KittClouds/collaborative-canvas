@@ -519,7 +519,12 @@ const RichEditor = ({
     editorProps: {
       attributes: {
         class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-xl focus:outline-none min-h-[400px] p-6',
+        'data-gramm': 'false',            // Disable Grammarly
+        'data-gramm_editor': 'false',     // Disable Grammarly
+        'data-enable-grammarly': 'false', // Disable Grammarly
+        'spellcheck': 'false',            // Disable native spellcheck
       },
+
     },
   });
 
