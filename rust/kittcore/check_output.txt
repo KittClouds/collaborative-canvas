@@ -1,0 +1,486 @@
+﻿cargo :     Checking 
+kittcore v0.1.0 (C:\Users\sh
+uga\1kittroot\1code\collabor
+ative-canvas\rust\kittcore)
+At line:1 char:1
++ cargo check 2>&1 | 
+Out-File -Encoding utf8 
+check_output.txt; Get-Cont 
+...
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (    C  
+  hecking ki...\rust\kitt   
+ core):String) [], Remot    
+eException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+warning: unused import: 
+`ChunkResult`
+  --> src\scanner\attacher.r
+s:21:49
+   |
+21 | use crate::scanner::chu
+nker::{Chunk, ChunkKind, 
+ChunkResult};
+   |                        
+                         
+^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(unused_imports)]` 
+on by default
+
+warning: unused import: 
+`ChunkResult`
+  --> src\scanner\dialogue.r
+s:10:49
+   |
+10 | use crate::scanner::chu
+nker::{Chunk, ChunkKind, 
+ChunkResult};
+   |                        
+                         
+^^^^^^^^^^^
+
+warning: unused import: 
+`NarrativeContext`
+  --> src\scanner\dialogue.r
+s:11:32
+   |
+11 | use crate::scanner::res
+olver::{NarrativeContext, 
+EntityId, Resolver};
+   |                        
+        ^^^^^^^^^^^^^^^^
+
+warning: unused imports: 
+`Deserialize` and 
+`Serialize`
+  --> src\scanner\dialogue.r
+s:13:13
+   |
+13 | use 
+serde::{Deserialize, 
+Serialize};
+   |             
+^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: 
+`POS`
+  --> src\scanner\structured
+_relation.rs:36:73
+   |
+36 | use 
+super::chunker::{Chunk, 
+ChunkKind, ChunkResult, 
+Chunker, TextRange, POS};
+   |                        
+                            
+                     ^^^
+
+warning: unused import: 
+`ChunkResult`
+   --> 
+src\reality\parser.rs:643:49
+    |
+643 | use crate::scanner::ch
+unker::{Chunk, ChunkKind, 
+ChunkResult};
+    |                       
+                          
+^^^^^^^^^^^
+
+warning: unused imports: 
+`ProjectionStats`, 
+`project_all`, 
+`project_attributions`, 
+`project_quads`, and 
+`project_state_changes`
+  --> 
+src\reality\engine.rs:16:22
+   |
+16 |     project_triples, 
+project_quads, 
+project_attributions, 
+project_state_changes,
+   |                      
+^^^^^^^^^^^^^  
+^^^^^^^^^^^^^^^^^^^^  
+^^^^^^^^^^^^^^^^^^^^^
+17 |     project_all, 
+project_all_with_stats,
+   |     ^^^^^^^^^^^
+18 |     Triple, QuadPlus, 
+Attribution, StateChange, 
+Projection, ProjectionStats,
+   |                        
+                            
+         ^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`EdgeKind`
+  --> 
+src\reality\engine.rs:20:60
+   |
+20 | use super::graph::{Conc
+eptGraph, ConceptNode, 
+ConceptEdge, EdgeKind};
+   |                        
+                            
+        ^^^^^^^^
+
+warning: unused import: 
+`ExtractedRelation`
+   --> 
+src\reality\api.rs:100:82
+    |
+100 | use crate::scanner::re
+lation::{RelationCortex, 
+EntitySpan as 
+RelationEntitySpan, 
+ExtractedRelation};
+    |                       
+                            
+                            
+   ^^^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`SpanRecord`
+   --> 
+src\reality\api.rs:101:40
+    |
+101 | use super::entity_laye
+r::{EntityLayer, 
+SpanRecord, EntityRecord};
+    |                       
+                 ^^^^^^^^^^
+
+warning: unused import: 
+`ConceptEdge`
+  --> 
+src\reality\global.rs:11:47
+   |
+11 | use super::graph::{Conc
+eptGraph, ConceptNode, 
+ConceptEdge};
+   |                        
+                       
+^^^^^^^^^^^
+
+warning: unused imports: 
+`ConceptEdge` and 
+`ConceptNode`
+ --> src\reality\algorithms.
+rs:9:34
+  |
+9 | use super::graph::{Conce
+ptGraph, ConceptNode, 
+ConceptEdge};
+  |                         
+         ^^^^^^^^^^^  
+^^^^^^^^^^^
+
+warning: unused import: `tra
+ct_core::tract_data::TractRe
+sult`
+ --> 
+src\embeddings\model.rs:8:5
+  |
+8 | use tract_core::tract_da
+ta::TractResult;
+  |     ^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+
+warning: unused import: `uni
+code_segmentation::UnicodeSe
+gmentation`
+ --> src\embeddings\chunker.
+rs:6:5
+  |
+6 | use unicode_segmentation
+::UnicodeSegmentation;
+  |     ^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`HnswError`
+ --> src\rag\index.rs:8:40
+  |
+8 | use 
+crate::hnsw::index::{Hnsw, 
+Metric, HnswError};
+  |                         
+               ^^^^^^^^^
+
+warning: unused imports: 
+`FieldOccurrence`, 
+`ProximityStrategy`, and 
+`ResoRankConfig`
+  --> 
+src\rag\pipeline.rs:12:39
+   |
+12 |     ResoRankScorer, 
+CorpusStatistics, 
+ResoRankConfig, 
+ProximityStrategy,
+   |                        
+               
+^^^^^^^^^^^^^^  
+^^^^^^^^^^^^^^^^^
+13 |     DocumentMetadata 
+as ResoDocMeta, 
+TokenMetadata, 
+FieldOccurrence,
+   |                        
+                            
+ ^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`SearchResult as 
+IndexSearchResult`
+  --> 
+src\rag\pipeline.rs:16:33
+   |
+16 | use 
+super::index::{VectorIndex, 
+SearchResult as 
+IndexSearchResult};
+   |                        
+         ^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+
+warning: unused import: `cra
+te::hnsw::node::HnswNode`
+ --> src\hnsw\wasm.rs:3:5
+  |
+3 | use 
+crate::hnsw::node::HnswNode;
+  |     
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unnecessary 
+parentheses around assigned 
+value
+   --> src\hnsw\binary_quant
+ization.rs:159:17
+    |
+159 |     let denom = 
+(mag_a.sqrt() * 
+mag_b.sqrt());
+    |                 ^     
+                      ^
+    |
+    = note: 
+`#[warn(unused_parens)]` on 
+by default
+help: remove these 
+parentheses
+    |
+159 -     let denom = 
+(mag_a.sqrt() * 
+mag_b.sqrt());
+159 +     let denom = 
+mag_a.sqrt() * mag_b.sqrt();
+    |
+
+warning: value assigned to 
+`head_idx` is never read
+   --> src\scanner\chunker.r
+s:480:17
+    |
+480 |         let mut 
+head_idx = None;
+    |                 
+^^^^^^^^
+    |
+    = help: maybe it is 
+overwritten before being 
+read?
+    = note: `#[warn(unused_a
+ssignments)]` on by default
+
+warning: unused variable: 
+`resolver`
+  --> src\scanner\dialogue.r
+s:74:49
+   |
+74 |     fn find_speaker_in_
+chunks(chunks: &[Chunk], 
+resolver: &mut Resolver) -> 
+Option<EntityId> {
+   |                        
+                         
+^^^^^^^^ help: if this is 
+intentional, prefix it with 
+an underscore: `_resolver`
+   |
+   = note: 
+`#[warn(unused_variables)]` 
+on by default
+
+warning: unused variable: 
+`quote_pos`
+  --> 
+src\scanner\dialogue.rs:97:9
+   |
+97 |         quote_pos: 
+QuotePosition,
+   |         ^^^^^^^^^ 
+help: if this is 
+intentional, prefix it with 
+an underscore: `_quote_pos`
+
+warning: unused variable: 
+`character_label`
+   --> src\scanner\projectio
+ns.rs:653:13
+    |
+653 |         let 
+character_label = character_
+ref.target.to_lowercase();
+    |             
+^^^^^^^^^^^^^^^ help: if 
+this is intentional, prefix 
+it with an underscore: 
+`_character_label`
+
+warning: unused variable: 
+`agent_pp`
+   --> src\scanner\structure
+d_relation.rs:424:13
+    |
+424 |         let agent_pp 
+= pattern.modifiers.iter().f
+ind(|pp| {
+    |             ^^^^^^^^ 
+help: if this is 
+intentional, prefix it with 
+an underscore: `_agent_pp`
+
+error: lifetime may not 
+live long enough
+   --> src\reality\algorithm
+s.rs:189:9
+    |
+188 |     pub fn 
+community_of(&self, 
+entity_id: &str, 
+communities: &[Community]) 
+-> Option<&Community> {
+    |                       
+  -                         
+           - let's call the 
+lifetime of this reference 
+`'1`
+    |                       
+  |
+    |                       
+  let's call the lifetime 
+of this reference `'2`
+189 |         
+communities.iter().find(|c| 
+c.members.contains(&entity_i
+d.to_string()))
+    |         ^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^ method was supposed to 
+return data with lifetime 
+`'2` but it is returning 
+data with lifetime `'1`
+    |
+help: consider introducing 
+a named lifetime parameter 
+and update trait if needed
+    |
+188 |     pub fn 
+community_of<'a>(&self, 
+entity_id: &str, 
+communities: &'a 
+[Community]) -> Option<&'a 
+Community> {
+    |                       
+ ++++                       
+                ++          
+               ++
+help: consider adding 
+'move' keyword before the 
+nested closure
+    |
+189 |         communities.it
+er().find(move |c| c.members
+.contains(&entity_id.to_stri
+ng()))
+    |                       
+          ++++
+
+warning: unused variable: 
+`batch_size`
+   --> src\embeddings\model.
+rs:108:13
+    |
+108 |         let 
+batch_size = padded.len();
+    |             
+^^^^^^^^^^ help: if this is 
+intentional, prefix it with 
+an underscore: `_batch_size`
+
+warning: unused variable: 
+`start`
+   --> src\embeddings\chunke
+r.rs:103:18
+    |
+103 |             let 
+(start, end, sentence) = 
+sentences[sentence_idx];
+    |                  
+^^^^^ help: if this is 
+intentional, prefix it with 
+an underscore: `_start`
+
+warning: unused variable: 
+`end`
+   --> src\embeddings\chunke
+r.rs:103:25
+    |
+103 |             let 
+(start, end, sentence) = 
+sentences[sentence_idx];
+    |                       
+  ^^^ help: if this is 
+intentional, prefix it with 
+an underscore: `_end`
+
+warning: unused variable: 
+`note_count`
+   --> 
+src\rag\pipeline.rs:186:13
+    |
+186 |         let 
+note_count = notes.len();
+    |             
+^^^^^^^^^^ help: if this is 
+intentional, prefix it with 
+an underscore: `_note_count`
+
+warning: unused variable: 
+`id`
+   --> 
+src\rag\raptor.rs:118:14
+    |
+118 |         for (id, emb, 
+_) in &chunks {
+    |              ^^ help: 
+if this is intentional, 
+prefix it with an 
+underscore: `_id`
+
+warning: `kittcore` (lib) 
+generated 29 warnings
+error: could not compile 
+`kittcore` (lib) due to 1 
+previous error; 29 warnings 
+emitted

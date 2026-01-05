@@ -12,6 +12,8 @@ pub mod api;
 pub mod unification;
 pub mod global;
 pub mod bridge;
+pub mod algorithms;
+
 
 
 

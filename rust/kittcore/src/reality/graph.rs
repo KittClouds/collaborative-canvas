@@ -347,6 +347,12 @@ impl ConceptGraph {
     pub fn raw_graph(&self) -> &DiGraph<ConceptNode, ConceptEdge> {
         &self.graph
     }
+    
+    /// Alias for raw_graph() - used by algorithms module
+    pub fn graph(&self) -> &DiGraph<ConceptNode, ConceptEdge> {
+        &self.graph
+    }
+
 
     // =========================================================================
     // Subgraph Extraction
