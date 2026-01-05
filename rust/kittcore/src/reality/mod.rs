@@ -11,6 +11,8 @@ pub mod metadata_layer;
 pub mod api;
 pub mod unification;
 pub mod global;
+pub mod bridge;
+
 
 
 #[cfg(test)]

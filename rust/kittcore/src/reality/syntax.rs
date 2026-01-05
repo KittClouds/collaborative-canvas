@@ -13,6 +13,13 @@ pub enum SyntaxKind {
     EntitySpan, // Wrapping an entity
     ConceptSpan,
     RelationSpan,
+    
+    // NEW: Link types (from UnifiedScanner)
+    WikilinkSpan,     // [[Target]] or [[Target|Display]]
+    BacklinkSpan,     // <<Target>>
+    TripleSpan,       // [Entity] (relation) [Entity]
+    TemporalSpan,     // "on March 15th", "during the war"
+
 
     // NEW: Phrase-level nodes (from Chunker)
     NounPhrase,      // "the ancient wizard"
