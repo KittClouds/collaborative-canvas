@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SCHEMA_STATEMENTS: string[] = [
   // ============================================
@@ -252,6 +252,21 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_rel_confidence ON unified_relationships(confidence DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_source_type ON unified_relationships(source_entity_id, type)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_target_type ON unified_relationships(target_entity_id, type)`,
+
+  // ============================================
+  // DECORATION CACHE TABLE - Persisted decoration spans
+  // ============================================
+  `CREATE TABLE IF NOT EXISTS note_decorations (
+    note_id TEXT PRIMARY KEY,
+    content_hash TEXT NOT NULL,
+    entity_version INTEGER DEFAULT 0,
+    spans_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (note_id) REFERENCES nodes(id) ON DELETE CASCADE
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_deco_hash ON note_decorations(content_hash)`,
+  `CREATE INDEX IF NOT EXISTS idx_deco_version ON note_decorations(entity_version)`,
 
   // ============================================
   // OTHER INDEXES

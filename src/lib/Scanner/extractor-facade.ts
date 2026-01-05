@@ -1,8 +1,8 @@
 /**
- * ScannerFacade - Minimal TypeScript wrapper for Rust DocumentCortex
+ * ExtractorFacade - Entity/relation extraction pipeline
  * 
- * This is the ONLY public scanner API. All heavy lifting is in Rust/WASM.
- * Target: ~50 lines of code (excluding types/comments)
+ * Extracts entities, relations, triples, and temporal mentions from documents.
+ * Persists results to CozoDB. All heavy lifting is in Rust/WASM.
  */
 
 import { entityRegistry, relationshipRegistry, RelationshipSource } from '@/lib/cozo/graph/adapters';
@@ -36,7 +36,7 @@ import type { DocumentConnections, EntityReference, Triple } from '@/lib/types/e
 // Track last scanned text for context extraction
 const lastScannedText = new Map<string, string>();
 
-class ScannerFacade {
+class ExtractorFacade {
     private initialized = false;
 
     private get activeScanner() {
@@ -98,13 +98,13 @@ class ScannerFacade {
                 if (inputs.length > 0) {
                     const persistedCount = relationshipRegistry.addBatch(inputs);
                     if (persistedCount > 0) {
-                        console.log(`[ScannerFacade] Persisted ${persistedCount}/${result.relations.length} relationships (batch)`);
+                        console.log(`[Extractor] Persisted ${persistedCount}/${result.relations.length} relationships (batch)`);
                     }
                 }
             }
 
             // Log all extraction results
-            console.log(`[ScannerFacade] Scan complete (Mode: Conductor):`, {
+            console.log(`[Extractor] Extraction complete:`, {
                 implicit: result.stats.implicit_found,
                 relations: result.stats.relations_found,
                 triples: result.stats.triples_found,
@@ -114,7 +114,7 @@ class ScannerFacade {
 
             // Log relation details if any found
             if (result.relations && result.relations.length > 0) {
-                console.log(`[ScannerFacade] Relations:`, result.relations.map(r =>
+                console.log(`[Extractor] Relations:`, result.relations.map(r =>
                     `${r.head_entity} -[${r.relation_type}]-> ${r.tail_entity}`
                 ));
             }
@@ -126,7 +126,7 @@ class ScannerFacade {
                     noteId,
                 });
                 if (syncResult.entitiesSynced > 0 || syncResult.edgesSynced > 0) {
-                    console.log(`[ScannerFacade] Graph synced:`, {
+                    console.log(`[Extractor] Graph synced:`, {
                         entities: syncResult.entitiesSynced,
                         edges: syncResult.edgesSynced,
                         relations: syncResult.relationsSynced,
@@ -134,12 +134,12 @@ class ScannerFacade {
                     });
                 }
             } catch (err) {
-                console.warn('[ScannerFacade] Graph sync failed:', err);
+                console.warn('[Extractor] Graph sync failed:', err);
             }
         });
 
         this.initialized = true;
-        console.log(`[ScannerFacade] Initialized with ${defs.length} entities (Mode: Conductor)`);
+        console.log(`[Extractor] Initialized with ${defs.length} entities`);
     }
 
     /**
@@ -150,7 +150,7 @@ class ScannerFacade {
             return;  // Silent return - will be called again when ready
         }
         await this.activeScanner.hydrateEntities(entities);
-        console.log(`[ScannerFacade] Re-hydrated with ${entities.length} entities`);
+        console.log(`[Extractor] Re-hydrated with ${entities.length} entities`);
     }
 
     /**
@@ -202,12 +202,14 @@ class ScannerFacade {
     shutdown(): void {
         this.activeScanner.shutdown();
         this.initialized = false;
-        console.log('[ScannerFacade] Shutdown');
+        console.log('[Extractor] Shutdown');
     }
 }
 
-// Singleton
-export const scannerFacade = new ScannerFacade();
+// Singleton (exported as both names for migration)
+export const extractorFacade = new ExtractorFacade();
+/** @deprecated Use extractorFacade instead */
+export const scannerFacade = extractorFacade;
 
 // =============================================================================
 // Legacy Utilities (Migrated)
@@ -215,7 +217,7 @@ export const scannerFacade = new ScannerFacade();
 
 /**
  * Parse connections (tags, mentions, links) from a document
- * Uses ScannerFacade (Rust) + RegexEntityParser (Utils)
+ * Uses ExtractorFacade (Rust) + RegexEntityParser (Utils)
  */
 export function parseNoteConnectionsFromDocument(content: any): DocumentConnections {
     const text = extractText(content);
@@ -240,8 +242,8 @@ export function parseNoteConnectionsFromDocument(content: any): DocumentConnecti
 
     // 2. Implicit Entities & Triples (Rust Scanner)
     // Safe fallback: Only run if scanner is ready. If not, we just return explicit entities.
-    if (scannerFacade.isReady()) {
-        const scanResult = scannerFacade.scanImmediate(noteId, text);
+    if (extractorFacade.isReady()) {
+        const scanResult = extractorFacade.scanImmediate(noteId, text);
         if (scanResult) {
             // Implicit Mentions
             for (const mention of scanResult.implicit) {

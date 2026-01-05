@@ -8,28 +8,15 @@
  */
 
 import type { RegisteredEntity } from '@/lib/cozo/graph/adapters/EntityRegistryAdapter';
+import { decorationCache } from './decoration-cache';
 
 // ==================== TYPES ====================
 
-export interface HighlightSpan {
-    kind: 'wikilink' | 'backlink' | 'entity' | 'triple' | 'inline_relation' | 'tag' | 'mention' | 'implicit' | 'temporal';
-    start: number;
-    end: number;
-    content: string;
-    label: string;
-    target: string;
-    confidence: number;
-    metadata: SpanMetadata;
-}
+// Re-export types from shared types file
+export type { HighlightSpan, SpanMetadata } from './types';
+import type { HighlightSpan } from './types';
 
-export interface SpanMetadata {
-    entityKind?: string;
-    entityId?: string;
-    exists?: boolean;
-    isAlias?: boolean;
-    captures?: Record<string, string>;
-}
-
+// Extended result type with textLength for optimization
 export interface HighlightResult {
     spans: HighlightSpan[];
     contentHash: string;
@@ -117,6 +104,9 @@ class HighlighterBridge {
 
             // Clear all caches so fresh highlight happens
             this.clearAllCaches();
+
+            // Invalidate persistent cache (entity change = all spans potentially different)
+            decorationCache.invalidateAll();
 
             // Notify subscribers that entities were hydrated
             for (const callback of this.hydrationCallbacks) {
@@ -262,10 +252,13 @@ class HighlighterBridge {
                 scanTimeMs: performance.now() - start,
             };
 
-            // Cache result + length
+            // Cache result + length (in-memory)
             this.lastHashByNote.set(noteId, hash);
             this.lastLengthByNote.set(noteId, text.length);
             this.lastResultByNote.set(noteId, result);
+
+            // Persist to SQLite (fire and forget - non-blocking)
+            decorationCache.set(noteId, hash, spans).catch(() => { });
 
             return result;
         } catch (error) {
@@ -281,11 +274,46 @@ class HighlighterBridge {
     }
 
     /**
+     * Pre-load cached decorations from SQLite into memory
+     * Call this when a note is about to be rendered for instant cache hits
+     */
+    async preloadCache(noteId: string, text: string): Promise<boolean> {
+        const hash = this.computeHash(text);
+
+        // Check if already in memory
+        if (this.lastHashByNote.get(noteId) === hash) {
+            return true; // Already cached
+        }
+
+        // Try to load from SQLite
+        const spans = await decorationCache.get(noteId, hash);
+        if (spans) {
+            // Populate in-memory cache
+            const result: HighlightResult = {
+                spans,
+                contentHash: hash,
+                textLength: text.length,
+                wasCached: true,
+                scanTimeMs: 0,
+            };
+            this.lastHashByNote.set(noteId, hash);
+            this.lastLengthByNote.set(noteId, text.length);
+            this.lastResultByNote.set(noteId, result);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Clear cache for a specific note
      */
     invalidateCache(noteId: string): void {
         this.lastHashByNote.delete(noteId);
         this.lastResultByNote.delete(noteId);
+        this.lastLengthByNote.delete(noteId);
+        // Also invalidate persistent cache
+        decorationCache.invalidate(noteId).catch(() => { });
     }
 
     /**
@@ -294,6 +322,7 @@ class HighlighterBridge {
     clearAllCaches(): void {
         this.lastHashByNote.clear();
         this.lastResultByNote.clear();
+        this.lastLengthByNote.clear();
     }
 }
 

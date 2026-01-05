@@ -3,7 +3,7 @@ import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { useUnifiedEntityAttributes } from '@/hooks/useUnifiedEntityAttributes';
 import { FactSheetContainer } from '@/components/fact-sheets/FactSheetContainer';
 import { EntitySelectionProvider, useEntitySelection } from '@/contexts/EntitySelectionContext';
-import { parseNoteConnectionsFromDocument } from '@/lib/scanner/scanner-facade';
+import { parseNoteConnectionsFromDocument } from '@/lib/scanner/extractor-facade';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { EntityKind } from '@/lib/types/entityTypes';
 import { toast } from 'sonner';

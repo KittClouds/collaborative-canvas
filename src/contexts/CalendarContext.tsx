@@ -36,7 +36,7 @@ import { executeGenesis, clearCalendarTimeUnits } from '@/lib/time';
 // Stub for legacy temporalAhoMatcher (now handled by Rust scanner)
 const temporalAhoMatcher = {
     hydrate: async (_calendarId: string) => {
-        console.log('[CalendarContext] temporalAhoMatcher.hydrate() is deprecated. Use ScannerFacade.hydrateTemporal() instead.');
+        console.log('[CalendarContext] temporalAhoMatcher.hydrate() is deprecated. Use ExtractorFacade.hydrateTemporal() instead.');
     }
 };
 

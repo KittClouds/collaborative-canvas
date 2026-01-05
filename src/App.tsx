@@ -31,6 +31,13 @@ const App = () => {
     useEffect(() => {
         const initStorage = async () => {
             try {
+                // 🚀 EARLY: Initialize highlighter for instant decorations
+                // This loads WASM only - no DB or entities needed
+                setInitStatus("Loading highlighter...");
+                const { initializeHighlighter } = await import("@/lib/scanner");
+                await initializeHighlighter();
+                console.log("Highlighter ready for instant decorations");
+
                 // Initialize Unified Registry (CozoDB)
                 setInitStatus("Initializing knowledge graph...");
                 const { entityRegistry, relationshipRegistry } = await import("@/lib/cozo/graph/adapters");

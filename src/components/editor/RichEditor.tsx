@@ -67,8 +67,8 @@ import { useNER } from '@/contexts/NERContext';
 import type { HighlightMode } from '@/atoms/highlightingAtoms';
 import type { EntityKind } from '@/lib/types/entityTypes';
 
-// Scanner 4.0 - Rust-powered scanning via facade
-import { scannerFacade, initializeRustFacades } from '@/lib/scanner';
+// Extractor - Rust-powered entity extraction (highlighter inits at app level)
+import { scannerFacade } from '@/lib/scanner';
 
 // Import CSS
 import 'reactjs-tiptap-editor/style.css';
@@ -364,34 +364,37 @@ const RichEditor = ({
   // Ref to track if we've done initial scan for this note
   const initialScanDoneRef = useRef<string | null>(null);
 
-  // Initialize Scanner 4.0 (Rust) and Rust highlighter
+  // Initialize Extractor (highlighter already init'd at app level in App.tsx)
   useEffect(() => {
     let cancelled = false;
 
-    // Use IIFE to properly await async initialization
     (async () => {
-      // Initialize legacy scanner and new Rust facades
-      await Promise.all([
-        scannerFacade.initialize(),
-        initializeRustFacades()
-      ]);
+      // Initialize extractor only - highlighter is app-level
+      await scannerFacade.initialize();
 
       if (cancelled) return;
-      console.log('[RichEditor] Scanner 4.0 (Rust) and facades initialized');
+      console.log('[RichEditor] Extractor initialized');
 
-      // Initialize Rust highlighter
+      // Initialize Rust highlighter bridge (WASM already loaded, this sets up hydration)
       const rustReady = await highlighterBridge.initialize();
       if (rustReady && !cancelled) {
-        console.log('[RichEditor] Rust highlighter initialized');
+        console.log('[RichEditor] HighlighterBridge ready');
       }
 
-      // Immediate scan on note open (after scanner is ready)
+      // Pre-load decoration cache from SQLite (if cached, skips scanning)
       if (selectedNote?.id && selectedNote.content && initialScanDoneRef.current !== selectedNote.id) {
         try {
           const doc = JSON.parse(selectedNote.content);
           const text = extractPlainText(doc);
           if (text.length > 0) {
-            console.log('[RichEditor] Immediate scan on note open:', selectedNote.id);
+            // Try to load from persistent cache first
+            const cacheHit = await highlighterBridge.preloadCache(selectedNote.id, text);
+            if (cacheHit) {
+              console.log('[RichEditor] Decorations loaded from cache:', selectedNote.id);
+            }
+
+            // Extraction scan (for entity extraction → DB, independent of decorations)
+            console.log('[RichEditor] Extraction scan on note open:', selectedNote.id);
             scannerFacade.scan(selectedNote.id, text);
             initialScanDoneRef.current = selectedNote.id;
           }
@@ -407,7 +410,7 @@ const RichEditor = ({
     return () => {
       cancelled = true;
       scannerFacade.shutdown();
-      console.log('[RichEditor] Scanner 4.0 shutdown');
+      console.log('[RichEditor] Extractor shutdown');
     };
   }, [selectedNote?.id]);
 
@@ -621,7 +624,12 @@ const RichEditor = ({
   }
 
   return (
-    <div className="h-full flex flex-col min-h-0 reactjs-tiptap-editor relative">
+    <div
+      className="h-full flex flex-col min-h-0 reactjs-tiptap-editor relative"
+      data-gramm="false"
+      data-gramm_editor="false"
+      data-enable-grammarly="false"
+    >
       {/* Unsaved changes indicator */}
       {hasUnsavedChanges && (
         <div className="absolute top-2 right-2 flex items-center gap-2 text-xs text-muted-foreground z-50 bg-background/80 px-2 py-1 rounded border shadow-sm">
@@ -637,6 +645,8 @@ const RichEditor = ({
         {/* Editor Content Area - safe to render immediately */}
         <div
           className="flex-1 overflow-auto custom-scrollbar bg-background relative"
+          data-gramm="false"
+          data-gramm_editor="false"
         >
           <EditorContent editor={editor} className="min-h-full" />
         </div>

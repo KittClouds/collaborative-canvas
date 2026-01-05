@@ -235,6 +235,23 @@ mod tests {
         assert_eq!(span.captures.get("objectLabel").unwrap(), "Daenerys");
     }
 
+    #[test]
+    fn test_parenthesized_triple() {
+        let scanner = UnifiedScanner::new();
+        // New readable syntax: [KIND|Label] (RELATION) [KIND|Label]
+        let result = scanner.scan("[EVENT|Wano Arc] (TAKES_PLACE_IN) [LOCATION|Wano Country]");
+        
+        assert_eq!(result.spans.len(), 1);
+        let span = &result.spans[0];
+        assert_eq!(span.kind, RefKind::Triple);
+        assert_eq!(span.captures.get("subjectKind").unwrap(), "EVENT");
+        assert_eq!(span.captures.get("subjectLabel").unwrap(), "Wano Arc");
+        assert_eq!(span.captures.get("predicate").unwrap(), "TAKES_PLACE_IN");
+        assert_eq!(span.captures.get("objectKind").unwrap(), "LOCATION");
+        assert_eq!(span.captures.get("objectLabel").unwrap(), "Wano Country");
+    }
+
+
     // -------------------------------------------------------------------------
     // Overlap Resolution Tests (Critical for correctness)
     // -------------------------------------------------------------------------
@@ -570,12 +587,35 @@ impl UnifiedScanner {
                 },
             },
             
-            // Priority 105: Full Triple
+            // Priority 105: Full Triple (arrow syntax)
             // [KIND|Label] ->PREDICATE-> [KIND|Label]
             PatternDef {
                 regex: Regex::new(r"\[([A-Z_]+)(?::([A-Z_]+))?\|([^\]]+)\]\s*->([A-Z_]+)->\s*\[([A-Z_]+)(?::([A-Z_]+))?\|([^\]]+)\]").unwrap(),
                 kind: RefKind::Triple,
                 priority: 105,
+                capture_names: vec![
+                    ("subjectKind", 1),
+                    ("subjectSubtype", 2),
+                    ("subjectLabel", 3),
+                    ("predicate", 4),
+                    ("objectKind", 5),
+                    ("objectSubtype", 6),
+                    ("objectLabel", 7),
+                ],
+                styling: StylingHint {
+                    color_key: "triple".to_string(),
+                    confidence: 1.0,
+                    widget_mode: true,
+                    is_editing: false,
+                },
+            },
+            
+            // Priority 103: Parenthesized Triple (readable syntax)
+            // [KIND|Label] (RELATION) [KIND|Label]
+            PatternDef {
+                regex: Regex::new(r"\[([A-Z_]+)(?::([A-Z_]+))?\|([^\]]+)\]\s*\(([A-Z_]+)\)\s*\[([A-Z_]+)(?::([A-Z_]+))?\|([^\]]+)\]").unwrap(),
+                kind: RefKind::Triple,
+                priority: 103,
                 capture_names: vec![
                     ("subjectKind", 1),
                     ("subjectSubtype", 2),

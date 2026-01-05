@@ -36,6 +36,7 @@ export interface SpanMetadata {
 export interface HighlightResult {
     spans: HighlightSpan[];
     contentHash: string;
+    textLength: number;
     wasCached: boolean;
     scanTimeMs: number;
 }

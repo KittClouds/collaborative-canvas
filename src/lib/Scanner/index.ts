@@ -1,16 +1,22 @@
 /**
- * Scanner Module - Unified API for Rust WASM Document Scanner
+ * Scanner Module - Unified API for Rust WASM Document Processing
  * 
- * This is the ONLY public scanner API. All scanning is done in Rust/WASM.
+ * Two main pipelines:
+ *   - ExtractorFacade: Entity/relation extraction → persists to CozoDB
+ *   - HighlighterFacade: Decoration spans → editor highlighting
  * 
  * Usage:
- *   import { scannerFacade } from '@/lib/scanner';
- *   await scannerFacade.initialize();
- *   scannerFacade.scan(noteId, text);
+ *   import { extractorFacade, highlighterFacade } from '@/lib/scanner';
+ *   await extractorFacade.initialize();
+ *   extractorFacade.scan(noteId, text);  // extracts & persists
+ *   highlighterFacade.scan(text);        // returns decoration spans
  */
 
-// Core Facade (main API)
-export { scannerFacade } from './scanner-facade';
+// ===========================================================================
+// EXTRACTION PIPELINE - Entity/relation extraction → CozoDB
+// ===========================================================================
+
+export { extractorFacade, scannerFacade, parseNoteConnectionsFromDocument } from './extractor-facade';
 
 // Re-export types from bridge
 export type {
@@ -41,12 +47,13 @@ export {
 } from './pattern-bridge';
 
 // ===========================================================================
-// NEW: Rust-First Facades (Phase 2 Migration)
+// HIGHLIGHTING PIPELINE - Decoration spans for editor
 // ===========================================================================
 
-// Unified Scanner - Pattern detection + decoration spans
 export {
-    UnifiedScannerFacade,
+    HighlighterFacade,
+    highlighterFacade,
+    // Legacy aliases (deprecated)
     unifiedScannerFacade,
     toPatternRanges,
     type RefKind,
@@ -57,7 +64,14 @@ export {
     type HighlightMode,
     type FocusModeConfig,
     type ModeStyles,
-} from './unified-facade';
+} from './highlighter-facade';
+
+/** @deprecated Use HighlighterFacade instead */
+export { HighlighterFacade as UnifiedScannerFacade } from './highlighter-facade';
+
+// ===========================================================================
+// OTHER FACADES
+// ===========================================================================
 
 // Constraints - Validation + uniqueness
 export {
@@ -85,25 +99,51 @@ export {
 } from './projections-facade';
 
 /**
- * Initialize all Rust-first scanner facades
+ * Initialize highlighter ONLY - call at app startup
  * 
- * Call this once at app startup to load WASM modules.
+ * Ultra-fast: just loads WASM for instant decoration rendering.
+ * Does NOT require entities, DB, or note context.
  */
-export async function initializeRustFacades(): Promise<{
-    scanner: boolean;
+export async function initializeHighlighter(): Promise<boolean> {
+    try {
+        const m = await import('./highlighter-facade');
+        await m.highlighterFacade.initialize();
+        return m.highlighterFacade.isReady();
+    } catch (err) {
+        console.error('[Scanner] Highlighter init failed:', err);
+        return false;
+    }
+}
+
+/**
+ * Initialize auxiliary facades - call lazily after app ready
+ */
+export async function initializeAuxiliaryFacades(): Promise<{
     constraints: boolean;
     projections: boolean;
 }> {
     const results = await Promise.allSettled([
-        import('./unified-facade').then(m => m.unifiedScannerFacade.initialize()),
         import('./constraints-facade').then(m => m.constraintsFacade.initialize()),
         import('./projections-facade').then(m => m.projectionsFacade.initialize()),
     ]);
-
     return {
-        scanner: results[0].status === 'fulfilled',
-        constraints: results[1].status === 'fulfilled',
-        projections: results[2].status === 'fulfilled',
+        constraints: results[0].status === 'fulfilled',
+        projections: results[1].status === 'fulfilled',
     };
+}
+
+/**
+ * Initialize all Rust-first facades (backward compat)
+ * 
+ * @deprecated Use initializeHighlighter() at app startup instead
+ */
+export async function initializeRustFacades(): Promise<{
+    highlighter: boolean;
+    constraints: boolean;
+    projections: boolean;
+}> {
+    const highlighter = await initializeHighlighter();
+    const auxiliary = await initializeAuxiliaryFacades();
+    return { highlighter, ...auxiliary };
 }
 

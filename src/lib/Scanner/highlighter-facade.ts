@@ -1,8 +1,9 @@
 /**
- * UnifiedScannerFacade - TypeScript bridge to Rust UnifiedScanner
+ * HighlighterFacade - Editor decoration span generation
  * 
- * This facade provides 1:1 feature parity with the existing pattern system
- * while delegating all heavy lifting to Rust WASM.
+ * Scans text and returns decoration spans for syntax highlighting in the editor.
+ * This facade handles wikilinks, entities, tags, mentions, triples, etc.
+ * All heavy lifting is in Rust WASM.
  * 
  * KEEP THIS FILE AS REFERENCE - maintains full functionality even if Rust breaks
  * 
@@ -21,7 +22,7 @@
  *    out of bounds". Wrap fallible code in std::panic::catch_unwind.
  * 
  * @see unified-scanner-utils.ts for defensive helper functions
- * @module scanner/unified-facade
+ * @module scanner/highlighter-facade
  */
 
 import type { WasmUnifiedScanner } from '@/lib/wasm/kittcore';
@@ -140,18 +141,18 @@ export interface ModeStyles {
 // =============================================================================
 
 /**
- * UnifiedScannerFacade - TypeScript bridge to Rust UnifiedScanner
+ * HighlighterFacade - Generates decoration spans for editor highlighting
  * 
  * Usage:
  * ```typescript
- * const facade = new UnifiedScannerFacade();
+ * const facade = new HighlighterFacade();
  * await facade.initialize();
  * 
  * const result = facade.scan("Visit [[Rivendell]] and meet [CHARACTER|Frodo]");
  * const decorations = facade.getDecorations(result, 'vivid');
  * ```
  */
-export class UnifiedScannerFacade {
+export class HighlighterFacade {
     private scanner: WasmUnifiedScanner | null = null;
     private initialized = false;
     private initPromise: Promise<void> | null = null;
@@ -182,11 +183,11 @@ export class UnifiedScannerFacade {
             if (typeof wasmModule.has_panic_protection === 'function') {
                 const hasPanicProtection = wasmModule.has_panic_protection();
                 if (!hasPanicProtection) {
-                    console.error('[UnifiedScannerFacade] ⚠️ STALE WASM BINARY - missing panic protection! Try: npm run build:wasm && hard refresh');
+                    console.error('[Highlighter] ⚠️ STALE WASM BINARY - missing panic protection! Try: npm run build:wasm && hard refresh');
                 }
             } else {
                 // Old binary without the check function
-                console.warn('[UnifiedScannerFacade] ⚠️ WASM binary may be stale - has_panic_protection not found. Try: npm run build:wasm && hard refresh');
+                console.warn('[Highlighter] ⚠️ WASM binary may be stale - has_panic_protection not found. Try: npm run build:wasm && hard refresh');
             }
 
             this.scanner = new wasmModule.WasmUnifiedScanner();
@@ -194,9 +195,9 @@ export class UnifiedScannerFacade {
 
             // Log version for debugging
             const version = typeof wasmModule.version === 'function' ? wasmModule.version() : 'unknown';
-            console.log(`[UnifiedScannerFacade] Initialized successfully (${version})`);
+            console.log(`[Highlighter] Ready for instant decorations (${version})`);
         } catch (error) {
-            console.error('[UnifiedScannerFacade] Failed to initialize:', error);
+            console.error('[Highlighter] Failed to initialize:', error);
             throw error;
         }
     }
@@ -216,7 +217,7 @@ export class UnifiedScannerFacade {
      */
     scan(text: string): UnifiedScanResult {
         if (!this.isReady()) {
-            console.warn('[UnifiedScannerFacade] Not initialized, returning empty result');
+            console.warn('[Highlighter] Not initialized, returning empty result');
             return { spans: [], stats: this.emptyStats() };
         }
 
@@ -235,7 +236,7 @@ export class UnifiedScannerFacade {
 
             return result;
         } catch (error) {
-            console.error('[UnifiedScannerFacade] Scan failed:', error);
+            console.error('[Highlighter] Scan failed:', error);
             return { spans: [], stats: this.emptyStats() };
         }
     }
@@ -422,7 +423,9 @@ export class UnifiedScannerFacade {
 // =============================================================================
 
 /** Singleton instance for app-wide use */
-export const unifiedScannerFacade = new UnifiedScannerFacade();
+export const highlighterFacade = new HighlighterFacade();
+/** @deprecated Use highlighterFacade instead */
+export const unifiedScannerFacade = highlighterFacade;
 
 // =============================================================================
 // LEGACY COMPATIBILITY HELPERS

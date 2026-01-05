@@ -1,7 +1,3 @@
-//! TripleCortex: Triple Syntax Extraction
-//!
-//! Extracts `[[source->predicate->target]]` triples from text.
-
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -19,16 +15,27 @@ pub struct ExtractedTriple {
     pub start: usize,
     pub end: usize,
     pub raw_text: String,
+    /// Optional: entity kind for source (if explicit syntax used)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_kind: Option<String>,
+    /// Optional: entity kind for target (if explicit syntax used)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_kind: Option<String>,
 }
 
 // =============================================================================
 // TripleCortex
 // =============================================================================
 
-/// Triple syntax extractor
+/// Triple syntax extractor - supports multiple syntaxes
 #[wasm_bindgen]
 pub struct TripleCortex {
-    triple_regex: Regex,
+    // Pattern 1: [[source->predicate->target]] (wiki-style)
+    wiki_regex: Regex,
+    // Pattern 2: [KIND|Label] (RELATION) [KIND|Label] (parenthesized)
+    paren_regex: Regex,
+    // Pattern 3: [KIND|Label] ->RELATION-> [KIND|Label] (arrow with kinds)
+    arrow_kind_regex: Regex,
 }
 
 impl Default for TripleCortex {
@@ -41,15 +48,23 @@ impl Default for TripleCortex {
 impl TripleCortex {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        // Pattern: [[source->predicate->target]]
-        // Allow whitespace around arrows
-        // Source/target can contain any chars except [] and arrows
-        // Predicate is typically UPPERCASE_SNAKE_CASE but we allow flexibility
-        let triple_regex = Regex::new(
+        // Pattern 1: [[source->predicate->target]]
+        let wiki_regex = Regex::new(
             r"\[\[\s*([^\[\]>]+?)\s*->\s*([^\[\]>]+?)\s*->\s*([^\[\]>]+?)\s*\]\]"
-        ).expect("Triple regex should compile");
+        ).expect("Wiki triple regex should compile");
 
-        Self { triple_regex }
+        // Pattern 2: [KIND|Label] (RELATION) [KIND|Label]
+        // Captures: kind1, label1, relation, kind2, label2
+        let paren_regex = Regex::new(
+            r"\[([A-Z_]+)\|([^\]]+)\]\s*\(([A-Z_]+)\)\s*\[([A-Z_]+)\|([^\]]+)\]"
+        ).expect("Parenthesized triple regex should compile");
+
+        // Pattern 3: [KIND|Label] ->RELATION-> [KIND|Label]
+        let arrow_kind_regex = Regex::new(
+            r"\[([A-Z_]+)\|([^\]]+)\]\s*->([A-Z_]+)->\s*\[([A-Z_]+)\|([^\]]+)\]"
+        ).expect("Arrow kind triple regex should compile");
+
+        Self { wiki_regex, paren_regex, arrow_kind_regex }
     }
 
     /// Extract and return as JsValue for WASM
@@ -61,33 +76,107 @@ impl TripleCortex {
 }
 
 impl TripleCortex {
-    /// Extract all triples from text
+    /// Extract all triples from text using all supported syntaxes
     pub fn extract(&self, text: &str) -> Vec<ExtractedTriple> {
-        self.triple_regex
-            .captures_iter(text)
-            .filter_map(|cap| {
-                let full_match = cap.get(0)?;
-                let source = cap.get(1)?.as_str().trim();
-                let predicate = cap.get(2)?.as_str().trim();
-                let target = cap.get(3)?.as_str().trim();
+        let mut triples = Vec::new();
 
-                // Validate non-empty components
-                if source.is_empty() || predicate.is_empty() || target.is_empty() {
-                    return None;
-                }
+        // Pattern 1: [[source->pred->target]]
+        for cap in self.wiki_regex.captures_iter(text) {
+            if let Some(triple) = Self::extract_wiki_triple(&cap) {
+                triples.push(triple);
+            }
+        }
 
-                Some(ExtractedTriple {
-                    source: source.to_string(),
-                    predicate: predicate.to_string(),
-                    target: target.to_string(),
-                    start: full_match.start(),
-                    end: full_match.end(),
-                    raw_text: full_match.as_str().to_string(),
-                })
-            })
-            .collect()
+        // Pattern 2: [KIND|Label] (RELATION) [KIND|Label]
+        for cap in self.paren_regex.captures_iter(text) {
+            if let Some(triple) = Self::extract_paren_triple(&cap) {
+                triples.push(triple);
+            }
+        }
+
+        // Pattern 3: [KIND|Label] ->RELATION-> [KIND|Label]
+        for cap in self.arrow_kind_regex.captures_iter(text) {
+            if let Some(triple) = Self::extract_arrow_kind_triple(&cap) {
+                triples.push(triple);
+            }
+        }
+
+        // Sort by position
+        triples.sort_by_key(|t| t.start);
+        triples
+    }
+
+    fn extract_wiki_triple(cap: &regex::Captures) -> Option<ExtractedTriple> {
+        let full_match = cap.get(0)?;
+        let source = cap.get(1)?.as_str().trim();
+        let predicate = cap.get(2)?.as_str().trim();
+        let target = cap.get(3)?.as_str().trim();
+
+        if source.is_empty() || predicate.is_empty() || target.is_empty() {
+            return None;
+        }
+
+        Some(ExtractedTriple {
+            source: source.to_string(),
+            predicate: predicate.to_string(),
+            target: target.to_string(),
+            start: full_match.start(),
+            end: full_match.end(),
+            raw_text: full_match.as_str().to_string(),
+            source_kind: None,
+            target_kind: None,
+        })
+    }
+
+    fn extract_paren_triple(cap: &regex::Captures) -> Option<ExtractedTriple> {
+        let full_match = cap.get(0)?;
+        let source_kind = cap.get(1)?.as_str().trim();
+        let source = cap.get(2)?.as_str().trim();
+        let predicate = cap.get(3)?.as_str().trim();
+        let target_kind = cap.get(4)?.as_str().trim();
+        let target = cap.get(5)?.as_str().trim();
+
+        if source.is_empty() || predicate.is_empty() || target.is_empty() {
+            return None;
+        }
+
+        Some(ExtractedTriple {
+            source: source.to_string(),
+            predicate: predicate.to_string(),
+            target: target.to_string(),
+            start: full_match.start(),
+            end: full_match.end(),
+            raw_text: full_match.as_str().to_string(),
+            source_kind: Some(source_kind.to_string()),
+            target_kind: Some(target_kind.to_string()),
+        })
+    }
+
+    fn extract_arrow_kind_triple(cap: &regex::Captures) -> Option<ExtractedTriple> {
+        let full_match = cap.get(0)?;
+        let source_kind = cap.get(1)?.as_str().trim();
+        let source = cap.get(2)?.as_str().trim();
+        let predicate = cap.get(3)?.as_str().trim();
+        let target_kind = cap.get(4)?.as_str().trim();
+        let target = cap.get(5)?.as_str().trim();
+
+        if source.is_empty() || predicate.is_empty() || target.is_empty() {
+            return None;
+        }
+
+        Some(ExtractedTriple {
+            source: source.to_string(),
+            predicate: predicate.to_string(),
+            target: target.to_string(),
+            start: full_match.start(),
+            end: full_match.end(),
+            raw_text: full_match.as_str().to_string(),
+            source_kind: Some(source_kind.to_string()),
+            target_kind: Some(target_kind.to_string()),
+        })
     }
 }
+
 
 // =============================================================================
 // Tests (TDD - written first!)
@@ -231,4 +320,79 @@ mod tests {
         assert_eq!(triples[0].predicate, "owns");
         assert_eq!(triples[0].target, "Ring Of Power");
     }
+
+    // -------------------------------------------------------------------------
+    // Requirement 11: Parenthesized triple syntax
+    // [KIND|Label] (RELATION) [KIND|Label]
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_parenthesized_triple() {
+        let cortex = TripleCortex::new();
+        let triples = cortex.extract("[EVENT|Wano Arc] (TAKES_PLACE_IN) [LOCATION|Wano Country]");
+
+        assert_eq!(triples.len(), 1);
+        assert_eq!(triples[0].source, "Wano Arc");
+        assert_eq!(triples[0].predicate, "TAKES_PLACE_IN");
+        assert_eq!(triples[0].target, "Wano Country");
+        assert_eq!(triples[0].source_kind, Some("EVENT".to_string()));
+        assert_eq!(triples[0].target_kind, Some("LOCATION".to_string()));
+    }
+
+    #[test]
+    fn test_parenthesized_triple_character_defeats() {
+        let cortex = TripleCortex::new();
+        let triples = cortex.extract("[CHARACTER|Luffy] (DEFEATS) [CHARACTER|Kaido]");
+
+        assert_eq!(triples.len(), 1);
+        assert_eq!(triples[0].source, "Luffy");
+        assert_eq!(triples[0].predicate, "DEFEATS");
+        assert_eq!(triples[0].target, "Kaido");
+    }
+
+    // -------------------------------------------------------------------------
+    // Requirement 12: Arrow triple with kinds
+    // [KIND|Label] ->RELATION-> [KIND|Label]
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_arrow_kind_triple() {
+        let cortex = TripleCortex::new();
+        let triples = cortex.extract("[CHARACTER|Frodo] ->OWNS-> [ITEM|Ring]");
+
+        assert_eq!(triples.len(), 1);
+        assert_eq!(triples[0].source, "Frodo");
+        assert_eq!(triples[0].predicate, "OWNS");
+        assert_eq!(triples[0].target, "Ring");
+        assert_eq!(triples[0].source_kind, Some("CHARACTER".to_string()));
+        assert_eq!(triples[0].target_kind, Some("ITEM".to_string()));
+    }
+
+    // -------------------------------------------------------------------------
+    // Requirement 13: Mixed syntax in same document
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_mixed_triple_syntaxes() {
+        let cortex = TripleCortex::new();
+        let text = r#"
+            [[Gandalf->MENTORS->Frodo]]
+            [CHARACTER|Aragorn] (LOVES) [CHARACTER|Arwen]
+            [LOCATION|Mordor] ->CONTAINS-> [ITEM|Ring]
+        "#;
+        
+        let triples = cortex.extract(text);
+
+        assert_eq!(triples.len(), 3);
+        
+        // Wiki style
+        assert_eq!(triples[0].source, "Gandalf");
+        assert!(triples[0].source_kind.is_none()); // Wiki style has no kind
+        
+        // Parenthesized
+        assert_eq!(triples[1].source, "Aragorn");
+        assert_eq!(triples[1].source_kind, Some("CHARACTER".to_string()));
+        
+        // Arrow with kinds
+        assert_eq!(triples[2].source, "Mordor");
+        assert_eq!(triples[2].source_kind, Some("LOCATION".to_string()));
+    }
 }
+

@@ -21,8 +21,8 @@ import { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { highlighterBridge, type HighlightSpan } from '@/lib/highlighter/HighlighterBridge';
 import { getOrBuildPositionMap, getOrBuildText } from '@/lib/highlighter/positionMapCache';
 
-// Unified Scanner (New Rust Pipeline)
-import { unifiedScannerFacade, type UnifiedScanResult, type DecorationSpan as UnifiedSpan } from '@/lib/scanner/unified-facade';
+// Highlighter Facade (Rust decoration spans)
+import { highlighterFacade, type UnifiedScanResult, type DecorationSpan as UnifiedSpan } from '@/lib/scanner/highlighter-facade';
 import {
     getCaptureValue,
     getValidatedEntityKind,
@@ -546,7 +546,7 @@ function buildUnifiedDecorations(
         if (!node.isText || !node.text) return;
 
         // Scan this text node
-        const results = unifiedScannerFacade.scan(node.text);
+        const results = highlighterFacade.scan(node.text);
 
         // Get decoration specs from facade
         // Pass local cursor position if selection is inside this node
@@ -555,7 +555,7 @@ function buildUnifiedDecorations(
             localCursor = selection.from - pos;
         }
 
-        const specs = unifiedScannerFacade.getDecorations(results, mode, focusConfig, localCursor);
+        const specs = highlighterFacade.getDecorations(results, mode, focusConfig, localCursor);
 
         for (const { from: localFrom, to: localTo, spec, span } of specs) {
             const absFrom = pos + localFrom;
@@ -712,7 +712,7 @@ function buildAllDecorations(
     const allDecorations: Decoration[] = [];
 
     // 1. Pattern decorations (Legacy vs Unified) - Highest Priority
-    if (options.useUnifiedScanner && unifiedScannerFacade.isReady()) {
+    if (options.useUnifiedScanner && highlighterFacade.isReady()) {
         const unifiedDecorations = buildUnifiedDecorations(doc, options, selection);
         allDecorations.push(...unifiedDecorations);
         if (options.logPerformance) {

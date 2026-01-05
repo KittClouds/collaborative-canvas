@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useCallback, useState } from 'react';
 import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { useEntitySelection, EntitySelectionProvider } from '@/contexts/EntitySelectionContext';
 import { useUnifiedEntityAttributes } from '@/hooks/useUnifiedEntityAttributes';
-import { parseNoteConnectionsFromDocument } from '@/lib/scanner/scanner-facade';
+import { parseNoteConnectionsFromDocument } from '@/lib/scanner/extractor-facade';
 import type { ParsedEntity, EntityAttributes } from '@/types/factSheetTypes';
 import type { EntityKind } from '@/lib/types/entityTypes';
 import { FileQuestion, Sparkles, BrainCircuit, LayoutGrid, List, Plus } from 'lucide-react';

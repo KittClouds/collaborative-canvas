@@ -2,7 +2,7 @@
  * Graph Sync Utilities
  * 
  * Synchronizes Rust ConceptGraph state with CozoDB persistence layer.
- * Called from ScannerFacade after document processing.
+ * Called from ExtractorFacade after document processing.
  */
 
 import { cozoDb } from '../cozo/db';
