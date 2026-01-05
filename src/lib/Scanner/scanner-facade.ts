@@ -28,6 +28,7 @@ import {
 
 // Persistence layers
 import { persistTemporalMentions, clearTemporalMentions } from './temporal-persistence';
+import { fullGraphSync } from '@/lib/graph/graph-sync';
 
 import { regexEntityParser } from '@/lib/utils/regex-entity-parser';
 import type { DocumentConnections, EntityReference, Triple } from '@/lib/types/entityTypes';
@@ -116,6 +117,24 @@ class ScannerFacade {
                 console.log(`[ScannerFacade] Relations:`, result.relations.map(r =>
                     `${r.head_entity} -[${r.relation_type}]-> ${r.tail_entity}`
                 ));
+            }
+
+            // Sync graph data to CozoDB (Evolution 3.0)
+            try {
+                const syncResult = await fullGraphSync(result, {
+                    groupId: 'vault:global',
+                    noteId,
+                });
+                if (syncResult.entitiesSynced > 0 || syncResult.edgesSynced > 0) {
+                    console.log(`[ScannerFacade] Graph synced:`, {
+                        entities: syncResult.entitiesSynced,
+                        edges: syncResult.edgesSynced,
+                        relations: syncResult.relationsSynced,
+                        ms: syncResult.durationMs,
+                    });
+                }
+            } catch (err) {
+                console.warn('[ScannerFacade] Graph sync failed:', err);
             }
         });
 
