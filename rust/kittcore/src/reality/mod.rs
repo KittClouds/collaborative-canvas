@@ -13,6 +13,8 @@ pub mod unification;
 pub mod global;
 pub mod bridge;
 pub mod algorithms;
+pub mod temporal;
+
 
 
 
