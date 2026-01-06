@@ -373,22 +373,49 @@ impl StructuredRelationExtractor {
 
     /// Find sentence boundaries around a position
     /// Returns (start, end) of the sentence containing the position
+    /// 
+    /// # Design Notes
+    /// - Hard boundaries: .?! (sentence terminators)
+    /// - Soft boundaries: \n (newlines) - we look past these if no hard boundary nearby
+    /// - Max search: 200 chars backward, 300 chars forward (comfortable sentence range)
+    /// - Fallback: if no boundary found, use the search limit
     fn find_sentence_bounds(&self, text: &str, position: usize) -> (usize, usize) {
         let bytes = text.as_bytes();
+        const MAX_BACKWARD: usize = 200;
+        const MAX_FORWARD: usize = 300;
         
-        // Find sentence start: scan backward for .?! or newline
+        // Find sentence start: scan backward for hard boundary (.?!)
+        // Newlines are soft boundaries - we note them but keep looking for hard boundaries
         let mut start = position;
-        while start > 0 {
+        let mut soft_boundary: Option<usize> = None;
+        let search_limit = position.saturating_sub(MAX_BACKWARD);
+        
+        while start > search_limit {
             let ch = bytes[start - 1];
-            if ch == b'.' || ch == b'?' || ch == b'!' || ch == b'\n' {
+            if ch == b'.' || ch == b'?' || ch == b'!' {
+                // Hard boundary found - stop here
                 break;
+            } else if ch == b'\n' && soft_boundary.is_none() {
+                // Note soft boundary but keep looking for hard boundary
+                soft_boundary = Some(start);
             }
             start -= 1;
         }
         
+        // If we hit the search limit without finding a hard boundary,
+        // use the soft boundary if we found one, otherwise use search limit
+        if start == search_limit && start > 0 {
+            if let Some(soft) = soft_boundary {
+                start = soft;
+            }
+            // Otherwise keep start at search_limit (allow extended context)
+        }
+        
         // Find sentence end: scan forward for .?! or newline
         let mut end = position;
-        while end < bytes.len() {
+        let end_limit = (position + MAX_FORWARD).min(bytes.len());
+        
+        while end < end_limit {
             let ch = bytes[end];
             if ch == b'.' || ch == b'?' || ch == b'!' || ch == b'\n' {
                 end += 1; // Include the terminator
@@ -396,6 +423,9 @@ impl StructuredRelationExtractor {
             }
             end += 1;
         }
+        
+        // Clamp end to text length
+        end = end.min(bytes.len());
         
         (start, end)
     }
