@@ -109,35 +109,8 @@ class ExtractorFacade {
                 }
             }
 
-            // Legacy: Persist old-style relations (now deprecated, usually empty)
-            if (result.relations && result.relations.length > 0) {
-                // Pre-resolve all entity labels to IDs
-                const inputs = result.relations
-                    .map(rel => {
-                        const head = entityRegistry.findEntityByLabel(rel.head_entity);
-                        const tail = entityRegistry.findEntityByLabel(rel.tail_entity);
-                        if (!head || !tail) return null;
-                        return {
-                            sourceEntityId: head.id,
-                            targetEntityId: tail.id,
-                            type: rel.relation_type,
-                            provenance: [{
-                                source: RelationshipSource.NER_EXTRACTION,
-                                originId: noteId,
-                                confidence: rel.confidence,
-                                timestamp: new Date()
-                            }]
-                        };
-                    })
-                    .filter((input): input is NonNullable<typeof input> => input !== null);
-
-                if (inputs.length > 0) {
-                    const persistedCount = relationshipRegistry.addBatch(inputs);
-                    if (persistedCount > 0) {
-                        console.log(`[Extractor] Persisted ${persistedCount}/${result.relations.length} legacy relationships`);
-                    }
-                }
-            }
+            // Note: Legacy result.relations field has been removed from ScanResult
+            // CST relations are now only in unified_relations
 
             // Persist triples as unified relationships (explicit [X] (REL) [Y] syntax)
             // This auto-registers entities and creates relationships with highest confidence

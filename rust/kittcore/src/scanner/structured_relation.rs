@@ -295,9 +295,19 @@ impl StructuredRelationExtractor {
             .filter(|c| c.kind == ChunkKind::VerbPhrase)
             .collect();
 
-        for vp in vp_chunks {
+        // DEBUG: Log VP and entity counts (simplified)
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+            "[SVO] VPs:{} entities:{}",
+            vp_chunks.len(),
+            sorted_entities.len()
+        )));
+
+        for vp in &vp_chunks {
             // Get sentence boundaries around this VP
             let (sent_start, sent_end) = self.find_sentence_bounds(text, vp.range.start);
+            
+            let vp_verb_text = vp.head.slice(text);
 
             // Find subject: nearest entity ending before VP starts, WITHIN SAME SENTENCE
             let subject = self.find_nearest_entity_before_in_range(
@@ -313,10 +323,25 @@ impl StructuredRelationExtractor {
                 sent_end,
             );
 
+            // DEBUG: Log VP matching (simplified)
+            #[cfg(target_arch = "wasm32")]
+            {
+                let subj_found = subject.is_some();
+                let obj_found = object.is_some();
+                web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+                    "[SVO] VP '{}' sent:{}-{} subj:{} obj:{}",
+                    vp_verb_text, sent_start, sent_end, subj_found, obj_found
+                )));
+            }
+
             // Need at least a subject
             let subject = match subject {
                 Some(s) => s,
-                None => continue,
+                None => {
+                    #[cfg(target_arch = "wasm32")]
+                    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("[SVO] SKIP: no subject"));
+                    continue;
+                }
             };
 
             // Collect PP modifiers after the VP (within sentence)
@@ -327,7 +352,7 @@ impl StructuredRelationExtractor {
 
             let mut pattern = SVOPattern {
                 subject: subject.clone(),
-                verb: vp.clone(),
+                verb: (*vp).clone(),
                 object: object.cloned(),
                 modifiers,
                 is_passive,
@@ -1018,5 +1043,64 @@ mod tests {
             assert!(without_object.confidence <= 0.7, 
                 "Confidence should be lower without object");
         }
+    }
+
+    // =========================================================================
+    // DIAGNOSTIC: Mother of Learning Test Data
+    // =========================================================================
+
+    /// DIAGNOSTIC: Test exact sentence from MOL test doc
+    #[test]
+    fn test_mol_alanic_mentors_zorian() {
+        // "Alanic mentors Zorian in soul magic."
+        //  ^^^^^^         ^^^^^^
+        //  0-6            16-22
+        let text = "Alanic mentors Zorian in soul magic.";
+        let entities = vec![
+            make_entity("Alanic", 0, 6),
+            make_entity("Zorian", 16, 22),
+        ];
+
+        let extractor = StructuredRelationExtractor::new();
+        let (relations, stats) = extractor.extract_with_stats(text, &entities);
+        
+        println!("MOL TEST RESULTS:");
+        println!("  chunks_processed: {}", stats.chunks_processed);
+        println!("  vp_count: {}", stats.vp_count);
+        println!("  svo_patterns_found: {}", stats.svo_patterns_found);
+        println!("  relations_extracted: {}", stats.relations_extracted);
+        
+        // Critical assertions
+        assert!(stats.vp_count > 0, "Should find VP for 'mentors' - VerbMorphology integration failed?");
+        assert!(stats.svo_patterns_found > 0, "Should find SVO pattern Alanic-mentors-Zorian");
+        assert_eq!(relations.len(), 1, "Should extract exactly 1 relation");
+        
+        let rel = &relations[0];
+        assert_eq!(rel.subject, "Alanic", "Subject should be Alanic");
+        assert_eq!(rel.object.as_deref(), Some("Zorian"), "Object should be Zorian");
+        assert!(rel.predicate.contains("mentor"), "Predicate should contain 'mentor'");
+    }
+
+    /// DIAGNOSTIC: Test another MOL sentence
+    #[test]
+    fn test_mol_quatach_killed_zorian() {
+        // "Quatach-Ichl killed Zorian Kazinski in the first restart."
+        // Note: entity spans need to match actual positions
+        let text = "Quatach-Ichl killed Zorian Kazinski in the first restart.";
+        //          0-12        20-35
+        let entities = vec![
+            make_entity("Quatach-Ichl", 0, 12),
+            make_entity("Zorian Kazinski", 20, 35),
+        ];
+
+        let extractor = StructuredRelationExtractor::new();
+        let (relations, stats) = extractor.extract_with_stats(text, &entities);
+        
+        println!("MOL TEST 2 RESULTS:");
+        println!("  vp_count: {}", stats.vp_count);
+        println!("  relations: {:?}", relations);
+        
+        assert!(stats.vp_count > 0, "Should find VP for 'killed'");
+        assert!(!relations.is_empty(), "Should extract relation for Quatach-Ichl killed Zorian");
     }
 }

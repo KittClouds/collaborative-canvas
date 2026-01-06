@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "bench": "vitest bench",
-    "build:wasm": "cd rust/kittcore && wasm-pack build --target web --out-dir ../../src/lib/wasm/kittcore"
+    "build:wasm": "cd rust/kittcore && wasm-pack build --target web --out-dir pkg"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.56",

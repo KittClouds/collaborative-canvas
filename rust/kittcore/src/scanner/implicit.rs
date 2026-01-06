@@ -108,32 +108,53 @@ fn generate_aliases(label: &str, kind: &str) -> Vec<(String, f64)> {
     // Kind-specific alias generation
     match kind.to_uppercase().as_str() {
         "CHARACTER" | "PERSON" => {
-            // Characters get surname/calling name treatment
+            // Characters get FIRST name (calling name) AND surname treatment
+            // "Zorian Kazinski" → "Zorian" (0.95, first name is common calling), "Kazinski" (0.90)
             match parts.len() {
                 2 => {
-                    // "First Last" → "Last" (0.90)
+                    // "First Last" → "First" (0.95), "Last" (0.90)
+                    let first = parts[0];
                     let last = parts[1];
+                    
+                    // First name (calling name) - highest priority for characters
+                    if first.len() >= MIN_ALIAS_LEN && !is_title_or_honorific(first) {
+                        aliases.push((first.to_string(), 0.95));
+                    }
+                    // Last name (surname)
                     if last.len() >= MIN_ALIAS_LEN && !is_title_or_honorific(last) {
                         aliases.push((last.to_string(), 0.90));
                     }
                 }
                 3 => {
-                    // "First Middle Last" → "Last" (0.90), "Middle Last" (0.85)
+                    // "First Middle Last" → "First", "Last", "Middle Last"
+                    let first = parts[0];
                     let last = parts[2];
                     let middle_last = format!("{} {}", parts[1], parts[2]);
                     
+                    // First name (calling name)
+                    if first.len() >= MIN_ALIAS_LEN && !is_title_or_honorific(first) {
+                        aliases.push((first.to_string(), 0.95));
+                    }
+                    // Last name
                     if last.len() >= MIN_ALIAS_LEN && !is_title_or_honorific(last) {
                         aliases.push((last.to_string(), 0.90));
                     }
+                    // Middle + Last
                     if middle_last.len() >= MIN_ALIAS_LEN {
                         aliases.push((middle_last, 0.85));
                     }
                 }
                 _ => {
-                    // Longer names: last word, last two words
+                    // Longer names: first word, last word, last two words
+                    let first = parts[0];
                     let last = parts[parts.len() - 1];
                     let last_two = format!("{} {}", parts[parts.len() - 2], last);
                     
+                    // First name
+                    if first.len() >= MIN_ALIAS_LEN && !is_title_or_honorific(first) {
+                        aliases.push((first.to_string(), 0.90));
+                    }
+                    // Last name
                     if last.len() >= MIN_ALIAS_LEN && !is_title_or_honorific(last) {
                         aliases.push((last.to_string(), 0.85));
                     }
@@ -662,5 +683,48 @@ mod tests {
         // Auto-generated surname = 0.90
         let auto = cortex.find_mentions("Luffy");
         assert!((auto[0].confidence - 0.90).abs() < 0.01);
+    }
+
+    // -------------------------------------------------------------------------
+    // DIAGNOSTIC: MOL-style document with syntax AND natural language
+    // -------------------------------------------------------------------------
+    #[test]
+    fn test_mol_multiple_occurrences() {
+        let mut cortex = ImplicitCortex::new();
+        cortex.hydrate(vec![
+            entity("char_alanic", "Alanic", "CHARACTER", vec![]),
+            entity("char_zorian", "Zorian", "CHARACTER", vec![]),
+        ]);
+        cortex.build().unwrap();
+
+        // Simulate MOL document structure:
+        // Line 8: [CHARACTER|Alanic|...] - entity in syntax
+        // Line 24: Alanic mentors Zorian - entity in natural text
+        let text = r#"# Key Figures
+[CHARACTER|Alanic|{"role":"Priest"}]
+[CHARACTER|Zorian|{"role":"Mage"}]
+
+## Story
+Alanic mentors Zorian in soul magic.
+Zorian learned quickly."#;
+
+        let mentions = cortex.find_mentions(text);
+        
+        println!("MENTIONS FOUND: {}", mentions.len());
+        for m in &mentions {
+            println!("  {} at {}-{}: '{}'", m.entity_label, m.start, m.end, m.matched_text);
+        }
+        
+        // Should find BOTH Alanic mentions (in syntax and in story)
+        let alanic_mentions: Vec<_> = mentions.iter().filter(|m| m.entity_label == "Alanic").collect();
+        assert!(alanic_mentions.len() >= 2, 
+            "Should find Alanic in BOTH syntax and natural text, found {}", 
+            alanic_mentions.len());
+        
+        // Should find BOTH Zorian mentions
+        let zorian_mentions: Vec<_> = mentions.iter().filter(|m| m.entity_label == "Zorian").collect();
+        assert!(zorian_mentions.len() >= 2,
+            "Should find Zorian in BOTH syntax and natural text, found {}",
+            zorian_mentions.len());
     }
 }

@@ -274,9 +274,19 @@ impl RelationEngine {
             return Vec::new();
         }
 
-        // Use StructuredRelationExtractor for SVO extraction
+        // Use StructuredRelationExtractor for SVO extraction WITH stats
         let extractor = StructuredRelationExtractor::new();
-        let structured_relations = extractor.extract_structured(text, entities);
+        let (structured_relations, stats) = extractor.extract_with_stats(text, entities);
+
+        // DEBUG: Log extraction stats
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&format!(
+            "[CST] chunks:{} vps:{} svo_patterns:{} raw_rels:{}",
+            stats.chunks_processed,
+            stats.vp_count,
+            stats.svo_patterns_found,
+            structured_relations.len()
+        ).into());
 
         // Convert StructuredRelation to UnifiedRelation
         structured_relations
@@ -514,13 +524,28 @@ impl RelationEngine {
         entities: &[EntitySpan],
         existing_edges: &[(String, String, String)],
     ) -> (Vec<UnifiedRelation>, RelationStats) {
-        let start = std::time::Instant::now();
+        let start = instant::Instant::now();
         let mut all_relations = Vec::new();
         let mut stats = RelationStats::default();
+
+        // DEBUG: Log entity count
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&format!(
+            "[RelationEngine] extract called with {} entities, {} existing edges",
+            entities.len(),
+            existing_edges.len()
+        ).into());
 
         // Layer 2: CST Projection
         let cst_relations = self.project_from_cst(text, entities);
         stats.cst_count = cst_relations.len();
+        
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&format!(
+            "[RelationEngine] CST projection returned {} relations",
+            cst_relations.len()
+        ).into());
+        
         all_relations.extend(cst_relations);
 
         // Layer 3: Graph Inference
@@ -532,22 +557,6 @@ impl RelationEngine {
         stats.time_us = start.elapsed().as_micros() as u64;
 
         (all_relations, stats)
-    }
-
-    /// Convert to backward-compatible format
-    pub fn to_extracted_relations(relations: &[UnifiedRelation]) -> Vec<ExtractedRelation> {
-        relations.iter().map(|r| r.to_extracted()).collect()
-    }
-
-    /// Backward-compatible extract (2-arg signature)
-    /// Called by old code that expects `extract(text, entities) -> Vec<ExtractedRelation>`
-    pub fn extract_legacy(
-        &self,
-        text: &str,
-        entities: &[EntitySpan],
-    ) -> Vec<ExtractedRelation> {
-        let (relations, _stats) = self.extract(text, entities, &[]);
-        Self::to_extracted_relations(&relations)
     }
 }
 
@@ -922,5 +931,77 @@ Shanks defeated Imu in a legendary battle.
         // If no relations found, it's because entity spans don't align with actual text positions
         // This test validates the pipeline works, actual count depends on span accuracy
         let _ = relations; // Suppress unused warning
+    }
+
+    /// INTEGRATION TEST: Simulates full DocumentCortex pipeline
+    /// ImplicitCortex finds entity mentions → EntitySpan → RelationEngine CST
+    #[test]
+    fn test_full_pipeline_mol_style() {
+        use crate::scanner::implicit::{ImplicitCortex, EntityDefinition};
+        
+        // Create ImplicitCortex with MOL entities
+        let mut implicit_cortex = ImplicitCortex::new();
+        implicit_cortex.hydrate(vec![
+            EntityDefinition { id: "char_alanic".to_string(), label: "Alanic".to_string(), kind: "CHARACTER".to_string(), aliases: vec![] },
+            EntityDefinition { id: "char_zorian".to_string(), label: "Zorian".to_string(), kind: "CHARACTER".to_string(), aliases: vec![] },
+            EntityDefinition { id: "char_xvim".to_string(), label: "Xvim".to_string(), kind: "CHARACTER".to_string(), aliases: vec![] },
+        ]);
+        implicit_cortex.build().unwrap();
+
+        // MOL-style document with explicit syntax AND natural language
+        let text = r#"# Key Figures
+[CHARACTER|Alanic|{"role":"Priest"}]
+[CHARACTER|Zorian|{"role":"Mage"}]
+[CHARACTER|Xvim|{"role":"Archmage"}]
+
+## Story
+Alanic mentors Zorian in soul magic.
+Xvim teaches Zorian shaping.
+Zorian learned quickly from both masters."#;
+
+        // Step 1: Find all implicit entity mentions
+        let mentions = implicit_cortex.find_mentions(text);
+        
+        println!("=== FULL PIPELINE TEST ===");
+        println!("Total mentions found: {}", mentions.len());
+        for m in &mentions {
+            println!("  {} at {}-{}: '{}'", m.entity_label, m.start, m.end, m.matched_text);
+        }
+        
+        // Step 2: Convert to EntitySpan (like DocumentCortex does)
+        let entity_spans: Vec<EntitySpan> = mentions.iter().map(|m| {
+            EntitySpan {
+                label: m.entity_label.clone(),
+                entity_id: Some(m.entity_id.clone()),
+                start: m.start,
+                end: m.end,
+                kind: Some(m.entity_kind.clone()),
+            }
+        }).collect();
+        
+        println!("Entity spans for CST: {}", entity_spans.len());
+        for e in &entity_spans {
+            println!("  {} at {}-{}", e.label, e.start, e.end);
+        }
+        
+        // Step 3: Run RelationEngine CST extraction
+        let engine = RelationEngine::new();
+        let (relations, stats) = engine.extract(text, &entity_spans, &[]);
+        
+        println!("CST Stats:");
+        println!("  cst_count: {}", stats.cst_count);
+        println!("  inferred_count: {}", stats.inferred_count);
+        
+        println!("Relations extracted: {}", relations.len());
+        for rel in &relations {
+            println!("  {} --{}-> {} (source: {:?})", rel.head, rel.relation_type, rel.tail, rel.source);
+        }
+        println!("=== END TEST ===");
+        
+        // Assertions
+        assert!(mentions.len() >= 6, "Should find entities in BOTH syntax blocks AND natural text, got {}", mentions.len());
+        
+        // Key assertion: CST should extract relations from natural language sentences
+        assert!(stats.cst_count > 0, "Should extract CST relations from 'Alanic mentors Zorian' etc., got 0");
     }
 }

@@ -21,6 +21,8 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use std::ops::Range;
 
+use super::verb_morphology::VerbMorphology;
+
 // =============================================================================
 // Core Types
 // =============================================================================
@@ -255,6 +257,8 @@ impl ChunkStats {
 pub struct Chunker {
     /// Precompiled word -> POS lookup (common words)
     lexicon: std::collections::HashMap<String, POS>,
+    /// Verb morphology for expanded verb recognition
+    verb_morphology: VerbMorphology,
 }
 
 impl Default for Chunker {
@@ -270,6 +274,7 @@ impl Chunker {
     pub fn new() -> Self {
         let mut chunker = Chunker {
             lexicon: std::collections::HashMap::new(),
+            verb_morphology: VerbMorphology::new(),
         };
         chunker.load_default_lexicon();
         chunker
@@ -358,9 +363,15 @@ impl Chunker {
     fn lookup_pos(&self, word: &str) -> POS {
         let lower = word.to_lowercase();
         
-        // Check lexicon first
+        // Check lexicon first (handles Auxiliary, Modal, Determiner, etc.)
+        // This ensures "was", "is", "are" are tagged as Auxiliary, not Verb
         if let Some(pos) = self.lexicon.get(&lower) {
             return *pos;
+        }
+        
+        // Check verb morphology for main verbs not in lexicon
+        if self.verb_morphology.is_verb(&lower) {
+            return POS::Verb;
         }
         
         // Heuristic rules for unknown words

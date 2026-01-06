@@ -20,7 +20,7 @@ use wasm_bindgen::prelude::*;
 use super::reflex::{ReflexCortex, EntityMatch};
 use super::syntax::{SyntaxCortex, SyntaxMatch};
 use super::temporal::{TemporalCortex, TemporalMention};
-use super::relation::{RelationCortex, ExtractedRelation, EntitySpan};
+use super::relation::{RelationCortex, UnifiedRelation, EntitySpan};
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -59,7 +59,7 @@ pub struct ScanResult {
     pub entities: Vec<EntityMatch>,
     pub syntax: Vec<SyntaxMatch>,
     pub temporal: Vec<TemporalMention>,
-    pub relations: Vec<ExtractedRelation>,
+    pub relations: Vec<UnifiedRelation>,
     pub stats: ScanStats,
 }
 
@@ -240,7 +240,7 @@ impl DocumentScanner {
         };
 
         // 4. Relation extraction (RelationCortex)
-        let relations: Vec<ExtractedRelation> = if self.config.enable_relations && !entities.is_empty() {
+        let unified_relations: Vec<UnifiedRelation> = if self.config.enable_relations && !entities.is_empty() {
             let t0 = js_sys::Date::now();
             
             // Convert EntityMatch to EntitySpan for relation extraction
@@ -252,9 +252,9 @@ impl DocumentScanner {
                 kind: None,
             }).collect();
             
-            let relations = self.relation.extract_legacy(text, &entity_spans);
+            let (unified_relations, _) = self.relation.extract(text, &entity_spans, &[]);
             relation_time = js_sys::Date::now() - t0;
-            relations
+            unified_relations
         } else {
             Vec::new()
         };
@@ -272,12 +272,12 @@ impl DocumentScanner {
                 entity_count: entities.len(),
                 syntax_count: syntax.len(),
                 temporal_count: temporal.len(),
-                relation_count: relations.len(),
+                relation_count: unified_relations.len(),
             },
             entities,
             syntax,
             temporal,
-            relations,
+            relations: unified_relations,
         };
 
         serde_wasm_bindgen::to_value(&result)
@@ -310,7 +310,7 @@ impl DocumentScanner {
     pub fn scan_relations(&self, text: &str, entity_spans: JsValue) -> Result<JsValue, JsValue> {
         let entities: Vec<EntitySpan> = serde_wasm_bindgen::from_value(entity_spans)
             .map_err(|e| JsValue::from_str(&format!("Failed to parse entities: {}", e)))?;
-        let relations = self.relation.extract_legacy(text, &entities);
+        let (relations, _) = self.relation.extract(text, &entities, &[]);
         serde_wasm_bindgen::to_value(&relations)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
     }

@@ -16,7 +16,7 @@ use crate::scanner::{
     ChangeDetector,
     ImplicitCortex, ImplicitMention, EntityDefinition,
     TripleCortex, ExtractedTriple,
-    RelationCortex, ExtractedRelation, EntitySpan, UnifiedRelation, RelationSource,
+    RelationCortex, EntitySpan, UnifiedRelation, RelationSource,
     TemporalCortex, TemporalMention,
     incremental::{self, IncrementalState, Delta, ExtractedItems, IncrementalStats},
     structured_relation::{StructuredRelationExtractor, StructuredRelation},
@@ -49,12 +49,11 @@ pub struct ScanStats {
     pub was_skipped: bool,
     pub was_incremental: bool,
     pub entities_found: usize,
-    pub relations_found: usize,
     pub temporal_found: usize,
     pub implicit_found: usize,
     pub triples_found: usize,
     pub structured_found: usize,
-    /// NEW: Count from CST + Graph inference pipeline
+    /// Count from CST + Graph inference pipeline
     pub unified_found: usize,
 }
 
@@ -69,12 +68,11 @@ pub struct ScanError {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ScanResult {
     // Extractions
-    pub relations: Vec<ExtractedRelation>,
     pub implicit: Vec<ImplicitMention>,
     pub triples: Vec<ExtractedTriple>,
     pub structured: Vec<StructuredRelation>,
     pub temporal: Vec<TemporalMention>,
-    /// NEW: Unified relations from CST + Graph inference pipeline
+    /// Unified relations from CST + Graph inference pipeline
     pub unified_relations: Vec<UnifiedRelation>,
     // Note: entities will be added when we wire SyntaxCortex
     
@@ -221,12 +219,23 @@ impl DocumentCortex {
     pub fn scan(&mut self, text: &str, external_spans: &[EntitySpan]) -> ScanResult {
         let overall_start = instant::Instant::now();
         
+        // DEBUG: Log every scan call
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+            "[WASM] scan() len={} spans={}",
+            text.len(),
+            external_spans.len()
+        )));
+        
         // Check for changes
         let change_result = self.change_detector.check(text);
         
         // If unchanged and we have a cached result, return it
         if !change_result.has_changed {
             if let Some(ref cached) = self.last_result {
+                #[cfg(target_arch = "wasm32")]
+                web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("[WASM] CACHED"));
+                
                 let mut result = cached.clone();
                 result.stats.was_skipped = true;
                 result.stats.content_hash = format!("{:x}", change_result.content_hash);
@@ -269,12 +278,12 @@ impl DocumentCortex {
         let state = self.incremental_state.take().unwrap_or_default();
         
         // Clone and shift preserved items
-        let mut relations = state.extracted_items.relations.clone();
+        let mut unified_relations = state.extracted_items.unified_relations.clone();
         let mut implicit = state.extracted_items.implicit.clone();
         let mut triples = state.extracted_items.triples.clone();
         let mut temporal = state.extracted_items.temporal.clone();
         
-        incremental::shift_items(&mut relations, &delta);
+        incremental::shift_items(&mut unified_relations, &delta);
         incremental::shift_items(&mut implicit, &delta);
         incremental::shift_items(&mut triples, &delta);
         incremental::shift_items(&mut temporal, &delta);
@@ -312,9 +321,9 @@ impl DocumentCortex {
                     kind: Some(mention.entity_kind.clone()),
                 }).collect();
             
-            // Relation extraction on dirty region
+            // Relation extraction on dirty region using new CST pipeline
             let relation_start = instant::Instant::now();
-            for mut rel in self.relation_cortex.extract_legacy(dirty_text, &all_spans.iter().map(|s| 
+            let adjusted_spans: Vec<EntitySpan> = all_spans.iter().map(|s| 
                 EntitySpan {
                     label: s.label.clone(),
                     entity_id: s.entity_id.clone(),
@@ -322,16 +331,18 @@ impl DocumentCortex {
                     end: s.end - offset,
                     kind: s.kind.clone(),
                 }
-            ).collect::<Vec<_>>()) {
-                rel.head_start += offset;
-                rel.head_end += offset;
-                rel.tail_start += offset;
-                rel.tail_end += offset;
-                rel.pattern_start += offset;
-                rel.pattern_end += offset;
-                relations.push(rel);
+            ).collect();
+            
+            let (unified_rels, _) = self.relation_cortex.extract(dirty_text, &adjusted_spans, &[]);
+            for rel in unified_rels {
+                // Adjust span positions back to full document coordinates
+                let adjusted_span = rel.span.map(|(s, e)| (s + offset, e + offset));
+                unified_relations.push(UnifiedRelation {
+                    span: adjusted_span,
+                    ..rel
+                });
             }
-            result.stats.timings.relation_us += relation_start.elapsed().as_micros() as u64;
+            result.stats.timings.unified_us += relation_start.elapsed().as_micros() as u64;
             
             // Temporal from dirty region
             let temporal_start = instant::Instant::now();
@@ -345,8 +356,8 @@ impl DocumentCortex {
         }
         
         // Deduplicate (items might overlap at boundaries)
-        relations.sort_by_key(|r| (r.head_start, r.tail_start));
-        relations.dedup_by(|a, b| a.head_start == b.head_start && a.tail_start == b.tail_start);
+        unified_relations.sort_by_key(|r| r.span.unwrap_or((0, 0)));
+        unified_relations.dedup_by(|a, b| a.head == b.head && a.tail == b.tail && a.relation_type == b.relation_type);
         
         implicit.sort_by_key(|m| m.start);
         implicit.dedup_by(|a, b| a.start == b.start && a.entity_id == b.entity_id);
@@ -358,11 +369,11 @@ impl DocumentCortex {
         temporal.dedup_by(|a, b| a.start == b.start && a.text == b.text);
         
         // Populate result
-        result.stats.relations_found = relations.len();
+        result.stats.unified_found = unified_relations.len();
         result.stats.implicit_found = implicit.len();
         result.stats.triples_found = triples.len();
         result.stats.temporal_found = temporal.len();
-        result.relations = relations.clone();
+        result.unified_relations = unified_relations.clone();
         result.implicit = implicit.clone();
         result.triples = triples.clone();
         result.temporal = temporal.clone();
@@ -375,7 +386,7 @@ impl DocumentCortex {
         self.incremental_state = Some(IncrementalState {
             chunks: incremental::chunk_text(text),
             extracted_items: ExtractedItems {
-                relations,
+                unified_relations,
                 implicit,
                 triples,
                 temporal,
@@ -388,6 +399,14 @@ impl DocumentCortex {
 
     /// Full scan - extract everything from scratch
     fn scan_full(&mut self, text: &str, external_spans: &[EntitySpan], content_hash: u64) -> ScanResult {
+        // DEBUG: Guaranteed log to verify new WASM is loaded
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+            "[WASM] scan_full len={} spans={}",
+            text.len(),
+            external_spans.len()
+        )));
+        
         let overall_start = instant::Instant::now();
         let mut result = ScanResult::default();
         result.stats.content_hash = format!("{:x}", content_hash);
@@ -429,11 +448,9 @@ impl DocumentCortex {
             }
         }
         
-        // Phase 4: Relation extraction (uses combined spans)
-        let relation_start = instant::Instant::now();
-        result.relations = self.relation_cortex.extract_legacy(text, &all_spans);
-        result.stats.timings.relation_us = relation_start.elapsed().as_micros() as u64;
-        result.stats.relations_found = result.relations.len();
+        // Phase 4: (Removed - legacy relation extraction deleted)
+        // CST relations are now extracted in Phase 7 (unified_relations)
+        
         
         // Phase 5: Temporal extraction
         let temporal_start = instant::Instant::now();
@@ -470,6 +487,19 @@ impl DocumentCortex {
         // Uses the new RelationEngine pipeline for combined extraction
         let unified_start = instant::Instant::now();
         
+        // DEBUG: Log entity spans being passed to CST
+        #[cfg(target_arch = "wasm32")]
+        {
+            let span_info: Vec<_> = all_spans.iter()
+                .map(|s| format!("{}@{}-{}", s.label, s.start, s.end))
+                .collect();
+            web_sys::console::log_1(&format!(
+                "[CST Debug] Phase 7: {} entity spans for CST: {:?}",
+                all_spans.len(),
+                span_info
+            ).into());
+        }
+        
         // Collect existing edges from explicit triples for graph inference
         let existing_edges: Vec<(String, String, String)> = result.triples
             .iter()
@@ -489,7 +519,7 @@ impl DocumentCortex {
         self.incremental_state = Some(IncrementalState {
             chunks: incremental::chunk_text(text),
             extracted_items: ExtractedItems {
-                relations: result.relations.clone(),
+                unified_relations: result.unified_relations.clone(),
                 implicit: result.implicit.clone(),
                 triples: result.triples.clone(),
                 temporal: result.temporal.clone(),

@@ -14,7 +14,7 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
 use crate::scanner::{
-    ExtractedRelation, ExtractedTriple, ImplicitMention, TemporalMention,
+    ExtractedTriple, ImplicitMention, TemporalMention, UnifiedRelation,
 };
 
 // =============================================================================
@@ -134,7 +134,7 @@ impl Delta {
 /// Cached extracted items from a previous scan
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ExtractedItems {
-    pub relations: Vec<ExtractedRelation>,
+    pub unified_relations: Vec<UnifiedRelation>,
     pub implicit: Vec<ImplicitMention>,
     pub triples: Vec<ExtractedTriple>,
     pub temporal: Vec<TemporalMention>,
@@ -173,19 +173,19 @@ pub trait HasSpan {
 }
 
 // Implement HasSpan for all extraction types
-impl HasSpan for ExtractedRelation {
-    fn start(&self) -> usize { self.head_start }
-    fn end(&self) -> usize { self.tail_end }
-    fn set_start(&mut self, start: usize) { 
-        let diff = start as i64 - self.head_start as i64;
-        self.head_start = start;
-        self.head_end = (self.head_end as i64 + diff) as usize;
-        self.tail_start = (self.tail_start as i64 + diff) as usize;
-        self.tail_end = (self.tail_end as i64 + diff) as usize;
-        self.pattern_start = (self.pattern_start as i64 + diff) as usize;
-        self.pattern_end = (self.pattern_end as i64 + diff) as usize;
+impl HasSpan for UnifiedRelation {
+    fn start(&self) -> usize { self.span.map(|(s, _)| s).unwrap_or(0) }
+    fn end(&self) -> usize { self.span.map(|(_, e)| e).unwrap_or(0) }
+    fn set_start(&mut self, start: usize) {
+        if let Some((_, end)) = self.span {
+            self.span = Some((start, end));
+        }
     }
-    fn set_end(&mut self, _end: usize) { /* handled by set_start */ }
+    fn set_end(&mut self, end: usize) {
+        if let Some((start, _)) = self.span {
+            self.span = Some((start, end));
+        }
+    }
 }
 
 impl HasSpan for ImplicitMention {

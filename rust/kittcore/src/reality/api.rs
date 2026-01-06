@@ -274,18 +274,20 @@ impl RealityCortex {
             })
             .collect();
 
-        let relations = self.relation_cortex.extract_legacy(text, &entity_spans);
+        let (relations, _) = self.relation_cortex.extract(text, &entity_spans, &[]);
 
         // ═══════════════════════════════════════════════════════════════════
         // LAYER 3: Convert relations to spans for CST
         // ═══════════════════════════════════════════════════════════════════
         for rel in &relations {
-            input_spans.push(InputSpan {
-                start: rel.pattern_start,
-                end: rel.pattern_end,
-                label: Some(rel.relation_type.clone()),
-                kind: "Relation".to_string(),
-            });
+            if let Some((start, end)) = rel.span {
+                input_spans.push(InputSpan {
+                    start,
+                    end,
+                    label: Some(rel.relation_type.clone()),
+                    kind: "Relation".to_string(),
+                });
+            }
         }
 
         // Sort spans by position
