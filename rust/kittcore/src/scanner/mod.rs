@@ -19,7 +19,8 @@ pub mod constraints;  // NEW: Ref validation (TDD)
 pub mod projections;  // NEW: Views & projections (TDD)
 pub mod structured_relation;  // NEW: Phase 1 - Structure-based relation extraction (TDD)
 pub mod relation_filter;      // NEW: Sidecar filter for relationship tuning
-pub mod verb_morphology;      // NEW: Inflection-based verb recognition
+pub mod verb_morphology;      // NEW: Unified VerbLexicon with morphology + semantics
+pub mod relation_schema;      // NEW: Type-safe relation schemas with validation
 
 // Note: core::* removed to avoid ambiguous ScanResult/ScanStats re-export with document::*
 // Use scanner::core::DocumentScanner directly if needed
