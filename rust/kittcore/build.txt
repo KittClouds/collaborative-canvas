@@ -1,29 +1,19 @@
-node.exe : [INFO]: Checking 
-for the Wasm target...
-At C:\Users\shuga\AppData\Ro
-aming\npm\wasm-pack.ps1:24 
-char:5
-+     & "node$exe"  "$basedi
-r/node_modules/wasm-pack/run
-.js" $args
-+     ~~~~~~~~~~~~~~~~~~~~~~
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-~~~~~~~~~~
+cargo : warning: unused 
+import: `RelationSource`
+At line:1 char:1
++ cargo build --target 
+wasm32-unknown-unknown 2>&1 
+| Out-File -FilePath ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          
-    : NotSpecified: ([INFO  
-  ]: Checking for the Was   
- m target...:String) [],    
- RemoteException
+    : NotSpecified: (warni  
+  ng: unused import: `Rel   
+ ationSource`:String) []    
+, RemoteException
     + FullyQualifiedErrorId 
     : NativeCommandError
  
-[INFO]: Compiling to Wasm...
-   Compiling kittcore 
-v0.1.0 (C:\Users\shuga\1kitt
-root\1code\collaborative-can
-vas\rust\kittcore)
-warning: unused import: 
-`RelationSource`
   --> src\scanner\document.r
 s:19:50
    |
@@ -316,26 +306,6 @@ mag_b.sqrt());
 mag_a.sqrt() * mag_b.sqrt();
     |
 
-warning: unused doc comment
-  --> src\db\mod.rs:14:1
-   |
-14 | /// Global VFS utility 
-handle (stored after 
-installation)
-   | ^^^^^^^^^^^^^^^^^^^^^^^
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-^^^^^^ rustdoc does not 
-generate documentation for 
-macro invocations
-   |
-   = help: to document an 
-item produced by a macro, 
-the macro must produce the 
-documentation as part of 
-its expansion
-   = note: `#[warn(unused_do
-c_comments)]` on by default
-
 warning: value assigned to 
 `head_idx` is never read
    --> src\scanner\chunker.r
@@ -506,56 +476,10 @@ DialogueAttributor,
     |     ^^^^^^^^^^
 
 warning: `kittcore` (lib) 
-generated 34 warnings (run 
+generated 33 warnings (run 
 `cargo fix --lib -p 
 kittcore` to apply 21 
 suggestions)
-    Finished `release` 
-profile [optimized] 
-target(s) in 1m 28s
-[INFO]: Installing 
-wasm-bindgen...
-[INFO]: Optimizing wasm 
-binaries with `wasm-opt`...
-child not found in parent
-UNREACHABLE executed at D:\a
-\binaryen\binaryen\src\passe
-s\Precompute.cpp:838!
-Error: failed to execute 
-`wasm-opt`: exited with 
-exit code: 0xc0000409
-  full command: "C:\\Users\\
-shuga\\AppData\\Local\\.wasm
--pack\\wasm-opt-cdcb9e877b68
-d02e\\bin/wasm-opt.exe" "C:\
-\Users\\shuga\\1kittroot\\1c
-ode\\collaborative-canvas\\s
-rc\\lib\\wasm\\kittcore\\kit
-tcore_bg.wasm" "-o" "C:\\Use
-rs\\shuga\\1kittroot\\1code\
-\collaborative-canvas\\src\\
-lib\\wasm\\kittcore\\kittcor
-e_bg.wasm-opt.wasm" "-O"
-To disable `wasm-opt`, add 
-`wasm-opt = false` to your 
-package metadata in your 
-`Cargo.toml`.
-Caused by: failed to 
-execute `wasm-opt`: exited 
-with exit code: 0xc0000409
-  full command: "C:\\Users\\
-shuga\\AppData\\Local\\.wasm
--pack\\wasm-opt-cdcb9e877b68
-d02e\\bin/wasm-opt.exe" "C:\
-\Users\\shuga\\1kittroot\\1c
-ode\\collaborative-canvas\\s
-rc\\lib\\wasm\\kittcore\\kit
-tcore_bg.wasm" "-o" "C:\\Use
-rs\\shuga\\1kittroot\\1code\
-\collaborative-canvas\\src\\
-lib\\wasm\\kittcore\\kittcor
-e_bg.wasm-opt.wasm" "-O"
-To disable `wasm-opt`, add 
-`wasm-opt = false` to your 
-package metadata in your 
-`Cargo.toml`.
+    Finished `dev` profile 
+[unoptimized + debuginfo] 
+target(s) in 0.39s

@@ -12,31 +12,19 @@ import {
     DropdownMenuItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
+    DropdownMenuSub,
+    DropdownMenuSubTrigger,
+    DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { useJotaiNotes } from '@/hooks/useJotaiNotes';
 import { cn } from '@/lib/utils';
-import { Pencil, Plus, X, FolderPlus, Star, StarOff, LinkIcon } from 'lucide-react';
+import { Pencil, Plus, X, FolderPlus, Star, StarOff, LinkIcon, Sparkles } from 'lucide-react';
 
 interface ArboristTreeViewProps {
     searchTerm?: string;
     className?: string;
 }
 
-/**
- * ArboristTreeView - Sleeker tree view using V2 node component (now standard)
- * 
- * Visual changes:
- * - Smaller row height (28px vs 32px)
- * - Tighter indent (16px vs 20px)
- * - Uses V2 CSS class for refined styling
- * 
- * Functionality preserved 1:1:
- * - All selection, rename, move callbacks
- * - Context menu with full functionality
- * - TypedFolderMenu integration
- * - Search filtering
- * - Resize observer
- */
 export function ArboristTreeView({
     searchTerm = '',
     className
@@ -65,6 +53,7 @@ export function ArboristTreeView({
 
         const observer = new ResizeObserver((entries) => {
             for (const entry of entries) {
+                // Adjust height and width to fill container
                 setTreeHeight(entry.contentRect.height || 600);
                 setTreeWidth(entry.contentRect.width || 300);
             }
@@ -74,13 +63,13 @@ export function ArboristTreeView({
         return () => observer.disconnect();
     }, []);
 
-    // Build Arborist-compatible tree - PRESERVED 1:1
+    // Build Arborist-compatible tree
     const treeData = useMemo(
         () => buildArboristTree(folderTree, globalNotes),
         [folderTree, globalNotes]
     );
 
-    // Handle node selection - PRESERVED 1:1
+    // Handle node selection (click)
     const handleSelect = useCallback((nodes: NodeApi<ArboristNode>[]) => {
         const node = nodes[0];
         if (!node) return;
@@ -88,9 +77,10 @@ export function ArboristTreeView({
         if (node.data.type === 'note') {
             selectNote(node.id);
         }
+        // Folders just toggle open/close (handled by Tree component)
     }, [selectNote]);
 
-    // Handle node rename - PRESERVED 1:1
+    // Handle node rename
     const handleRename = useCallback(({ node, name }: { node: any; name: string }) => {
         const nodeId = node.id;
         const nodeData = node.data;
@@ -101,7 +91,7 @@ export function ArboristTreeView({
         }
     }, [updateFolder, updateNote]);
 
-    // Handle node move - PRESERVED 1:1
+    // Handle node move (drag-and-drop)
     const handleMove = useCallback(async ({ dragIds, parentId, index }: {
         dragIds: string[];
         parentId: string | null;
@@ -111,11 +101,13 @@ export function ArboristTreeView({
         const node = treeRef.current?.get(dragId);
         if (!node) return;
 
+        // Get the target parent node to check for network auto-creation
         const targetParent = parentId ? treeRef.current?.get(parentId) : null;
 
         if (node.data.type === 'folder') {
             await updateFolder(dragId, { parent_id: parentId || null });
 
+            // Check for network auto-creation if moving an entity folder into a typed folder
             if (targetParent?.data.entityKind && node.data.entityKind) {
                 try {
                     const { onEntityAddedToFolder } = await import('@/lib/folders');
@@ -132,6 +124,7 @@ export function ArboristTreeView({
         } else {
             await updateNote(dragId, { parent_id: parentId || null });
 
+            // Check for network auto-creation if moving an entity note into a typed folder
             if (targetParent?.data.entityKind && node.data.entityKind) {
                 try {
                     const { onEntityAddedToFolder } = await import('@/lib/folders');
@@ -148,14 +141,14 @@ export function ArboristTreeView({
         }
     }, [updateFolder, updateNote]);
 
-    // Handle context menu - PRESERVED 1:1
+    // Handle context menu
     const handleContextMenu = useCallback((node: ArboristNode, e: React.MouseEvent) => {
         e.preventDefault();
         setContextNode(node);
         setContextMenuPos({ x: e.clientX, y: e.clientY });
     }, []);
 
-    // Context menu actions - ALL PRESERVED 1:1
+    // Context menu actions
     const handleDeleteNode = useCallback(() => {
         if (!contextNode) return;
         if (contextNode.type === 'folder') {
@@ -220,7 +213,7 @@ export function ArboristTreeView({
         setContextNode(null);
     }, [contextNode, createFolder]);
 
-    // Search filtering - PRESERVED 1:1
+    // Search filtering
     const searchMatch = useCallback((node: any) => {
         if (!searchTerm) return true;
         const query = searchTerm.toLowerCase();
@@ -234,8 +227,8 @@ export function ArboristTreeView({
                 data={treeData}
                 width={treeWidth}
                 height={treeHeight}
-                rowHeight={28}  // V2: Smaller row height
-                indent={16}     // V2: Tighter indent
+                rowHeight={32}
+                indent={20}
                 overscanCount={10}
                 searchTerm={searchTerm}
                 searchMatch={searchMatch}
@@ -244,7 +237,7 @@ export function ArboristTreeView({
                 onMove={handleMove}
                 disableDrag={false}
                 disableDrop={false}
-                className="arborist-tree-v2"
+                className="arborist-tree"
             >
                 {(props) => (
                     <ArboristTreeNode
@@ -254,7 +247,7 @@ export function ArboristTreeView({
                 )}
             </Tree>
 
-            {/* Context Menu - PRESERVED 1:1 */}
+            {/* Context Menu */}
             <DropdownMenu
                 open={!!contextNode}
                 onOpenChange={(open) => !open && setContextNode(null)}

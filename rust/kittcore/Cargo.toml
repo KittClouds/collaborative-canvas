@@ -54,6 +54,11 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 # NOTE: micro-hnsw-wasm requires no_std panic=abort, conflicts with our std usage
 # Using brute-force cosine similarity for now (fast enough for 10k chunks)
 
+# SQLite WASM (experimental - Rust-side DB access with OPFS)
+# Requires LLVM/Clang installed for C→WASM compilation
+sqlite-wasm-rs = "0.5"
+sqlite-wasm-vfs = "0.1"
+
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
 

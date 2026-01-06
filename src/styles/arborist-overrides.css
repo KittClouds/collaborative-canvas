@@ -1,27 +1,27 @@
-/* react-arborist overrides */
+/* react-arborist V2 overrides - sleeker, less cartoonish */
 
-.arborist-tree {
+.arborist-tree-v2 {
     outline: none;
 }
 
-/* Hide default cursor/drop indicator if needed since we use custom styles */
-.arborist-tree [role="treeitem"] {
+/* V2: More refined tree item styling */
+.arborist-tree-v2 [role="treeitem"] {
     cursor: pointer;
-    border-radius: 4px;
-    transition: background-color 0.15s ease;
+    border-radius: 3px;
+    transition: background-color 0.1s ease;
 }
 
-.arborist-tree [role="treeitem"]:hover {
-    background-color: var(--sidebar-accent);
+.arborist-tree-v2 [role="treeitem"]:hover {
+    background-color: hsl(var(--sidebar-accent) / 0.5);
 }
 
-.arborist-tree [role="treeitem"][aria-selected="true"] {
-    background-color: var(--accent);
+.arborist-tree-v2 [role="treeitem"][aria-selected="true"] {
+    background-color: hsl(var(--accent) / 0.8);
     color: var(--accent-foreground);
 }
 
-/* Drag and Drop indicators */
-.arborist-tree .drag-layer {
+/* V2: Thinner, more subtle drag layer */
+.arborist-tree-v2 .drag-layer {
     pointer-events: none;
     position: absolute;
     top: 0;
@@ -30,28 +30,74 @@
     height: 100%;
 }
 
-.arborist-tree .drop-cursor {
-    height: 2px;
+/* V2: Thinner drop cursor */
+.arborist-tree-v2 .drop-cursor {
+    height: 1px;
     background: var(--sidebar-ring);
     position: absolute;
     z-index: 100;
     pointer-events: none;
+    box-shadow: 0 0 4px var(--sidebar-ring);
 }
 
-/* Custom scrollbar for the tree */
-.arborist-tree::-webkit-scrollbar {
-    width: 4px;
+/* V2: Thinner, more elegant scrollbar */
+.arborist-tree-v2::-webkit-scrollbar {
+    width: 3px;
 }
 
-.arborist-tree::-webkit-scrollbar-track {
+.arborist-tree-v2::-webkit-scrollbar-track {
     background: transparent;
 }
 
-.arborist-tree::-webkit-scrollbar-thumb {
-    background: var(--muted);
+.arborist-tree-v2::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted) / 0.5);
     border-radius: 10px;
 }
 
-.arborist-tree::-webkit-scrollbar-thumb:hover {
+.arborist-tree-v2::-webkit-scrollbar-thumb:hover {
     background: var(--muted-foreground);
+}
+
+/* V2: Subtle selection glow for better visual feedback */
+.arborist-tree-v2 [role="treeitem"][aria-selected="true"]::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent-foreground);
+    border-radius: 0 2px 2px 0;
+}
+
+/* V2: Animated particle flowing down tree lines */
+@keyframes particleFlow {
+    0% {
+        top: 0;
+        opacity: 0;
+    }
+
+    10% {
+        opacity: 1;
+    }
+
+    90% {
+        opacity: 1;
+    }
+
+    100% {
+        top: 100%;
+        opacity: 0;
+    }
+}
+
+.tree-line-particle {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    animation: particleFlow 2s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 5;
+    box-shadow: 0 0 4px currentColor, 0 0 8px currentColor;
 }

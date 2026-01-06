@@ -57,6 +57,7 @@ pub mod reality;
 pub mod embeddings;
 pub mod rag;
 pub mod hnsw;
+pub mod db;  // SQLite WASM (experimental)
 
 // Public exports - Scanner (explicit to avoid incremental collision with resorank)
 pub use scanner::{
@@ -117,6 +118,9 @@ pub use rag::{
     RagChunker, Chunk as RagChunk,
     VectorIndex, SearchResult as VectorSearchResult,
 };
+
+// Public exports - SQLite WASM (experimental)
+pub use db::WasmDatabase;
 
 use wasm_bindgen::prelude::*;
 

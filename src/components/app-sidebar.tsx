@@ -51,6 +51,7 @@ import { RankedSearchResults } from "@/components/search/RankedSearchResults";
 import { EntitiesPanel } from "@/components/EntitiesPanel";
 import { SettingsPanel } from "@/components/settings";
 import { ArboristTreeView } from '@/components/tree/ArboristTreeView';
+import '@/styles/arborist-overrides.css';
 import { NetworkFolderCreationMenu } from '@/components/network/NetworkFolderCreation';
 import { useResoRankSearchWithDebounce } from '@/hooks/useResoRankSearch';
 import { GraphLogo } from "@/components/ui/GraphLogo";
