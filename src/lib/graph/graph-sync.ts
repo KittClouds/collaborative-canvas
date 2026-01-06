@@ -47,17 +47,17 @@ export async function syncEntitiesToCozo(
         });
     }
 
-    // From triples (source and target entities)
+    // From triples (source and target entities) - preserve entity kinds
     for (const triple of result.triples || []) {
         entities.push({
             id: `entity:${triple.source.toLowerCase().replace(/\s+/g, '_')}`,
             name: triple.source,
-            kind: 'CONCEPT',
+            kind: (triple as any).source_kind || 'CONCEPT',
         });
         entities.push({
             id: `entity:${triple.target.toLowerCase().replace(/\s+/g, '_')}`,
             name: triple.target,
-            kind: 'CONCEPT',
+            kind: (triple as any).target_kind || 'CONCEPT',
         });
     }
 

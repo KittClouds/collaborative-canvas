@@ -13,7 +13,8 @@ export enum RelationshipSource {
     CO_OCCURRENCE = 'CO_OCCURRENCE',
     IMPORT = 'IMPORT',
     TIMELINE = 'TIMELINE',
-    NETWORK = 'NETWORK'
+    NETWORK = 'NETWORK',
+    EXPLICIT_SYNTAX = 'EXPLICIT_SYNTAX'  // From [X] (REL) [Y] inline syntax
 }
 
 export interface RelationshipProvenance {
@@ -92,5 +93,6 @@ export const SOURCE_WEIGHTS: Record<RelationshipSource, number> = {
     [RelationshipSource.CO_OCCURRENCE]: 0.4,
     [RelationshipSource.IMPORT]: 0.8,
     [RelationshipSource.TIMELINE]: 0.9,
-    [RelationshipSource.NETWORK]: 1.0
+    [RelationshipSource.NETWORK]: 1.0,
+    [RelationshipSource.EXPLICIT_SYNTAX]: 1.0  // User-authored = highest confidence
 };

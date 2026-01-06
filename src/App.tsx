@@ -10,6 +10,7 @@ import { jotaiStore, initializeJotaiStore } from "@/lib/store";
 import Index from "./pages/Index";
 import FantasyCalendarPage from "./pages/FantasyCalendarPage";
 import GraphExplorerPage from "./pages/GraphExplorerPage";
+import { WikiPage } from "./features/wiki";
 import NotFound from "./pages/NotFound";
 import { initializeStorage, getBlueprintStore } from "@/lib/storage/index";
 import { BlueprintHubProvider } from "@/features/blueprint-hub/context/BlueprintHubContext";
@@ -68,6 +69,30 @@ const App = () => {
                 console.log("Jotai store initialized");
                 setJotaiReady(true);
 
+                // 🚀 PRE-LOAD ENTITIES FOR INSTANT HIGHLIGHTING
+                // This hydrates the highlighter before the first render so it can highlight immediately
+                setInitStatus("Pre-loading entities for highlighting...");
+                try {
+                    const { scannerFacade } = await import("@/lib/scanner");
+                    const { highlighterBridge } = await import("@/lib/highlighter");
+                    const allEntities = await entityRegistry.getAllEntities();
+
+                    if (allEntities.length > 0) {
+                        const entityDefs = allEntities.map(e => ({
+                            id: e.id,
+                            label: e.label,
+                            kind: e.kind,
+                            aliases: e.aliases || [],
+                        }));
+
+                        await scannerFacade.hydrateEntities(entityDefs);
+                        highlighterBridge.hydrateEntities(entityDefs);
+                        console.log(`Pre-loaded ${allEntities.length} entities for instant highlighting`);
+                    }
+                } catch (err) {
+                    console.warn("Failed to pre-load entities:", err);
+                }
+
                 // Initialize Binding Engine
                 setInitStatus("Initializing binding engine...");
                 await bindingEngine.initialize();
@@ -110,6 +135,7 @@ const App = () => {
                                             <Route path="/" element={<Index />} />
                                             <Route path="/calendar" element={<FantasyCalendarPage />} />
                                             <Route path="/graph" element={<GraphExplorerPage />} />
+                                            <Route path="/wiki/*" element={<WikiPage />} />
                                             <Route path="*" element={<NotFound />} />
                                         </Routes>
                                     </BrowserRouter>

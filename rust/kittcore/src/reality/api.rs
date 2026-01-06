@@ -274,7 +274,7 @@ impl RealityCortex {
             })
             .collect();
 
-        let relations = self.relation_cortex.extract(text, &entity_spans);
+        let relations = self.relation_cortex.extract_legacy(text, &entity_spans);
 
         // ═══════════════════════════════════════════════════════════════════
         // LAYER 3: Convert relations to spans for CST

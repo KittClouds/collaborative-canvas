@@ -73,7 +73,43 @@ class ExtractorFacade {
                 await persistTemporalMentions(noteId, result.temporal, fullText);
             }
 
-            // Persist extracted relationships (batch write)
+            // Persist unified relations (CST + Graph inference - NEW PIPELINE)
+            const unifiedRelations = (result as any).unified_relations;
+            if (unifiedRelations && unifiedRelations.length > 0) {
+                const inputs = unifiedRelations
+                    .map((rel: any) => {
+                        const head = entityRegistry.findEntityByLabel(rel.head);
+                        const tail = entityRegistry.findEntityByLabel(rel.tail);
+                        if (!head || !tail) return null;
+
+                        // Map source type to RelationshipSource
+                        const source = rel.source === 'CST'
+                            ? RelationshipSource.NER_EXTRACTION  // CST extraction
+                            : RelationshipSource.NER_EXTRACTION; // Graph inference (same for now)
+
+                        return {
+                            sourceEntityId: head.id,
+                            targetEntityId: tail.id,
+                            type: rel.relation_type,
+                            provenance: [{
+                                source,
+                                originId: noteId,
+                                confidence: rel.confidence,
+                                timestamp: new Date()
+                            }]
+                        };
+                    })
+                    .filter((input: any): input is NonNullable<typeof input> => input !== null);
+
+                if (inputs.length > 0) {
+                    const persistedCount = relationshipRegistry.addBatch(inputs);
+                    if (persistedCount > 0) {
+                        console.log(`[Extractor] Persisted ${persistedCount}/${unifiedRelations.length} unified relations (CST+Graph)`);
+                    }
+                }
+            }
+
+            // Legacy: Persist old-style relations (now deprecated, usually empty)
             if (result.relations && result.relations.length > 0) {
                 // Pre-resolve all entity labels to IDs
                 const inputs = result.relations
@@ -98,24 +134,72 @@ class ExtractorFacade {
                 if (inputs.length > 0) {
                     const persistedCount = relationshipRegistry.addBatch(inputs);
                     if (persistedCount > 0) {
-                        console.log(`[Extractor] Persisted ${persistedCount}/${result.relations.length} relationships (batch)`);
+                        console.log(`[Extractor] Persisted ${persistedCount}/${result.relations.length} legacy relationships`);
                     }
                 }
             }
 
+            // Persist triples as unified relationships (explicit [X] (REL) [Y] syntax)
+            // This auto-registers entities and creates relationships with highest confidence
+            if (result.triples && result.triples.length > 0) {
+                let triplesConverted = 0;
+                for (const triple of result.triples) {
+                    try {
+                        // Cast to access optional source_kind/target_kind from Rust
+                        const t = triple as any;
+                        const sourceKind = t.source_kind || 'CONCEPT';
+                        const targetKind = t.target_kind || 'CONCEPT';
+
+                        // Auto-register entities from explicit syntax
+                        const sourceResult = await entityRegistry.registerEntity(
+                            triple.source,
+                            sourceKind,
+                            noteId,
+                            { source: 'extraction' }
+                        );
+                        const targetResult = await entityRegistry.registerEntity(
+                            triple.target,
+                            targetKind,
+                            noteId,
+                            { source: 'extraction' }
+                        );
+
+                        // Create unified relationship
+                        relationshipRegistry.add({
+                            sourceEntityId: sourceResult.entity.id,
+                            targetEntityId: targetResult.entity.id,
+                            type: triple.predicate,
+                            provenance: [{
+                                source: RelationshipSource.EXPLICIT_SYNTAX,
+                                originId: noteId,
+                                confidence: 1.0, // Explicit syntax = highest confidence
+                                timestamp: new Date(),
+                            }]
+                        });
+                        triplesConverted++;
+                    } catch (err) {
+                        console.warn(`[Extractor] Failed to convert triple: ${triple.source} -> ${triple.predicate} -> ${triple.target}`, err);
+                    }
+                }
+                if (triplesConverted > 0) {
+                    console.log(`[Extractor] Converted ${triplesConverted}/${result.triples.length} triples → relationships`);
+                }
+            }
+
             // Log all extraction results
+            const stats = result.stats as any;
             console.log(`[Extractor] Extraction complete:`, {
-                implicit: result.stats.implicit_found,
-                relations: result.stats.relations_found,
-                triples: result.stats.triples_found,
-                temporal: result.stats.temporal_found,
-                time_us: result.stats.timings?.total_us,
+                implicit: stats.implicit_found,
+                unified: stats.unified_found || 0,
+                triples: stats.triples_found,
+                temporal: stats.temporal_found,
+                time_us: stats.timings?.total_us,
             });
 
-            // Log relation details if any found
-            if (result.relations && result.relations.length > 0) {
-                console.log(`[Extractor] Relations:`, result.relations.map(r =>
-                    `${r.head_entity} -[${r.relation_type}]-> ${r.tail_entity}`
+            // Log unified relation details if any found
+            if (unifiedRelations && unifiedRelations.length > 0) {
+                console.log(`[Extractor] Unified Relations:`, unifiedRelations.map((r: any) =>
+                    `${r.head} -[${r.relation_type}]-> ${r.tail} (${r.source})`
                 ));
             }
 

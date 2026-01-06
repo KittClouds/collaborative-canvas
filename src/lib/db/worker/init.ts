@@ -73,14 +73,106 @@ function getTableColumns(db: SQLite3Database, tableName: string): Set<string> {
   }
 }
 
+/**
+ * Clean up orphaned temp tables from failed migrations.
+ * This runs UNCONDITIONALLY at every startup to recover from partial failures.
+ */
+function cleanupOrphanedTables(db: SQLite3Database): void {
+  console.log('[SQLite Worker] Running orphan cleanup...');
+
+  // Check what tables exist (including temp tables from failed migrations)
+  try {
+    const tables = db.exec({
+      sql: `SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%temp%'`,
+      returnValue: 'resultRows',
+    }) as unknown[][];
+
+    if (tables && tables.length > 0) {
+      console.log('[SQLite Worker] Found temp tables:', tables.map(t => t[0]));
+
+      for (const row of tables) {
+        const tableName = row[0] as string;
+        if (tableName.includes('nodes') && tableName.includes('old')) {
+          console.log(`[SQLite Worker] Dropping orphaned table: ${tableName}`);
+          try {
+            db.exec(`DROP TABLE IF EXISTS "${tableName}"`);
+            console.log(`[SQLite Worker] Dropped ${tableName}`);
+          } catch (err) {
+            console.warn(`[SQLite Worker] Failed to drop ${tableName}:`, err);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[SQLite Worker] Error checking for temp tables:', err);
+  }
+
+  // Also check for any triggers that might reference the old table
+  try {
+    const triggers = db.exec({
+      sql: `SELECT name, sql FROM sqlite_master WHERE type='trigger'`,
+      returnValue: 'resultRows',
+    }) as unknown[][];
+
+    if (triggers && triggers.length > 0) {
+      for (const row of triggers) {
+        const triggerName = row[0] as string;
+        const triggerSql = row[1] as string;
+
+        if (triggerSql && triggerSql.includes('nodes_temp_old')) {
+          console.log(`[SQLite Worker] Found stale trigger referencing nodes_temp_old: ${triggerName}`);
+          try {
+            db.exec(`DROP TRIGGER IF EXISTS "${triggerName}"`);
+            console.log(`[SQLite Worker] Dropped stale trigger: ${triggerName}`);
+          } catch (err) {
+            console.warn(`[SQLite Worker] Failed to drop trigger ${triggerName}:`, err);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[SQLite Worker] Error checking triggers:', err);
+  }
+
+  // Original cleanup logic
+  const tempOldExists = getTableColumns(db, 'nodes_temp_old').size > 0;
+  const nodesExists = getTableColumns(db, 'nodes').size > 0;
+
+  if (tempOldExists && !nodesExists) {
+    console.warn('[SQLite Worker] Detected orphaned nodes_temp_old - recovering...');
+    try {
+      db.exec('ALTER TABLE nodes_temp_old RENAME TO nodes');
+      console.log('[SQLite Worker] Recovered nodes table from nodes_temp_old');
+    } catch (err) {
+      console.error('[SQLite Worker] Failed to recover nodes table:', err);
+    }
+  } else if (tempOldExists && nodesExists) {
+    console.warn('[SQLite Worker] Dropping orphaned nodes_temp_old table...');
+    try {
+      db.exec('DROP TABLE IF EXISTS nodes_temp_old');
+      console.log('[SQLite Worker] Dropped orphaned nodes_temp_old');
+    } catch (err) {
+      console.warn('[SQLite Worker] Failed to drop nodes_temp_old:', err);
+    }
+  } else {
+    console.log('[SQLite Worker] No orphaned tables found (nodes_temp_old:', tempOldExists, ', nodes:', nodesExists, ')');
+  }
+}
+
+
+
 function migrateNodesTable(db: SQLite3Database): void {
   console.log('[SQLite Worker] Migrating nodes table using CREATE-INSERT-DROP pattern...');
+
+  // Note: orphan cleanup is now handled by cleanupOrphanedTables() which runs unconditionally
 
   const existingColumns = getTableColumns(db, 'nodes');
   if (existingColumns.size === 0) return;
 
   // 1. Rename existing table
   db.exec('ALTER TABLE nodes RENAME TO nodes_temp_old');
+
+
 
   // 2. Create new table (use the schema definition)
   const createStmt = SCHEMA_STATEMENTS.find(s => s.trim().toUpperCase().startsWith('CREATE TABLE IF NOT EXISTS NODES'))
@@ -134,8 +226,13 @@ function runMigrations(db: SQLite3Database): void {
 
   db.exec('PRAGMA foreign_keys = ON;');
 
+  // ========== UNCONDITIONAL CLEANUP ==========
+  // Clean up orphaned temp tables from failed migrations (ALWAYS runs)
+  cleanupOrphanedTables(db);
+
   const currentVersion = getSchemaVersion(db);
   console.log(`[SQLite Worker] Current schema version: ${currentVersion}, target: ${SCHEMA_VERSION}`);
+
 
   // Combine all schema statements
   const allStatements = [

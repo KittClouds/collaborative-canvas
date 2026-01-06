@@ -21,6 +21,8 @@ interface CozoContextValue {
     getEntityById: (id: string) => RegisteredEntity | null;
     findEntityByLabel: (label: string) => RegisteredEntity | null;
     getEntitiesByKind: (kind: EntityKind) => RegisteredEntity[];
+    deleteEntity: (id: string) => Promise<boolean>;
+    clearAllEntities: () => Promise<void>;
 }
 
 const CozoContext = createContext<CozoContextValue | null>(null);
@@ -106,6 +108,31 @@ export function CozoProvider({ children }: CozoProviderProps) {
         return entityRegistry.getEntitiesByKind(kind);
     }, [isReady]);
 
+    const deleteEntity = useCallback(async (id: string): Promise<boolean> => {
+        if (!isReady) return false;
+        try {
+            const result = await entityRegistry.deleteEntity(id);
+            if (result) {
+                refreshEntities();
+            }
+            return result;
+        } catch (err) {
+            console.error('[CozoContext] Failed to delete entity:', err);
+            return false;
+        }
+    }, [isReady, refreshEntities]);
+
+    const clearAllEntities = useCallback(async (): Promise<void> => {
+        if (!isReady) return;
+        try {
+            await entityRegistry.clear();
+            refreshEntities();
+        } catch (err) {
+            console.error('[CozoContext] Failed to clear entities:', err);
+            throw err;
+        }
+    }, [isReady, refreshEntities]);
+
     const value = useMemo<CozoContextValue>(() => ({
         isReady,
         isInitializing,
@@ -117,6 +144,8 @@ export function CozoProvider({ children }: CozoProviderProps) {
         getEntityById,
         findEntityByLabel,
         getEntitiesByKind,
+        deleteEntity,
+        clearAllEntities,
     }), [
         isReady,
         isInitializing,
@@ -127,6 +156,8 @@ export function CozoProvider({ children }: CozoProviderProps) {
         getEntityById,
         findEntityByLabel,
         getEntitiesByKind,
+        deleteEntity,
+        clearAllEntities,
     ]);
 
     return (

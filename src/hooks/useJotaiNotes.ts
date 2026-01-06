@@ -76,6 +76,9 @@ export function useJotaiNotes() {
 
     /**
      * Create new note
+     * Note: We return a constructed note object instead of looking it up
+     * because the Jotai store update is synchronous but React's useAtomValue
+     * won't reflect the change until the next render cycle.
      */
     const handleCreateNote = async (
         folderId?: string,
@@ -83,14 +86,28 @@ export function useJotaiNotes() {
         sourceNoteId?: string
     ): Promise<Note> => {
         const noteId = await createNote({ folderId, title, sourceNoteId });
+        const timestamp = Date.now();
 
-        // Return created note (find in store)
-        const createdNote = notes.find(n => n.id === noteId);
-        if (!createdNote) {
-            throw new Error('Created note not found in store');
-        }
-
-        return createdNote;
+        // Return a note object matching what createNoteAtom created
+        // This avoids a race condition where notes.find() uses stale state
+        return {
+            id: noteId,
+            type: 'NOTE',
+            label: title || 'Untitled Note',
+            title: title || 'Untitled Note',
+            content: '',
+            parent_id: folderId || null,
+            parentId: folderId || null,
+            folderId: folderId || null,
+            source_note_id: sourceNoteId,
+            is_entity: false,
+            isEntity: false,
+            favorite: 0,
+            created_at: timestamp,
+            createdAt: timestamp,
+            updated_at: timestamp,
+            updatedAt: timestamp,
+        } as unknown as Note;
     };
 
     /**

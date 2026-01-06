@@ -162,6 +162,8 @@ const DEFAULT_CONFIG: RustScannerConfig = {
  */
 export class ConductorBridge {
     private conductor: any = null; // Will be ScanConductor when WASM loaded
+    private relationFilter: any = null; // RelationFilter for post-processing
+    private filterEnabled = true; // Toggle for A/B testing
     private ready = false;
     private readyCallbacks: Array<() => void> = [];
     private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -186,7 +188,17 @@ export class ConductorBridge {
             await wasm.default();
             this.conductor = new wasm.ScanConductor();
             this.conductor.init();
-            console.log('[ConductorBridge] Initialized, state:', this.conductor.stateName());
+
+            // Initialize RelationFilter for post-processing
+            this.relationFilter = new wasm.RelationFilter();
+            // Configure filter settings (can be tuned later)
+            this.relationFilter.setMinConfidence(0.4);
+            this.relationFilter.setDistanceDecay(true);
+            this.relationFilter.setSameSentenceBonus(1.15);
+            this.relationFilter.setCrossSentencePenalty(0.7);
+            this.relationFilter.setMaxDistance(500);
+
+            console.log('[ConductorBridge] Initialized with RelationFilter, state:', this.conductor.stateName());
         } catch (error) {
             console.error('[ConductorBridge] Failed to initialize:', error);
             throw error;
@@ -297,6 +309,17 @@ export class ConductorBridge {
         return this.executeScan(noteId, text, entitySpans);
     }
 
+    /** Enable/disable relationship filtering (for A/B testing) */
+    setFilterEnabled(enabled: boolean): void {
+        this.filterEnabled = enabled;
+        console.log(`[ConductorBridge] RelationFilter ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /** Get current filter config */
+    getFilterConfig(): unknown {
+        return this.relationFilter?.getConfig() ?? null;
+    }
+
     private executeScan(noteId: string, text: string, entitySpans: EntitySpan[]): ScanResult | null {
         if (!this.conductor) return null;
 
@@ -307,6 +330,18 @@ export class ConductorBridge {
             if (!result) {
                 console.log('[ConductorBridge] Scan returned null (not ready)');
                 return null;
+            }
+
+            // Apply RelationFilter if enabled and we have relations
+            if (this.filterEnabled && this.relationFilter && result.relations && result.relations.length > 0) {
+                const rawCount = result.relations.length;
+                const filtered = this.relationFilter.filterRelations(text, result.relations) as ExtractedRelation[];
+                result.relations = filtered;
+                result.stats.relations_found = filtered.length;
+
+                if (rawCount !== filtered.length) {
+                    console.log(`[ConductorBridge] RelationFilter: ${rawCount} → ${filtered.length} relations`);
+                }
             }
 
             if (this.config.logPerformance && !result.stats.was_skipped) {

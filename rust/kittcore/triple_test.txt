@@ -2,12 +2,14 @@
 unused import: 
 `ChunkResult`
 At line:1 char:1
-+ cargo check --no-de
-fault-features 2>&1 
-| Out-File -FilePath 
-check_out ...
++ cargo test test_par
+enthesized_triple --n
+o-default-features 
+-- --nocap ...
 + ~~~~~~~~~~~~~~~~~~~
-~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~
     + CategoryInfo   
            : NotSpe  
   cified: (warning   
@@ -78,6 +80,18 @@ Serialize};
 ^^^^^^^^^
 
 warning: unused 
+import: `TextRange`
+   --> src\scanner\di
+alogue.rs:134:44
+    |
+134 |     use crate::
+scanner::chunker::{Ch
+unker, TextRange};
+    |                
+                     
+       ^^^^^^^^^
+
+warning: unused 
 import: `POS`
   --> src\scanner\str
 uctured_relation.rs:3
@@ -107,6 +121,20 @@ ChunkResult};
                      
             
 ^^^^^^^^^^^
+
+warning: unused 
+import: `TextRange`
+   --> src\reality\pa
+rser.rs:909:55
+    |
+909 |     use crate::
+scanner::chunker::{Ch
+unker, ChunkKind, 
+TextRange};
+    |                
+                     
+                  
+^^^^^^^^^
 
 warning: unused 
 imports: 
@@ -202,22 +230,6 @@ ConceptEdge};
    |                 
                      
          ^^^^^^^^^^^
-
-warning: unused 
-imports: 
-`ConceptEdge` and 
-`ConceptNode`
- --> src\reality\algo
-rithms.rs:9:34
-  |
-9 | use super::graph:
-:{ConceptGraph, 
-ConceptNode, 
-ConceptEdge};
-  |                  
-                
-^^^^^^^^^^^  
-^^^^^^^^^^^
 
 warning: unused 
 import: `EdgeKind`
@@ -356,6 +368,72 @@ mag_b.sqrt());
 mag_b.sqrt();
     |
 
+warning: unused 
+import: `HnswError`
+ --> src\hnsw\tests\h
+ybrid_tests.rs:5:40
+  |
+5 | use crate::hnsw::
+index::{Hnsw, 
+Metric, HnswError};
+  |                  
+                     
+ ^^^^^^^^^
+
+warning: unused 
+import: `crate::hnsw:
+:quantization::Scalar
+Quantized`
+ --> src\hnsw\tests\h
+ybrid_tests.rs:6:5
+  |
+6 | use crate::hnsw::
+quantization::ScalarQ
+uantized;
+  |     ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^
+
+warning: unused 
+variable: `result`
+   --> src\scanner\sy
+ntax.rs:355:22
+    |
+355 |     fn parse_ma
+tches(result: 
+JsValue) -> 
+Vec<SyntaxMatch> {
+    |                
+      ^^^^^^ help: 
+if this is 
+intentional, prefix 
+it with an 
+underscore: `_result`
+    |
+    = note: `#[warn(u
+nused_variables)]` 
+on by default
+
+warning: unused 
+variable: `i`
+    --> src\scanner\r
+elation.rs:1164:80
+     |
+1164 |         let 
+entities: 
+Vec<EntitySpan> = "AB
+CDEFGHIJ".chars().enu
+merate().map(|(i, 
+c)| {
+     |               
+                     
+                     
+                     
+  ^ help: if this is 
+intentional, prefix 
+it with an 
+underscore: `_i`
+
 warning: value 
 assigned to 
 `head_idx` is never 
@@ -393,10 +471,6 @@ intentional, prefix
 it with an 
 underscore: 
 `_resolver`
-   |
-   = note: `#[warn(un
-used_variables)]` on 
-by default
 
 warning: unused 
 variable: `quote_pos`
@@ -412,6 +486,36 @@ this is intentional,
 prefix it with an 
 underscore: 
 `_quote_pos`
+
+warning: unused 
+variable: `ng`
+   --> src\scanner\na
+rrative.rs:247:13
+    |
+247 |         let ng 
+= NarrativeGraph::new
+();
+    |             ^^ 
+help: if this is 
+intentional, prefix 
+it with an 
+underscore: `_ng`
+
+warning: unused 
+variable: `result`
+   --> src\scanner\na
+rrative.rs:312:13
+    |
+312 |         let 
+result = ng.analyze_n
+ative("Gandalf 
+walked slowly. The 
+wizard stopped.");
+    |             
+^^^^^^ help: if this 
+is intentional, 
+prefix it with an 
+underscore: `_result`
 
 warning: unused 
 variable: 
@@ -449,11 +553,64 @@ underscore:
 `_agent_pp`
 
 warning: unused 
+variable: `relations`
+   --> src\scanner\st
+ructured_relation.rs:
+828:13
+    |
+828 |         let 
+relations = extractor
+.extract_structured(t
+ext, &entities);
+    |             
+^^^^^^^^^ help: if 
+this is intentional, 
+prefix it with an 
+underscore: 
+`_relations`
+
+warning: unused 
+variable: 
+`projections`
+   --> src\reality\en
+gine.rs:791:14
+    |
+791 |         let 
+(projections, stats) 
+= engine.process_with
+_projections(text, 
+&spans);
+    |              
+^^^^^^^^^^^ help: if 
+this is intentional, 
+prefix it with an 
+underscore: 
+`_projections`
+
+warning: unused 
+variable: 
+`entity_docs`
+   --> src\reality\br
+idge.rs:310:13
+    |
+310 |         let 
+entity_docs = global.
+entity_documents();
+    |             
+^^^^^^^^^^^ help: if 
+this is intentional, 
+prefix it with an 
+underscore: 
+`_entity_docs`
+
+warning: unused 
 variable: 
 `batch_size`
    --> src\embeddings
 \model.rs:108:13
     |
+
+running 3 tests
 108 |         let 
 batch_size = 
 padded.len();
@@ -525,6 +682,75 @@ intentional, prefix
 it with an 
 underscore: `_id`
 
+warning: unused 
+variable: `q`
+   --> src\hnsw\tests
+\hnsw_tests.rs:121:9
+    |
+121 |     for q in 
+0..num_queries {
+    |         ^ 
+help: if this is 
+intentional, prefix 
+it with an 
+underscore: `_q`
+
+warning: function 
+`parse_matches` is 
+never used
+   --> src\scanner\sy
+ntax.rs:355:8
+    |
+355 |     fn parse_ma
+tches(result: 
+JsValue) -> 
+Vec<SyntaxMatch> {
+    |        
+^^^^^^^^^^^^^
+    |
+    = note: 
+`#[warn(dead_code)]` 
+on by default
+
+warning: fields 
+`valid_head_kinds` 
+and 
+`valid_tail_kinds` 
+are never read
+  --> src\scanner\rel
+ation.rs:89:5
+   |
+79 | struct 
+PatternMeta {
+   |        
+----------- fields 
+in this struct
+...
+89 |     
+valid_head_kinds: 
+Option<Vec<String>>,
+   |     
+^^^^^^^^^^^^^^^^
+90 |     /// Allowed 
+entity kinds for the 
+tail entity (None = 
+any)
+91 |     
+valid_tail_kinds: 
+Option<Vec<String>>,
+   |     
+^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`PatternMeta` has 
+derived impls for 
+the traits `Clone` 
+and `Debug`, but 
+these are 
+intentionally 
+ignored during dead 
+code analysis
+
 warning: field 
 `semantic_weight` is 
 never read
@@ -541,10 +767,6 @@ this struct
 semantic_weight: f64,
    |     
 ^^^^^^^^^^^^^^^
-   |
-   = note: 
-`#[warn(dead_code)]` 
-on by default
 
 warning: field 
 `attributor` is 
@@ -563,13 +785,98 @@ attributor:
 DialogueAttributor,
     |     ^^^^^^^^^^
 
+warning: field 
+`label` is never read
+   --> src\reality\en
+gine.rs:402:44
+    |
+402 |         Entity 
+{ start: usize, end: 
+usize, label: String 
+},
+    |         ------ 
+field in this 
+variant       ^^^^^
+    |
+    = note: 
+`TestSpan` has 
+derived impls for 
+the traits `Clone` 
+and `Debug`, but 
+these are 
+intentionally 
+ignored during dead 
+code analysis
+
+warning: fields 
+`label` and `kind` 
+are never read
+ --> src\reality\test
+s.rs:8:9
+  |
+5 | pub struct 
+MockEntity {
+  |            
+---------- fields in 
+this struct
+...
+8 |     pub label: 
+String,
+  |         ^^^^^
+9 |     pub kind: 
+String, // "Person", 
+"Place", etc.
+  |         ^^^^
+  |
+  = note: 
+`MockEntity` has 
+derived impls for 
+the traits `Clone` 
+and `Debug`, but 
+these are 
+intentionally 
+ignored during dead 
+code analysis
+
+warning: comparison 
+is useless due to 
+type limits
+   --> src\scanner\co
+nductor.rs:368:17
+    |
+368 |         assert!
+(result.stats.timings
+.total_us >= 0);
+    |                
+ ^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(u
+nused_comparisons)]` 
+on by default
+
 warning: `kittcore` 
-(lib) generated 32 
-warnings (run `cargo 
-fix --lib -p 
-kittcore` to apply 
-20 suggestions)
-    Finished `dev` 
+(lib test) generated 
+48 warnings (run 
+`cargo fix --lib -p 
+kittcore --tests` to 
+apply 23 suggestions)
+    Finished `test` 
 profile [unoptimized 
 + debuginfo] 
-target(s) in 0.34s
+target(s) in 0.36s
+     Running 
+unittests src\lib.rs 
+(target\debug\deps\ki
+ttcore-39ae43527620e8
+9b.exe)
+Found 1 triples
+  Lilith --DISCOVERS-> Ancient Facility
+Found 1 triples
+  Lilith --DISCOVERS-> Ancient Facility (Elbaph)
+test scanner::triple::tests::test_parenthesized_triple ... ok
+test scanner::triple::tests::test_parenthesized_triple_with_parens_in_label ... ok
+test scanner::unified::tests::test_parenthesized_triple ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 650 filtered out; finished in 0.03s
+

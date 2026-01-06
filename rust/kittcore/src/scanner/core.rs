@@ -252,7 +252,7 @@ impl DocumentScanner {
                 kind: None,
             }).collect();
             
-            let relations = self.relation.extract(text, &entity_spans);
+            let relations = self.relation.extract_legacy(text, &entity_spans);
             relation_time = js_sys::Date::now() - t0;
             relations
         } else {
@@ -308,7 +308,11 @@ impl DocumentScanner {
     /// Scan only for relations given entity spans (fast path)
     #[wasm_bindgen(js_name = scanRelations)]
     pub fn scan_relations(&self, text: &str, entity_spans: JsValue) -> Result<JsValue, JsValue> {
-        self.relation.js_extract(text, entity_spans)
+        let entities: Vec<EntitySpan> = serde_wasm_bindgen::from_value(entity_spans)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse entities: {}", e)))?;
+        let relations = self.relation.extract_legacy(text, &entities);
+        serde_wasm_bindgen::to_value(&relations)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
     }
 
     /// Hydrate the scanner with custom relation patterns from Blueprint Hub
