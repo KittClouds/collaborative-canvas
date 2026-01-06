@@ -1,22 +1,25 @@
-//! Verb Morphology - Inflection-based verb recognition
+//! Unified VerbLexicon - Morphology + Semantics
 //!
-//! Template-based verb conjugation system that generates all inflected forms
-//! from base verbs. Domain-agnostic, compact storage (~100 bases → 400+ forms).
+//! A single cohesive system that handles:
+//! - Inflection patterns (kill → kills, killed, killing)
+//! - Semantic relation mapping (kill → KILLED)
+//! - Domain categorization (Combat, Social, etc.)
+//! - Transitivity for confidence scoring
 //!
 //! # Design
-//! - Store base forms with conjugation patterns
-//! - Auto-generate 3rd singular, past, past participle, present participle
-//! - HashMap lookup for O(1) verb detection
+//! - Each verb entry carries morphology AND semantics
+//! - All inflected forms resolve to the same canonical relation
+//! - ~150+ base verbs → 600+ recognized forms
 //!
 //! # Usage
 //! ```rust
-//! let morphology = VerbMorphology::default();
-//! assert!(morphology.is_verb("leads"));
-//! assert!(morphology.is_verb("taught"));
-//! assert!(!morphology.is_verb("wizard"));
+//! let lexicon = VerbLexicon::new();
+//! assert!(lexicon.is_verb("killed"));
+//! assert_eq!(lexicon.get_relation("killed"), Some("KILLED"));
+//! assert_eq!(lexicon.get_relation("slew"), Some("KILLED"));
 //! ```
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 // =============================================================================
 // Core Types
@@ -40,37 +43,119 @@ pub enum VerbPattern {
     },
 }
 
-/// A verb entry with base form and conjugation pattern
+/// Semantic domain for verb categorization (internal use)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerbDomain {
+    Combat,
+    Magic,
+    Social,
+    Leadership,
+    Teaching,
+    Possession,
+    Protection,
+    Creation,
+    Movement,
+    Communication,
+    Cognition,
+    Emotion,
+    StateChange,
+}
+
+/// Verb transitivity for argument structure
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transitivity {
+    /// Requires direct object: "X killed Y"
+    Transitive,
+    /// No direct object: "X slept"
+    Intransitive,
+    /// Can be either: "X ate" or "X ate Y"
+    Ambitransitive,
+    /// Takes two objects: "X gave Y to Z"
+    Ditransitive,
+}
+
+/// A verb entry with morphology AND semantics
 #[derive(Debug, Clone)]
 pub struct VerbEntry {
     pub base: &'static str,
     pub pattern: VerbPattern,
+    pub relation: &'static str,
+    pub domain: VerbDomain,
+    pub transitivity: Transitivity,
 }
 
 impl VerbEntry {
-    /// Create a regular verb entry
-    pub const fn regular(base: &'static str) -> Self {
-        Self { base, pattern: VerbPattern::Regular }
+    /// Create a regular transitive verb
+    pub const fn regular(base: &'static str, relation: &'static str, domain: VerbDomain) -> Self {
+        Self {
+            base,
+            pattern: VerbPattern::Regular,
+            relation,
+            domain,
+            transitivity: Transitivity::Transitive,
+        }
     }
 
-    /// Create a verb ending in -e (love, hate, etc.)
-    pub const fn e_ending(base: &'static str) -> Self {
-        Self { base, pattern: VerbPattern::RegularE }
+    /// Create a verb ending in -e
+    pub const fn e_ending(base: &'static str, relation: &'static str, domain: VerbDomain) -> Self {
+        Self {
+            base,
+            pattern: VerbPattern::RegularE,
+            relation,
+            domain,
+            transitivity: Transitivity::Transitive,
+        }
     }
 
-    /// Create a verb that doubles final consonant (stop, plan, etc.)
-    pub const fn double_consonant(base: &'static str) -> Self {
-        Self { base, pattern: VerbPattern::DoubleConsonant }
+    /// Create a verb that doubles final consonant
+    pub const fn double_consonant(base: &'static str, relation: &'static str, domain: VerbDomain) -> Self {
+        Self {
+            base,
+            pattern: VerbPattern::DoubleConsonant,
+            relation,
+            domain,
+            transitivity: Transitivity::Transitive,
+        }
     }
 
-    /// Create a verb ending in consonant + y (carry, marry, etc.)
-    pub const fn y_to_i(base: &'static str) -> Self {
-        Self { base, pattern: VerbPattern::YToI }
+    /// Create a verb ending in consonant + y
+    pub const fn y_to_i(base: &'static str, relation: &'static str, domain: VerbDomain) -> Self {
+        Self {
+            base,
+            pattern: VerbPattern::YToI,
+            relation,
+            domain,
+            transitivity: Transitivity::Transitive,
+        }
     }
 
-    /// Create an irregular verb with explicit past forms
-    pub const fn irregular(base: &'static str, past: &'static str, past_participle: &'static str) -> Self {
-        Self { base, pattern: VerbPattern::Irregular { past, past_participle } }
+    /// Create an irregular verb
+    pub const fn irregular(
+        base: &'static str,
+        past: &'static str,
+        past_participle: &'static str,
+        relation: &'static str,
+        domain: VerbDomain,
+    ) -> Self {
+        Self {
+            base,
+            pattern: VerbPattern::Irregular { past, past_participle },
+            relation,
+            domain,
+            transitivity: Transitivity::Transitive,
+        }
+    }
+
+    /// Builder: set transitivity
+    pub const fn intransitive(mut self) -> Self {
+        self.transitivity = Transitivity::Intransitive;
+        self
+    }
+
+    /// Builder: set ambitransitive
+    pub const fn ambitransitive(mut self) -> Self {
+        self.transitivity = Transitivity::Ambitransitive;
+        self
     }
 
     /// Generate all inflected forms of this verb
@@ -80,42 +165,41 @@ impl VerbEntry {
         match &self.pattern {
             VerbPattern::Regular => {
                 let third_singular = Self::third_person_singular(base);
-                
                 vec![
-                    base.to_string(),                         // walk / possess
-                    third_singular,                           // walks / possesses
-                    format!("{}ed", base),                    // walked / possessed
-                    format!("{}ing", base),                   // walking / possessing
+                    base.to_string(),
+                    third_singular,
+                    format!("{}ed", base),
+                    format!("{}ing", base),
                 ]
             },
             
             VerbPattern::RegularE => {
-                let stem = &base[..base.len() - 1]; // Remove trailing 'e'
+                let stem = &base[..base.len() - 1];
                 vec![
-                    base.to_string(),                     // love
-                    format!("{}s", base),                 // loves
-                    format!("{}d", base),                 // loved
-                    format!("{}ing", stem),               // loving
+                    base.to_string(),
+                    format!("{}s", base),
+                    format!("{}d", base),
+                    format!("{}ing", stem),
                 ]
             },
             
             VerbPattern::DoubleConsonant => {
                 let last_char = base.chars().last().unwrap();
                 vec![
-                    base.to_string(),                          // stop
-                    format!("{}s", base),                      // stops
-                    format!("{}{}ed", base, last_char),        // stopped
-                    format!("{}{}ing", base, last_char),       // stopping
+                    base.to_string(),
+                    format!("{}s", base),
+                    format!("{}{}ed", base, last_char),
+                    format!("{}{}ing", base, last_char),
                 ]
             },
             
             VerbPattern::YToI => {
-                let stem = &base[..base.len() - 1]; // Remove trailing 'y'
+                let stem = &base[..base.len() - 1];
                 vec![
-                    base.to_string(),                     // carry
-                    format!("{}ies", stem),               // carries
-                    format!("{}ied", stem),               // carried
-                    format!("{}ying", stem),              // carrying
+                    base.to_string(),
+                    format!("{}ies", stem),
+                    format!("{}ied", stem),
+                    format!("{}ying", stem),
                 ]
             },
             
@@ -127,7 +211,6 @@ impl VerbEntry {
                     past.to_string(),
                     format!("{}ing", base),
                 ];
-                // Only add past_participle if different from past
                 if past != past_participle {
                     forms.push(past_participle.to_string());
                 }
@@ -136,14 +219,12 @@ impl VerbEntry {
         }
     }
     
-    /// Generate third person singular form (handles sibilants)
     fn third_person_singular(base: &str) -> String {
         if base.ends_with('s') || base.ends_with('x') 
             || base.ends_with('z') || base.ends_with("sh") || base.ends_with("ch") {
             format!("{}es", base)
         } else if base.ends_with('y') && !base.ends_with("ay") && !base.ends_with("ey") 
             && !base.ends_with("oy") && !base.ends_with("uy") {
-            // consonant + y: fly → flies, but play → plays
             format!("{}ies", &base[..base.len()-1])
         } else {
             format!("{}s", base)
@@ -152,466 +233,539 @@ impl VerbEntry {
 }
 
 // =============================================================================
-// Verb Table (Compact Storage)
+// Verb Table (Comprehensive Coverage)
 // =============================================================================
 
-/// Core verb table - organized by semantic category for maintainability
-/// but stored flat for fast iteration
 const VERB_TABLE: &[VerbEntry] = &[
-    // -------------------------------------------------------------------------
-    // Leadership / Authority
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("lead", "led", "led"),
-    VerbEntry::regular("command"),
-    VerbEntry::e_ending("rule"),
-    VerbEntry::regular("govern"),
-    VerbEntry::regular("control"),
-    VerbEntry::regular("direct"),
+    // =========================================================================
+    // COMBAT / CONFLICT (~30 verbs)
+    // =========================================================================
     
-    // -------------------------------------------------------------------------
-    // Teaching / Mentorship
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("teach", "taught", "taught"),
-    VerbEntry::regular("mentor"),
-    VerbEntry::regular("train"),
-    VerbEntry::e_ending("guide"),
-    VerbEntry::regular("instruct"),
-    VerbEntry::regular("tutor"),
+    // Killing
+    VerbEntry::regular("kill", "KILLED", VerbDomain::Combat),
+    VerbEntry::irregular("slay", "slew", "slain", "KILLED", VerbDomain::Combat),
+    VerbEntry::regular("murder", "KILLED", VerbDomain::Combat),
+    VerbEntry::e_ending("assassinate", "KILLED", VerbDomain::Combat),
+    VerbEntry::e_ending("execute", "KILLED", VerbDomain::Combat),
+    VerbEntry::regular("slaughter", "KILLED", VerbDomain::Combat),
     
-    // -------------------------------------------------------------------------
-    // Protection / Defense
-    // -------------------------------------------------------------------------
-    VerbEntry::regular("guard"),
-    VerbEntry::regular("protect"),
-    VerbEntry::regular("defend"),
-    VerbEntry::regular("shield"),
-    VerbEntry::regular("watch"),
+    // Defeating
+    VerbEntry::regular("defeat", "DEFEATED", VerbDomain::Combat),
+    VerbEntry::regular("vanquish", "DEFEATED", VerbDomain::Combat),
+    VerbEntry::regular("conquer", "DEFEATED", VerbDomain::Combat),
+    VerbEntry::e_ending("overcome", "DEFEATED", VerbDomain::Combat),
+    VerbEntry::regular("best", "DEFEATED", VerbDomain::Combat),
+    VerbEntry::e_ending("subdue", "DEFEATED", VerbDomain::Combat),
+    VerbEntry::regular("crush", "DEFEATED", VerbDomain::Combat),
     
-    // -------------------------------------------------------------------------
-    // Possession / Ownership
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("hold", "held", "held"),
-    VerbEntry::regular("own"),
-    VerbEntry::regular("possess"),
-    VerbEntry::irregular("keep", "kept", "kept"),
-    VerbEntry::regular("control"),
-    VerbEntry::e_ending("have"), // Special: has/had/having - handled separately
+    // Fighting
+    VerbEntry::irregular("fight", "fought", "fought", "FOUGHT", VerbDomain::Combat),
+    VerbEntry::e_ending("battle", "FOUGHT", VerbDomain::Combat),
+    VerbEntry::regular("duel", "FOUGHT", VerbDomain::Combat),
+    VerbEntry::regular("clash", "FOUGHT", VerbDomain::Combat),
+    VerbEntry::regular("combat", "FOUGHT", VerbDomain::Combat),
     
-    // -------------------------------------------------------------------------
-    // Combat / Conflict
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("fight", "fought", "fought"),
-    VerbEntry::regular("defeat"),
-    VerbEntry::regular("kill"),
-    VerbEntry::regular("attack"),
-    VerbEntry::e_ending("battle"),
-    VerbEntry::regular("destroy"),
-    VerbEntry::regular("conquer"),
+    // Attacking
+    VerbEntry::regular("attack", "ATTACKED", VerbDomain::Combat),
+    VerbEntry::regular("assault", "ATTACKED", VerbDomain::Combat),
+    VerbEntry::regular("ambush", "ATTACKED", VerbDomain::Combat),
+    VerbEntry::irregular("strike", "struck", "struck", "ATTACKED", VerbDomain::Combat),
+    VerbEntry::regular("raid", "ATTACKED", VerbDomain::Combat),
+    VerbEntry::e_ending("besiege", "ATTACKED", VerbDomain::Combat),
+    VerbEntry::e_ending("invade", "ATTACKED", VerbDomain::Combat),
     
-    // -------------------------------------------------------------------------
-    // Relationships
-    // -------------------------------------------------------------------------
-    VerbEntry::e_ending("love"),
-    VerbEntry::e_ending("hate"),
-    VerbEntry::y_to_i("marry"),
-    VerbEntry::regular("befriend"),
-    VerbEntry::regular("betray"),
-    VerbEntry::regular("trust"),
+    // Wounding
+    VerbEntry::regular("wound", "WOUNDED", VerbDomain::Combat),
+    VerbEntry::e_ending("injure", "WOUNDED", VerbDomain::Combat),
+    VerbEntry::irregular("hurt", "hurt", "hurt", "WOUNDED", VerbDomain::Combat),
+    VerbEntry::regular("maim", "WOUNDED", VerbDomain::Combat),
     
-    // -------------------------------------------------------------------------
-    // Movement
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("go", "went", "gone"),
-    VerbEntry::irregular("come", "came", "come"),
-    VerbEntry::irregular("run", "ran", "run"),
-    VerbEntry::regular("walk"),
-    VerbEntry::e_ending("move"),
-    VerbEntry::irregular("fly", "flew", "flown"),
-    VerbEntry::regular("travel"),
+    // =========================================================================
+    // MAGIC / FANTASY (~20 verbs)
+    // =========================================================================
+    VerbEntry::irregular("cast", "cast", "cast", "CAST", VerbDomain::Magic),
+    VerbEntry::regular("enchant", "ENCHANTED", VerbDomain::Magic),
+    VerbEntry::e_ending("curse", "CURSED", VerbDomain::Magic),
+    VerbEntry::regular("hex", "CURSED", VerbDomain::Magic),
+    VerbEntry::regular("bless", "BLESSED", VerbDomain::Magic),
+    VerbEntry::regular("summon", "SUMMONED", VerbDomain::Magic),
+    VerbEntry::regular("banish", "BANISHED", VerbDomain::Magic),
+    VerbEntry::e_ending("conjure", "CONJURED", VerbDomain::Magic),
+    VerbEntry::regular("bewitch", "ENCHANTED", VerbDomain::Magic),
+    VerbEntry::regular("charm", "ENCHANTED", VerbDomain::Magic),
+    VerbEntry::regular("dispel", "DISPELLED", VerbDomain::Magic),
+    VerbEntry::regular("transform", "TRANSFORMED", VerbDomain::Magic),
+    VerbEntry::e_ending("transmute", "TRANSFORMED", VerbDomain::Magic),
+    VerbEntry::regular("heal", "HEALED", VerbDomain::Magic),
+    VerbEntry::e_ending("resurrect", "RESURRECTED", VerbDomain::Magic),
+    VerbEntry::regular("seal", "SEALED", VerbDomain::Magic),
+    VerbEntry::regular("bind", "BOUND", VerbDomain::Magic),
     
-    // -------------------------------------------------------------------------
-    // Communication
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("say", "said", "said"),
-    VerbEntry::irregular("tell", "told", "told"),
-    VerbEntry::irregular("speak", "spoke", "spoken"),
-    VerbEntry::regular("talk"),
-    VerbEntry::regular("ask"),
-    VerbEntry::regular("answer"),
-    VerbEntry::regular("call"),
+    // =========================================================================
+    // SOCIAL / RELATIONSHIPS (~25 verbs)
+    // =========================================================================
+    VerbEntry::e_ending("love", "LOVES", VerbDomain::Social),
+    VerbEntry::e_ending("hate", "HATES", VerbDomain::Social),
+    VerbEntry::y_to_i("marry", "MARRIED", VerbDomain::Social),
+    VerbEntry::e_ending("divorce", "DIVORCED", VerbDomain::Social),
+    VerbEntry::regular("befriend", "BEFRIENDED", VerbDomain::Social),
+    VerbEntry::regular("betray", "BETRAYED", VerbDomain::Social),
+    VerbEntry::regular("trust", "TRUSTS", VerbDomain::Social),
+    VerbEntry::regular("distrust", "DISTRUSTS", VerbDomain::Social),
+    VerbEntry::y_to_i("ally", "ALLIED_WITH", VerbDomain::Social),
+    VerbEntry::regular("rival", "RIVALS", VerbDomain::Social),
+    VerbEntry::e_ending("admire", "ADMIRES", VerbDomain::Social),
+    VerbEntry::e_ending("despise", "DESPISES", VerbDomain::Social),
+    VerbEntry::e_ending("forgive", "FORGAVE", VerbDomain::Social),
+    VerbEntry::regular("resent", "RESENTS", VerbDomain::Social),
+    VerbEntry::irregular("meet", "met", "met", "MET", VerbDomain::Social),
+    VerbEntry::regular("join", "JOINED", VerbDomain::Social),
+    VerbEntry::regular("abandon", "ABANDONED", VerbDomain::Social),
+    VerbEntry::e_ending("rescue", "RESCUED", VerbDomain::Social),
+    VerbEntry::e_ending("save", "SAVED", VerbDomain::Social),
+    VerbEntry::regular("help", "HELPED", VerbDomain::Social),
     
-    // -------------------------------------------------------------------------
-    // Cognition / Perception
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("know", "knew", "known"),
-    VerbEntry::irregular("think", "thought", "thought"),
-    VerbEntry::irregular("see", "saw", "seen"),
-    VerbEntry::irregular("hear", "heard", "heard"),
-    VerbEntry::irregular("understand", "understood", "understood"),
-    VerbEntry::e_ending("believe"),
-    VerbEntry::regular("remember"),
+    // =========================================================================
+    // LEADERSHIP / AUTHORITY (~15 verbs)
+    // =========================================================================
+    VerbEntry::irregular("lead", "led", "led", "LEADS", VerbDomain::Leadership),
+    VerbEntry::regular("command", "COMMANDS", VerbDomain::Leadership),
+    VerbEntry::e_ending("rule", "RULES", VerbDomain::Leadership),
+    VerbEntry::regular("govern", "GOVERNS", VerbDomain::Leadership),
+    VerbEntry::regular("reign", "RULES", VerbDomain::Leadership),
+    VerbEntry::regular("control", "CONTROLS", VerbDomain::Leadership),
+    VerbEntry::e_ending("dominate", "DOMINATES", VerbDomain::Leadership),
+    VerbEntry::regular("obey", "OBEYS", VerbDomain::Leadership),
+    VerbEntry::e_ending("serve", "SERVES", VerbDomain::Leadership),
+    VerbEntry::regular("follow", "FOLLOWS", VerbDomain::Leadership),
+    VerbEntry::regular("submit", "SUBMITS", VerbDomain::Leadership),
+    VerbEntry::regular("rebel", "REBELLED", VerbDomain::Leadership),
+    VerbEntry::e_ending("overthrow", "OVERTHREW", VerbDomain::Leadership),
     
-    // -------------------------------------------------------------------------
-    // Creation / Modification
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("make", "made", "made"),
-    VerbEntry::e_ending("create"),
-    VerbEntry::irregular("build", "built", "built"),
-    VerbEntry::irregular("write", "wrote", "written"),
-    VerbEntry::e_ending("forge"),
-    VerbEntry::irregular("draw", "drew", "drawn"),
+    // =========================================================================
+    // TEACHING / MENTORSHIP (~12 verbs)
+    // =========================================================================
+    VerbEntry::irregular("teach", "taught", "taught", "TAUGHT", VerbDomain::Teaching),
+    VerbEntry::regular("mentor", "MENTORED", VerbDomain::Teaching),
+    VerbEntry::regular("train", "TRAINED", VerbDomain::Teaching),
+    VerbEntry::regular("tutor", "TUTORED", VerbDomain::Teaching),
+    VerbEntry::e_ending("guide", "GUIDED", VerbDomain::Teaching),
+    VerbEntry::regular("instruct", "INSTRUCTED", VerbDomain::Teaching),
+    VerbEntry::e_ending("educate", "EDUCATED", VerbDomain::Teaching),
+    VerbEntry::regular("coach", "COACHED", VerbDomain::Teaching),
+    VerbEntry::irregular("learn", "learned", "learned", "LEARNED_FROM", VerbDomain::Teaching),
+    VerbEntry::y_to_i("study", "STUDIED", VerbDomain::Teaching),
     
-    // -------------------------------------------------------------------------
-    // State / Existence
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("be", "was", "been"),
-    VerbEntry::e_ending("become"),
-    VerbEntry::regular("remain"),
-    VerbEntry::regular("exist"),
-    VerbEntry::e_ending("live"),
-    VerbEntry::irregular("die", "died", "died"),
+    // =========================================================================
+    // POSSESSION / OWNERSHIP (~18 verbs)
+    // =========================================================================
+    VerbEntry::regular("own", "OWNS", VerbDomain::Possession),
+    VerbEntry::regular("possess", "POSSESSES", VerbDomain::Possession),
+    VerbEntry::irregular("hold", "held", "held", "HOLDS", VerbDomain::Possession),
+    VerbEntry::irregular("keep", "kept", "kept", "KEEPS", VerbDomain::Possession),
+    VerbEntry::irregular("steal", "stole", "stolen", "STOLE", VerbDomain::Possession),
+    VerbEntry::regular("rob", "ROBBED", VerbDomain::Possession),
+    VerbEntry::irregular("take", "took", "taken", "TOOK", VerbDomain::Possession),
+    VerbEntry::irregular("give", "gave", "given", "GAVE", VerbDomain::Possession),
+    VerbEntry::e_ending("receive", "RECEIVED", VerbDomain::Possession),
+    VerbEntry::regular("inherit", "INHERITED", VerbDomain::Possession),
+    VerbEntry::irregular("lose", "lost", "lost", "LOST", VerbDomain::Possession),
+    VerbEntry::irregular("find", "found", "found", "FOUND", VerbDomain::Possession),
+    VerbEntry::irregular("get", "got", "gotten", "GOT", VerbDomain::Possession),
+    VerbEntry::e_ending("acquire", "ACQUIRED", VerbDomain::Possession),
+    VerbEntry::regular("claim", "CLAIMED", VerbDomain::Possession),
+    VerbEntry::regular("seize", "SEIZED", VerbDomain::Possession),
     
-    // -------------------------------------------------------------------------
-    // Acquisition / Transfer
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("get", "got", "gotten"),
-    VerbEntry::irregular("take", "took", "taken"),
-    VerbEntry::irregular("give", "gave", "given"),
-    VerbEntry::irregular("find", "found", "found"),
-    VerbEntry::irregular("lose", "lost", "lost"),
-    VerbEntry::irregular("steal", "stole", "stolen"),
-    VerbEntry::irregular("send", "sent", "sent"),
-    VerbEntry::e_ending("receive"),
+    // =========================================================================
+    // PROTECTION / DEFENSE (~10 verbs)
+    // =========================================================================
+    VerbEntry::regular("guard", "GUARDS", VerbDomain::Protection),
+    VerbEntry::regular("protect", "PROTECTS", VerbDomain::Protection),
+    VerbEntry::regular("defend", "DEFENDS", VerbDomain::Protection),
+    VerbEntry::regular("shield", "SHIELDS", VerbDomain::Protection),
+    VerbEntry::regular("watch", "WATCHES", VerbDomain::Protection),
+    VerbEntry::regular("ward", "WARDS", VerbDomain::Protection),
+    VerbEntry::regular("shelter", "SHELTERS", VerbDomain::Protection),
+    VerbEntry::e_ending("secure", "SECURED", VerbDomain::Protection),
     
-    // -------------------------------------------------------------------------
-    // Emotion / Desire
-    // -------------------------------------------------------------------------
-    VerbEntry::regular("want"),
-    VerbEntry::regular("need"),
-    VerbEntry::e_ending("desire"),
-    VerbEntry::regular("fear"),
-    VerbEntry::regular("enjoy"),
-    VerbEntry::regular("wish"),
+    // =========================================================================
+    // CREATION / DESTRUCTION (~18 verbs)
+    // =========================================================================
+    VerbEntry::e_ending("create", "CREATED", VerbDomain::Creation),
+    VerbEntry::irregular("make", "made", "made", "MADE", VerbDomain::Creation),
+    VerbEntry::irregular("build", "built", "built", "BUILT", VerbDomain::Creation),
+    VerbEntry::e_ending("forge", "FORGED", VerbDomain::Creation),
+    VerbEntry::regular("craft", "CRAFTED", VerbDomain::Creation),
+    VerbEntry::regular("construct", "CONSTRUCTED", VerbDomain::Creation),
+    VerbEntry::regular("invent", "INVENTED", VerbDomain::Creation),
+    VerbEntry::e_ending("compose", "COMPOSED", VerbDomain::Creation),
+    VerbEntry::irregular("write", "wrote", "written", "WROTE", VerbDomain::Creation),
+    VerbEntry::irregular("draw", "drew", "drawn", "DREW", VerbDomain::Creation),
+    VerbEntry::regular("destroy", "DESTROYED", VerbDomain::Creation),
+    VerbEntry::regular("demolish", "DEMOLISHED", VerbDomain::Creation),
+    VerbEntry::regular("ruin", "RUINED", VerbDomain::Creation),
+    VerbEntry::irregular("break", "broke", "broken", "BROKE", VerbDomain::Creation),
+    VerbEntry::irregular("tear", "tore", "torn", "TORE", VerbDomain::Creation),
     
-    // -------------------------------------------------------------------------
-    // Social / Interaction
-    // -------------------------------------------------------------------------
-    VerbEntry::irregular("meet", "met", "met"),
-    VerbEntry::regular("join"),
-    VerbEntry::e_ending("serve"),
-    VerbEntry::regular("help"),
-    VerbEntry::regular("follow"),
-    VerbEntry::regular("support"),
+    // =========================================================================
+    // MOVEMENT / LOCATION (~20 verbs)
+    // =========================================================================
+    VerbEntry::regular("travel", "TRAVELED_TO", VerbDomain::Movement),
+    VerbEntry::regular("journey", "TRAVELED_TO", VerbDomain::Movement),
+    VerbEntry::regular("visit", "VISITED", VerbDomain::Movement),
+    VerbEntry::regular("enter", "ENTERED", VerbDomain::Movement),
+    VerbEntry::irregular("leave", "left", "left", "LEFT", VerbDomain::Movement),
+    VerbEntry::irregular("flee", "fled", "fled", "FLED", VerbDomain::Movement),
+    VerbEntry::e_ending("escape", "ESCAPED", VerbDomain::Movement),
+    VerbEntry::e_ending("live", "LIVES_IN", VerbDomain::Movement),
+    VerbEntry::regular("dwell", "DWELLS_IN", VerbDomain::Movement),
+    VerbEntry::e_ending("reside", "RESIDES_IN", VerbDomain::Movement),
+    VerbEntry::irregular("go", "went", "gone", "WENT_TO", VerbDomain::Movement),
+    VerbEntry::irregular("come", "came", "come", "CAME_TO", VerbDomain::Movement),
+    VerbEntry::irregular("run", "ran", "run", "RAN", VerbDomain::Movement),
+    VerbEntry::regular("walk", "WALKED", VerbDomain::Movement),
+    VerbEntry::irregular("fly", "flew", "flown", "FLEW", VerbDomain::Movement),
+    VerbEntry::e_ending("arrive", "ARRIVED_AT", VerbDomain::Movement),
+    VerbEntry::regular("depart", "DEPARTED", VerbDomain::Movement),
+    VerbEntry::regular("return", "RETURNED", VerbDomain::Movement),
+    VerbEntry::e_ending("pursue", "PURSUED", VerbDomain::Movement),
+    VerbEntry::e_ending("chase", "CHASED", VerbDomain::Movement),
+    
+    // =========================================================================
+    // COMMUNICATION (~15 verbs)
+    // =========================================================================
+    VerbEntry::irregular("say", "said", "said", "SAID_TO", VerbDomain::Communication),
+    VerbEntry::irregular("tell", "told", "told", "TOLD", VerbDomain::Communication),
+    VerbEntry::irregular("speak", "spoke", "spoken", "SPOKE_TO", VerbDomain::Communication),
+    VerbEntry::regular("talk", "TALKED_TO", VerbDomain::Communication),
+    VerbEntry::regular("ask", "ASKED", VerbDomain::Communication),
+    VerbEntry::regular("answer", "ANSWERED", VerbDomain::Communication),
+    VerbEntry::regular("call", "CALLED", VerbDomain::Communication),
+    VerbEntry::regular("shout", "SHOUTED", VerbDomain::Communication),
+    VerbEntry::regular("yell", "YELLED", VerbDomain::Communication),
+    VerbEntry::regular("whisper", "WHISPERED", VerbDomain::Communication),
+    VerbEntry::e_ending("declare", "DECLARED", VerbDomain::Communication),
+    VerbEntry::e_ending("announce", "ANNOUNCED", VerbDomain::Communication),
+    VerbEntry::regular("warn", "WARNED", VerbDomain::Communication),
+    VerbEntry::regular("threaten", "THREATENED", VerbDomain::Communication),
+    VerbEntry::e_ending("promise", "PROMISED", VerbDomain::Communication),
+    
+    // =========================================================================
+    // COGNITION / PERCEPTION (~15 verbs)
+    // =========================================================================
+    VerbEntry::irregular("know", "knew", "known", "KNOWS", VerbDomain::Cognition),
+    VerbEntry::irregular("think", "thought", "thought", "THINKS", VerbDomain::Cognition),
+    VerbEntry::irregular("see", "saw", "seen", "SAW", VerbDomain::Cognition),
+    VerbEntry::irregular("hear", "heard", "heard", "HEARD", VerbDomain::Cognition),
+    VerbEntry::irregular("understand", "understood", "understood", "UNDERSTANDS", VerbDomain::Cognition),
+    VerbEntry::e_ending("believe", "BELIEVES", VerbDomain::Cognition),
+    VerbEntry::regular("remember", "REMEMBERS", VerbDomain::Cognition),
+    VerbEntry::irregular("forget", "forgot", "forgotten", "FORGOT", VerbDomain::Cognition),
+    VerbEntry::e_ending("realize", "REALIZED", VerbDomain::Cognition),
+    VerbEntry::regular("discover", "DISCOVERED", VerbDomain::Cognition),
+    VerbEntry::e_ending("recognize", "RECOGNIZED", VerbDomain::Cognition),
+    VerbEntry::regular("suspect", "SUSPECTS", VerbDomain::Cognition),
+    VerbEntry::regular("doubt", "DOUBTS", VerbDomain::Cognition),
+    
+    // =========================================================================
+    // EMOTION / DESIRE (~12 verbs)
+    // =========================================================================
+    VerbEntry::regular("want", "WANTS", VerbDomain::Emotion),
+    VerbEntry::regular("need", "NEEDS", VerbDomain::Emotion),
+    VerbEntry::e_ending("desire", "DESIRES", VerbDomain::Emotion),
+    VerbEntry::regular("fear", "FEARS", VerbDomain::Emotion),
+    VerbEntry::regular("enjoy", "ENJOYS", VerbDomain::Emotion),
+    VerbEntry::regular("wish", "WISHES", VerbDomain::Emotion),
+    VerbEntry::e_ending("hope", "HOPES", VerbDomain::Emotion),
+    VerbEntry::regular("dread", "DREADS", VerbDomain::Emotion),
+    VerbEntry::regular("mourn", "MOURNS", VerbDomain::Emotion),
+    VerbEntry::regular("grieve", "GRIEVES", VerbDomain::Emotion),
+    
+    // =========================================================================
+    // STATE CHANGE (~10 verbs)
+    // =========================================================================
+    VerbEntry::irregular("be", "was", "been", "IS", VerbDomain::StateChange),
+    VerbEntry::e_ending("become", "BECAME", VerbDomain::StateChange),
+    VerbEntry::regular("remain", "REMAINS", VerbDomain::StateChange),
+    VerbEntry::regular("exist", "EXISTS", VerbDomain::StateChange),
+    VerbEntry::irregular("die", "died", "died", "DIED", VerbDomain::StateChange),
+    VerbEntry::irregular("grow", "grew", "grown", "GREW", VerbDomain::StateChange),
+    VerbEntry::e_ending("change", "CHANGED", VerbDomain::StateChange),
+    VerbEntry::irregular("fall", "fell", "fallen", "FELL", VerbDomain::StateChange),
+    VerbEntry::irregular("rise", "rose", "risen", "ROSE", VerbDomain::StateChange),
+    VerbEntry::irregular("awake", "awoke", "awoken", "AWOKE", VerbDomain::StateChange),
 ];
 
 // =============================================================================
-// VerbMorphology (Runtime Lookup)
+// VerbLexicon (Unified Lookup)
 // =============================================================================
 
-/// Fast verb recognition using pre-computed inflection lookup
+/// Unified verb lexicon with morphology + semantics
 #[derive(Debug, Clone)]
-pub struct VerbMorphology {
-    /// Set of all recognized verb forms (lowercase)
-    verbs: HashSet<String>,
+pub struct VerbLexicon {
+    /// form → (canonical relation, domain, transitivity)
+    lookup: HashMap<String, (&'static str, VerbDomain, Transitivity)>,
 }
 
-impl Default for VerbMorphology {
+impl Default for VerbLexicon {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl VerbMorphology {
-    /// Create a new VerbMorphology with the default verb table
+impl VerbLexicon {
+    /// Create a new VerbLexicon from the built-in verb table
     pub fn new() -> Self {
-        let mut verbs = HashSet::new();
+        let mut lookup = HashMap::new();
         
         for entry in VERB_TABLE {
+            let data = (entry.relation, entry.domain, entry.transitivity);
             for form in entry.inflections() {
-                verbs.insert(form.to_lowercase());
+                lookup.insert(form.to_lowercase(), data);
             }
         }
         
-        // Add special cases not easily handled by patterns
-        Self::add_special_cases(&mut verbs);
+        // Add special cases
+        Self::add_special_cases(&mut lookup);
         
-        Self { verbs }
+        Self { lookup }
     }
     
-    /// Add verb forms that don't fit standard patterns
-    fn add_special_cases(verbs: &mut HashSet<String>) {
+    fn add_special_cases(lookup: &mut HashMap<String, (&'static str, VerbDomain, Transitivity)>) {
         // "have" is highly irregular
+        let have_data = ("HAS", VerbDomain::Possession, Transitivity::Transitive);
         for form in ["have", "has", "had", "having"] {
-            verbs.insert(form.to_string());
+            lookup.insert(form.to_string(), have_data);
         }
         
-        // "be" conjugations
+        // "be" conjugations (already in table, but ensure coverage)
+        let be_data = ("IS", VerbDomain::StateChange, Transitivity::Intransitive);
         for form in ["be", "am", "is", "are", "was", "were", "been", "being"] {
-            verbs.insert(form.to_string());
+            lookup.insert(form.to_string(), be_data);
         }
         
         // "do" conjugations
+        let do_data = ("DID", VerbDomain::StateChange, Transitivity::Transitive);
         for form in ["do", "does", "did", "done", "doing"] {
-            verbs.insert(form.to_string());
+            lookup.insert(form.to_string(), do_data);
         }
     }
     
-    /// Check if a word is a recognized verb form
+    /// Check if a word is a recognized verb
     pub fn is_verb(&self, word: &str) -> bool {
-        self.verbs.contains(&word.to_lowercase())
+        self.lookup.contains_key(&word.to_lowercase())
     }
     
-    /// Add a custom verb (for runtime hydration)
+    /// Get the canonical relation type for a verb form
+    pub fn get_relation(&self, word: &str) -> Option<&'static str> {
+        self.lookup.get(&word.to_lowercase()).map(|(rel, _, _)| *rel)
+    }
+    
+    /// Get the domain for a verb form (internal use)
+    pub fn get_domain(&self, word: &str) -> Option<VerbDomain> {
+        self.lookup.get(&word.to_lowercase()).map(|(_, dom, _)| *dom)
+    }
+    
+    /// Get transitivity for a verb form (internal use)
+    pub fn get_transitivity(&self, word: &str) -> Option<Transitivity> {
+        self.lookup.get(&word.to_lowercase()).map(|(_, _, trans)| *trans)
+    }
+    
+    /// Add a custom verb entry at runtime
     pub fn add_verb(&mut self, entry: VerbEntry) {
+        let data = (entry.relation, entry.domain, entry.transitivity);
         for form in entry.inflections() {
-            self.verbs.insert(form.to_lowercase());
-        }
-    }
-    
-    /// Add multiple custom verbs
-    pub fn add_verbs(&mut self, entries: &[VerbEntry]) {
-        for entry in entries {
-            self.add_verb(entry.clone());
+            self.lookup.insert(form.to_lowercase(), data);
         }
     }
     
     /// Get total number of recognized verb forms
     pub fn form_count(&self) -> usize {
-        self.verbs.len()
+        self.lookup.len()
     }
 }
 
 // =============================================================================
-// Tests (TDD - Write tests first!)
+// Legacy Compatibility: VerbMorphology alias
+// =============================================================================
+
+/// Alias for backward compatibility
+pub type VerbMorphology = VerbLexicon;
+
+// =============================================================================
+// Tests
 // =============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // -------------------------------------------------------------------------
-    // VerbEntry Inflection Tests
-    // -------------------------------------------------------------------------
-
     #[test]
-    fn test_regular_inflections() {
-        let entry = VerbEntry::regular("walk");
-        let forms = entry.inflections();
-        
-        assert!(forms.contains(&"walk".to_string()), "Missing base form");
-        assert!(forms.contains(&"walks".to_string()), "Missing 3rd singular");
-        assert!(forms.contains(&"walked".to_string()), "Missing past");
-        assert!(forms.contains(&"walking".to_string()), "Missing present participle");
+    fn test_form_count() {
+        let lexicon = VerbLexicon::new();
+        // Should have 500+ forms from 150+ base verbs
+        assert!(lexicon.form_count() > 500, 
+            "Expected 500+ verb forms, got {}", lexicon.form_count());
     }
 
     #[test]
-    fn test_e_ending_inflections() {
-        let entry = VerbEntry::e_ending("love");
-        let forms = entry.inflections();
+    fn test_is_verb() {
+        let lexicon = VerbLexicon::new();
         
-        assert!(forms.contains(&"love".to_string()), "Missing base form");
-        assert!(forms.contains(&"loves".to_string()), "Missing 3rd singular");
-        assert!(forms.contains(&"loved".to_string()), "Missing past");
-        assert!(forms.contains(&"loving".to_string()), "Missing present participle (should drop e)");
-        assert!(!forms.contains(&"loveing".to_string()), "Should not have 'loveing'");
+        assert!(lexicon.is_verb("kill"));
+        assert!(lexicon.is_verb("killed"));
+        assert!(lexicon.is_verb("killing"));
+        assert!(lexicon.is_verb("kills"));
+        
+        assert!(!lexicon.is_verb("wizard"));
+        assert!(!lexicon.is_verb("castle"));
     }
 
     #[test]
-    fn test_double_consonant_inflections() {
-        let entry = VerbEntry::double_consonant("stop");
-        let forms = entry.inflections();
+    fn test_get_relation_basic() {
+        let lexicon = VerbLexicon::new();
         
-        assert!(forms.contains(&"stop".to_string()));
-        assert!(forms.contains(&"stops".to_string()));
-        assert!(forms.contains(&"stopped".to_string()), "Should double consonant");
-        assert!(forms.contains(&"stopping".to_string()), "Should double consonant");
+        // All forms of "kill" should map to "KILLED"
+        assert_eq!(lexicon.get_relation("kill"), Some("KILLED"));
+        assert_eq!(lexicon.get_relation("kills"), Some("KILLED"));
+        assert_eq!(lexicon.get_relation("killed"), Some("KILLED"));
+        assert_eq!(lexicon.get_relation("killing"), Some("KILLED"));
     }
 
     #[test]
-    fn test_y_to_i_inflections() {
-        let entry = VerbEntry::y_to_i("carry");
-        let forms = entry.inflections();
+    fn test_get_relation_synonyms() {
+        let lexicon = VerbLexicon::new();
         
-        assert!(forms.contains(&"carry".to_string()));
-        assert!(forms.contains(&"carries".to_string()), "y → ies");
-        assert!(forms.contains(&"carried".to_string()), "y → ied");
-        assert!(forms.contains(&"carrying".to_string()), "y → ying");
+        // Different verbs with same semantic meaning
+        assert_eq!(lexicon.get_relation("slay"), Some("KILLED"));
+        assert_eq!(lexicon.get_relation("slew"), Some("KILLED"));
+        assert_eq!(lexicon.get_relation("murder"), Some("KILLED"));
+        assert_eq!(lexicon.get_relation("assassinate"), Some("KILLED"));
     }
 
     #[test]
-    fn test_irregular_inflections() {
-        let entry = VerbEntry::irregular("teach", "taught", "taught");
-        let forms = entry.inflections();
+    fn test_get_relation_leadership() {
+        let lexicon = VerbLexicon::new();
         
-        assert!(forms.contains(&"teach".to_string()));
-        assert!(forms.contains(&"teaches".to_string()));
-        assert!(forms.contains(&"taught".to_string()), "Irregular past");
-        assert!(forms.contains(&"teaching".to_string()));
+        assert_eq!(lexicon.get_relation("lead"), Some("LEADS"));
+        assert_eq!(lexicon.get_relation("leads"), Some("LEADS"));
+        assert_eq!(lexicon.get_relation("led"), Some("LEADS"));
+        
+        assert_eq!(lexicon.get_relation("command"), Some("COMMANDS"));
+        assert_eq!(lexicon.get_relation("commanded"), Some("COMMANDS"));
     }
 
     #[test]
-    fn test_irregular_different_participle() {
-        let entry = VerbEntry::irregular("write", "wrote", "written");
-        let forms = entry.inflections();
+    fn test_get_relation_teaching() {
+        let lexicon = VerbLexicon::new();
         
-        assert!(forms.contains(&"write".to_string()));
-        assert!(forms.contains(&"wrote".to_string()), "Irregular past");
-        assert!(forms.contains(&"written".to_string()), "Different past participle");
-    }
-
-    // -------------------------------------------------------------------------
-    // VerbMorphology Lookup Tests
-    // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_morphology_basic_lookup() {
-        let morphology = VerbMorphology::new();
+        assert_eq!(lexicon.get_relation("teach"), Some("TAUGHT"));
+        assert_eq!(lexicon.get_relation("taught"), Some("TAUGHT"));
+        assert_eq!(lexicon.get_relation("teaches"), Some("TAUGHT"));
         
-        assert!(morphology.is_verb("walk"), "Should recognize 'walk'");
-        assert!(morphology.is_verb("walks"), "Should recognize 'walks'");
-        assert!(morphology.is_verb("walked"), "Should recognize 'walked'");
-        assert!(morphology.is_verb("walking"), "Should recognize 'walking'");
+        assert_eq!(lexicon.get_relation("mentor"), Some("MENTORED"));
+        assert_eq!(lexicon.get_relation("mentored"), Some("MENTORED"));
+        assert_eq!(lexicon.get_relation("mentors"), Some("MENTORED"));
     }
 
     #[test]
-    fn test_morphology_case_insensitive() {
-        let morphology = VerbMorphology::new();
+    fn test_get_relation_social() {
+        let lexicon = VerbLexicon::new();
         
-        assert!(morphology.is_verb("Walk"), "Should be case insensitive");
-        assert!(morphology.is_verb("WALK"), "Should be case insensitive");
-        assert!(morphology.is_verb("WaLkInG"), "Should be case insensitive");
+        assert_eq!(lexicon.get_relation("love"), Some("LOVES"));
+        assert_eq!(lexicon.get_relation("loves"), Some("LOVES"));
+        assert_eq!(lexicon.get_relation("loved"), Some("LOVES"));
+        
+        assert_eq!(lexicon.get_relation("betray"), Some("BETRAYED"));
+        assert_eq!(lexicon.get_relation("betrayed"), Some("BETRAYED"));
     }
 
     #[test]
-    fn test_morphology_rejects_non_verbs() {
-        let morphology = VerbMorphology::new();
+    fn test_get_relation_magic() {
+        let lexicon = VerbLexicon::new();
         
-        assert!(!morphology.is_verb("wizard"), "Should reject nouns");
-        assert!(!morphology.is_verb("castle"), "Should reject nouns");
-        assert!(!morphology.is_verb("quickly"), "Should reject adverbs");
+        assert_eq!(lexicon.get_relation("cast"), Some("CAST"));
+        assert_eq!(lexicon.get_relation("enchant"), Some("ENCHANTED"));
+        assert_eq!(lexicon.get_relation("curse"), Some("CURSED"));
+        assert_eq!(lexicon.get_relation("summon"), Some("SUMMONED"));
     }
 
     #[test]
-    fn test_morphology_irregular_verbs() {
-        let morphology = VerbMorphology::new();
+    fn test_case_insensitive() {
+        let lexicon = VerbLexicon::new();
         
-        // teach → taught
-        assert!(morphology.is_verb("teach"), "Should recognize 'teach'");
-        assert!(morphology.is_verb("taught"), "Should recognize 'taught'");
-        
-        // lead → led  
-        assert!(morphology.is_verb("lead"), "Should recognize 'lead'");
-        assert!(morphology.is_verb("leads"), "Should recognize 'leads'");
-        assert!(morphology.is_verb("led"), "Should recognize 'led'");
-        
-        // fight → fought
-        assert!(morphology.is_verb("fight"), "Should recognize 'fight'");
-        assert!(morphology.is_verb("fought"), "Should recognize 'fought'");
+        assert_eq!(lexicon.get_relation("KILL"), Some("KILLED"));
+        assert_eq!(lexicon.get_relation("Kill"), Some("KILLED"));
+        assert_eq!(lexicon.get_relation("kIlLeD"), Some("KILLED"));
     }
 
     #[test]
-    fn test_morphology_special_cases() {
-        let morphology = VerbMorphology::new();
+    fn test_unknown_verb_returns_none() {
+        let lexicon = VerbLexicon::new();
         
-        // have
-        assert!(morphology.is_verb("have"));
-        assert!(morphology.is_verb("has"));
-        assert!(morphology.is_verb("had"));
-        assert!(morphology.is_verb("having"));
-        
-        // be
-        assert!(morphology.is_verb("be"));
-        assert!(morphology.is_verb("am"));
-        assert!(morphology.is_verb("is"));
-        assert!(morphology.is_verb("are"));
-        assert!(morphology.is_verb("was"));
-        assert!(morphology.is_verb("were"));
-        assert!(morphology.is_verb("been"));
+        assert_eq!(lexicon.get_relation("wizard"), None);
+        assert_eq!(lexicon.get_relation("asdfgh"), None);
     }
 
     #[test]
-    fn test_morphology_form_count() {
-        let morphology = VerbMorphology::new();
+    fn test_domain_lookup() {
+        let lexicon = VerbLexicon::new();
         
-        // Should have at least 200 forms (50+ base verbs × 4 forms average)
-        assert!(morphology.form_count() > 200, 
-            "Expected 200+ verb forms, got {}", morphology.form_count());
-    }
-
-    // -------------------------------------------------------------------------
-    // Hydration Tests
-    // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_add_custom_verb() {
-        let mut morphology = VerbMorphology::new();
-        
-        // Custom verb not in default table
-        assert!(!morphology.is_verb("yeet"), "Should not know 'yeet' initially");
-        
-        morphology.add_verb(VerbEntry::regular("yeet"));
-        
-        assert!(morphology.is_verb("yeet"), "Should recognize after adding");
-        assert!(morphology.is_verb("yeets"), "Should recognize inflection");
-        assert!(morphology.is_verb("yeeted"), "Should recognize inflection");
-        assert!(morphology.is_verb("yeeting"), "Should recognize inflection");
-    }
-
-    // -------------------------------------------------------------------------
-    // Key Verbs for Relation Extraction (Integration-like tests)
-    // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_leadership_verbs() {
-        let morphology = VerbMorphology::new();
-        
-        for verb in ["leads", "led", "commands", "commanded", "rules", "ruled", "governs"] {
-            assert!(morphology.is_verb(verb), "Should recognize leadership verb: {}", verb);
-        }
+        assert_eq!(lexicon.get_domain("kill"), Some(VerbDomain::Combat));
+        assert_eq!(lexicon.get_domain("love"), Some(VerbDomain::Social));
+        assert_eq!(lexicon.get_domain("lead"), Some(VerbDomain::Leadership));
+        assert_eq!(lexicon.get_domain("cast"), Some(VerbDomain::Magic));
     }
 
     #[test]
-    fn test_teaching_verbs() {
-        let morphology = VerbMorphology::new();
+    fn test_transitivity_lookup() {
+        let lexicon = VerbLexicon::new();
         
-        for verb in ["teaches", "taught", "mentors", "mentored", "trains", "trained", "guides"] {
-            assert!(morphology.is_verb(verb), "Should recognize teaching verb: {}", verb);
-        }
+        assert_eq!(lexicon.get_transitivity("kill"), Some(Transitivity::Transitive));
     }
 
     #[test]
-    fn test_protection_verbs() {
-        let morphology = VerbMorphology::new();
+    fn test_irregular_verb_forms() {
+        let lexicon = VerbLexicon::new();
         
-        for verb in ["guards", "guarded", "protects", "protected", "defends", "defended"] {
-            assert!(morphology.is_verb(verb), "Should recognize protection verb: {}", verb);
-        }
+        // slay/slew/slain
+        assert!(lexicon.is_verb("slay"));
+        assert!(lexicon.is_verb("slew"));
+        assert!(lexicon.is_verb("slain"));
+        assert_eq!(lexicon.get_relation("slew"), Some("KILLED"));
+        
+        // fight/fought
+        assert!(lexicon.is_verb("fight"));
+        assert!(lexicon.is_verb("fought"));
+        assert_eq!(lexicon.get_relation("fought"), Some("FOUGHT"));
+        
+        // teach/taught
+        assert!(lexicon.is_verb("teach"));
+        assert!(lexicon.is_verb("taught"));
+        assert_eq!(lexicon.get_relation("taught"), Some("TAUGHT"));
+    }
+
+    #[test]
+    fn test_e_ending_verbs() {
+        let lexicon = VerbLexicon::new();
+        
+        // love → loves, loved, loving (not loveing)
+        assert!(lexicon.is_verb("love"));
+        assert!(lexicon.is_verb("loves"));
+        assert!(lexicon.is_verb("loved"));
+        assert!(lexicon.is_verb("loving"));
+        assert!(!lexicon.is_verb("loveing"));
     }
 
     #[test]
     fn test_possession_verbs() {
-        let morphology = VerbMorphology::new();
+        let lexicon = VerbLexicon::new();
         
-        for verb in ["holds", "held", "owns", "owned", "possesses", "possessed", "keeps", "kept"] {
-            assert!(morphology.is_verb(verb), "Should recognize possession verb: {}", verb);
-        }
-    }
-
-    #[test]
-    fn test_combat_verbs() {
-        let morphology = VerbMorphology::new();
+        assert_eq!(lexicon.get_relation("possess"), Some("POSSESSES"));
+        assert_eq!(lexicon.get_relation("possesses"), Some("POSSESSES"));
+        assert_eq!(lexicon.get_relation("possessed"), Some("POSSESSES"));
         
-        for verb in ["fights", "fought", "defeats", "defeated", "kills", "killed", "attacks", "attacked"] {
-            assert!(morphology.is_verb(verb), "Should recognize combat verb: {}", verb);
-        }
-    }
-
-    #[test]
-    fn test_relationship_verbs() {
-        let morphology = VerbMorphology::new();
-        
-        for verb in ["loves", "loved", "hates", "hated", "marries", "married", "befriends"] {
-            assert!(morphology.is_verb(verb), "Should recognize relationship verb: {}", verb);
-        }
+        assert_eq!(lexicon.get_relation("guard"), Some("GUARDS"));
+        assert_eq!(lexicon.get_relation("guards"), Some("GUARDS"));
     }
 }

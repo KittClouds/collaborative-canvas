@@ -31,10 +31,10 @@
 //! - Works for ANY verb, not just ones in pattern dictionary
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use super::chunker::{Chunk, ChunkKind, ChunkResult, Chunker, TextRange, POS};
 use super::relation::EntitySpan;
+use super::verb_morphology::VerbLexicon;
 
 // =============================================================================
 // Core Types
@@ -165,9 +165,8 @@ pub struct StructuredRelationStats {
 pub struct StructuredRelationExtractor {
     /// The chunker for NP/VP/PP detection
     chunker: Chunker,
-    /// Verb lemma → normalized relation type
-    /// e.g., "defeated" → "DEFEATED", "slew" → "KILLED"
-    verb_to_relation: HashMap<String, String>,
+    /// Unified verb lexicon with morphology + semantics
+    lexicon: VerbLexicon,
     /// Passive voice auxiliary verbs
     passive_auxiliaries: Vec<String>,
     /// Maximum character distance between entity and VP
@@ -183,9 +182,9 @@ impl Default for StructuredRelationExtractor {
 impl StructuredRelationExtractor {
     /// Create a new extractor with default configuration
     pub fn new() -> Self {
-        let mut extractor = Self {
+        Self {
             chunker: Chunker::new(),
-            verb_to_relation: HashMap::new(),
+            lexicon: VerbLexicon::new(),
             passive_auxiliaries: vec![
                 "was".to_string(),
                 "were".to_string(),
@@ -197,9 +196,7 @@ impl StructuredRelationExtractor {
                 "gets".to_string(),
             ],
             max_distance: 100, // Characters
-        };
-        extractor.load_default_verb_mappings();
-        extractor
+        }
     }
 
     /// Extract structured relations from text using sentence structure
@@ -571,10 +568,10 @@ impl StructuredRelationExtractor {
         let verb_text = pattern.verb.head.slice(text);
         let verb_lower = verb_text.to_lowercase();
 
-        // Get relation type from verb mapping, or use verb itself uppercased
-        let relation_type = self.verb_to_relation
-            .get(&verb_lower)
-            .cloned()
+        // Get relation type from lexicon, or use verb itself uppercased
+        let relation_type = self.lexicon
+            .get_relation(&verb_lower)
+            .map(|s| s.to_string())
             .unwrap_or_else(|| verb_lower.to_uppercase());
 
         // Convert PP modifiers to RelationModifiers
@@ -629,50 +626,6 @@ impl StructuredRelationExtractor {
         }
 
         confidence.clamp(0.0, 1.0)
-    }
-
-    /// Load default verb → relation type mappings
-    fn load_default_verb_mappings(&mut self) {
-        // Conflict/Combat
-        self.add_verb_mapping(&["defeated", "beat", "conquered", "vanquished", "bested"], "DEFEATED");
-        self.add_verb_mapping(&["killed", "slew", "murdered", "slaughtered", "assassinated"], "KILLED");
-        self.add_verb_mapping(&["fought", "battled", "clashed", "dueled"], "FOUGHT");
-        self.add_verb_mapping(&["attacked", "assaulted", "ambushed", "struck"], "ATTACKED");
-        
-        // Social
-        self.add_verb_mapping(&["loves", "loved", "adores", "adored"], "LOVES");
-        self.add_verb_mapping(&["hates", "hated", "despises", "despised", "loathes"], "HATES");
-        self.add_verb_mapping(&["married", "wed", "wedded"], "MARRIED");
-        self.add_verb_mapping(&["befriended", "friended"], "BEFRIENDED");
-        
-        // Possession/Creation
-        self.add_verb_mapping(&["owns", "owned", "possesses", "possessed", "has", "had"], "OWNS");
-        self.add_verb_mapping(&["created", "made", "forged", "crafted", "built"], "CREATED");
-        self.add_verb_mapping(&["destroyed", "demolished", "annihilated"], "DESTROYED");
-        
-        // Hierarchy
-        self.add_verb_mapping(&["rules", "ruled", "governs", "governed", "commands", "commanded"], "RULES");
-        self.add_verb_mapping(&["serves", "served", "obeys", "obeyed"], "SERVES");
-        
-        // Movement/Location
-        self.add_verb_mapping(&["visited", "traveled", "journeyed", "went"], "TRAVELED_TO");
-        self.add_verb_mapping(&["lives", "lived", "dwells", "dwelt", "resides", "resided"], "LIVES_IN");
-        
-        // Communication
-        self.add_verb_mapping(&["said", "told", "spoke", "asked", "replied"], "SAID_TO");
-        self.add_verb_mapping(&["taught", "trained", "mentored", "instructed"], "TAUGHT");
-    }
-
-    /// Add a verb → relation mapping
-    fn add_verb_mapping(&mut self, verbs: &[&str], relation: &str) {
-        for verb in verbs {
-            self.verb_to_relation.insert(verb.to_string(), relation.to_string());
-        }
-    }
-
-    /// Add custom verb mapping
-    pub fn add_custom_verb_mapping(&mut self, verb: &str, relation_type: &str) {
-        self.verb_to_relation.insert(verb.to_lowercase(), relation_type.to_uppercase());
     }
 
     /// Set maximum distance for entity-VP matching
@@ -996,12 +949,12 @@ mod tests {
         }
     }
 
-    /// GOAL: Custom verb mappings should override defaults
+    /// GOAL: Unknown verbs should be uppercased as fallback
     #[test]
-    fn test_custom_verb_mapping() {
-        let mut extractor = StructuredRelationExtractor::new();
-        extractor.add_custom_verb_mapping("yeeted", "THREW_VIOLENTLY");
+    fn test_unknown_verb_uppercase_fallback() {
+        let extractor = StructuredRelationExtractor::new();
 
+        // "yeeted" is not in the lexicon, so should be uppercased
         let text = "Gandalf yeeted Sauron";
         let entities = vec![
             make_entity("Gandalf", 0, 7),
@@ -1011,7 +964,8 @@ mod tests {
         let relations = extractor.extract_structured(text, &entities);
         
         assert_eq!(relations.len(), 1);
-        assert_eq!(relations[0].relation_type, "THREW_VIOLENTLY");
+        // Unknown verbs get uppercased as fallback
+        assert_eq!(relations[0].relation_type, "YEETED");
     }
 
     // =========================================================================
