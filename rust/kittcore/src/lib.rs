@@ -57,7 +57,9 @@ pub mod reality;
 pub mod embeddings;
 pub mod rag;
 pub mod hnsw;
+#[cfg(feature = "sqlite_wasm")]
 pub mod db;  // SQLite WASM (experimental)
+pub mod graphdb;  // Graph database layer
 
 // Public exports - Scanner (explicit to avoid incremental collision with resorank)
 pub use scanner::{
@@ -120,6 +122,7 @@ pub use rag::{
 };
 
 // Public exports - SQLite WASM (experimental)
+#[cfg(feature = "sqlite_wasm")]
 pub use db::WasmDatabase;
 
 use wasm_bindgen::prelude::*;

@@ -512,7 +512,7 @@ kittcore` to apply 21
 suggestions)
     Finished `release` 
 profile [optimized] 
-target(s) in 1m 28s
+target(s) in 1m 56s
 [INFO]: Installing 
 wasm-bindgen...
 [INFO]: Optimizing wasm 
